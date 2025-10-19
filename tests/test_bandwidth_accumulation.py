@@ -33,11 +33,9 @@ def mock_eero_client():
 @pytest.fixture
 def device_collector(db_session, mock_eero_client):
     """Create a DeviceCollector instance for testing."""
-    with patch("src.collectors.device_collector.get_db_context") as mock_db_context:
-        mock_db_context.return_value.__enter__.return_value = db_session
-        collector = DeviceCollector(mock_eero_client)
-        collector.db = db_session
-        return collector
+    collector = DeviceCollector(mock_eero_client)
+    collector.db = db_session
+    return collector
 
 
 class TestBandwidthAccumulation:
@@ -197,9 +195,7 @@ class TestBandwidthAccumulation:
         # Create a device
         device = Device(
             mac_address="00:11:22:33:44:55",
-            name="Test Device",
-            ip_address="192.168.1.100",
-            is_online=True,
+            hostname="Test Device",
         )
         db_session.add(device)
         db_session.commit()

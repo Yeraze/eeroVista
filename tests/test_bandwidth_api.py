@@ -15,7 +15,11 @@ from src.models.database import Base, DailyBandwidth, Device
 @pytest.fixture
 def db_session():
     """Create an in-memory SQLite database for testing."""
-    engine = create_engine("sqlite:///:memory:")
+    # Use check_same_thread=False to allow FastAPI TestClient (different thread) to access the database
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(engine)
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
@@ -35,9 +39,7 @@ def setup_bandwidth_data(db_session):
     # Create a device
     device = Device(
         mac_address="00:11:22:33:44:55",
-        name="Test Device",
-        ip_address="192.168.1.100",
-        is_online=True,
+        hostname="Test Device",
     )
     db_session.add(device)
     db_session.commit()
