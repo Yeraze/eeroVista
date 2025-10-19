@@ -67,6 +67,10 @@ async def health_check(client: EeroClientWrapper = Depends(get_eero_client)) -> 
 async def collection_status() -> Dict[str, Any]:
     """Get data collection status and timestamps."""
     try:
+        from src.config import get_settings
+
+        settings = get_settings()
+
         with get_db_context() as db:
             from src.models.database import Config
 
@@ -94,7 +98,11 @@ async def collection_status() -> Dict[str, Any]:
 
             return {
                 "collections": last_collections,
-                "collection_interval_seconds": 300,  # 5 minutes
+                "collection_intervals": {
+                    "device": settings.collection_interval_devices,
+                    "network": settings.collection_interval_network,
+                    "speedtest": settings.collection_interval_network,
+                },
             }
 
     except Exception as e:
