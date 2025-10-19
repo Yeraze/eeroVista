@@ -33,9 +33,8 @@ def mock_eero_client():
 @pytest.fixture
 def device_collector(db_session, mock_eero_client):
     """Create a DeviceCollector instance for testing."""
-    collector = DeviceCollector(mock_eero_client)
-    collector.db = db_session
-    return collector
+    # BaseCollector.__init__ expects (db, eero_client)
+    return DeviceCollector(db_session, mock_eero_client)
 
 
 class TestBandwidthAccumulation:
@@ -303,7 +302,7 @@ class TestBandwidthAccumulation:
         db_session.add(record2)
 
         with pytest.raises(IntegrityError):
-            db_session.commit()
+            db_session.flush()  # flush() triggers the constraint check
 
     def test_varying_bandwidth_rates(self, device_collector, db_session):
         """Test accumulation with varying bandwidth rates over time."""
