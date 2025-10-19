@@ -143,6 +143,70 @@ async def dashboard_stats() -> Dict[str, Any]:
         }
 
 
+@router.get("/network-topology")
+async def get_network_topology() -> Dict[str, Any]:
+    """Get network topology showing nodes and connected devices."""
+    try:
+        with get_db_context() as db:
+            from src.models.database import Device, DeviceConnection, EeroNode
+
+            # Get all eero nodes
+            nodes = []
+            eero_nodes = db.query(EeroNode).all()
+
+            for node in eero_nodes:
+                nodes.append({
+                    "id": f"node_{node.id}",
+                    "name": node.location or f"Eero {node.id}",
+                    "type": "eero_node",
+                    "model": node.model,
+                    "is_gateway": node.is_gateway or False,
+                })
+
+            # Get all online devices with their connections
+            devices_list = []
+            devices = db.query(Device).all()
+
+            for device in devices:
+                # Get most recent connection
+                latest_connection = (
+                    db.query(DeviceConnection)
+                    .filter(DeviceConnection.device_id == device.id)
+                    .order_by(DeviceConnection.timestamp.desc())
+                    .first()
+                )
+
+                # Only include online devices
+                if latest_connection and latest_connection.is_connected:
+                    device_name = device.nickname or device.hostname or device.mac_address
+
+                    devices_list.append({
+                        "id": f"device_{device.id}",
+                        "name": device_name,
+                        "type": device.device_type or "unknown",
+                        "connection_type": latest_connection.connection_type or "unknown",
+                        "ip_address": latest_connection.ip_address,
+                        "node_id": f"node_{latest_connection.eero_node_id}" if latest_connection.eero_node_id else None,
+                    })
+
+            return {
+                "nodes": nodes,
+                "devices": devices_list,
+                "total_nodes": len(nodes),
+                "total_devices": len(devices_list),
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to get network topology: {e}")
+        return {
+            "nodes": [],
+            "devices": [],
+            "total_nodes": 0,
+            "total_devices": 0,
+            "error": str(e),
+        }
+
+
 @router.get("/devices")
 async def get_devices() -> Dict[str, Any]:
     """Get list of all devices with their latest connection status."""

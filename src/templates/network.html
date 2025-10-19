@@ -2,40 +2,290 @@
 
 {% block title %}Network - eeroVista{% endblock %}
 
+{% block extra_css %}
+<style>
+    #network-graph {
+        width: 100%;
+        height: 600px;
+        background-color: var(--mantle);
+        border-radius: 8px;
+        border: 1px solid var(--surface0);
+    }
+
+    .node-eero {
+        fill: var(--blue);
+        stroke: var(--sapphire);
+        stroke-width: 3px;
+    }
+
+    .node-eero.gateway {
+        fill: var(--green);
+        stroke: var(--teal);
+    }
+
+    .node-device {
+        fill: var(--lavender);
+        stroke: var(--mauve);
+        stroke-width: 2px;
+    }
+
+    .link-wired {
+        stroke: var(--text);
+        stroke-width: 2px;
+        stroke-opacity: 0.6;
+    }
+
+    .link-wireless {
+        stroke: var(--subtext1);
+        stroke-width: 1.5px;
+        stroke-dasharray: 5,5;
+        stroke-opacity: 0.4;
+    }
+
+    .node-label {
+        font-size: 11px;
+        fill: var(--text);
+        pointer-events: none;
+        text-anchor: middle;
+    }
+
+    .legend-item {
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .legend-line {
+        width: 30px;
+        height: 2px;
+        background: var(--text);
+    }
+
+    .legend-line.dotted {
+        background: repeating-linear-gradient(
+            to right,
+            var(--subtext1) 0,
+            var(--subtext1) 5px,
+            transparent 5px,
+            transparent 10px
+        );
+    }
+
+    .legend-circle {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: 2px solid;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <h1 class="mt-4 mb-4">Network Topology</h1>
 
 <div class="card">
-    <div class="card-title">Eero Mesh Network</div>
-    <p class="text-muted">Visualization of your mesh network nodes</p>
-
-    <div style="height: 400px; display: flex; align-items: center; justify-content: center; background-color: var(--base); border-radius: 8px; margin-top: 1rem;">
-        <p class="text-muted">Network topology visualization will appear here</p>
+    <div class="card-title">
+        Eero Mesh Network
+        <span style="font-size: 0.875rem; font-weight: normal; color: var(--subtext1);">
+            (<span id="node-count">0</span> nodes, <span id="device-count">0</span> online devices)
+        </span>
     </div>
+    <p class="text-muted">Interactive visualization showing devices connected to each eero node. Drag nodes to rearrange.</p>
+
+    <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+        <div class="legend-item">
+            <div class="legend-circle" style="background: var(--green); border-color: var(--teal);"></div>
+            <span style="font-size: 0.875rem;">Gateway Node</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-circle" style="background: var(--blue); border-color: var(--sapphire);"></div>
+            <span style="font-size: 0.875rem;">Eero Node</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-circle" style="background: var(--lavender); border-color: var(--mauve);"></div>
+            <span style="font-size: 0.875rem;">Device</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-line"></div>
+            <span style="font-size: 0.875rem;">Wired</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-line dotted"></div>
+            <span style="font-size: 0.875rem;">Wireless</span>
+        </div>
+    </div>
+
+    <svg id="network-graph"></svg>
 </div>
 
-<div class="card">
-    <div class="card-title">Node Status</div>
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Location</th>
-                <th>Model</th>
-                <th>Status</th>
-                <th>Connected Devices</th>
-                <th>Gateway</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td colspan="5" class="text-center text-muted">Loading node information...</td>
-            </tr>
-        </tbody>
-    </table>
-</div>
-
+<script src="https://d3js.org/d3.v7.min.js"></script>
 <script>
-    // TODO: Fetch network topology from API
-    console.log('Network page loaded - topology visualization pending');
+    let topologyData = null;
+
+    // Fetch topology data
+    async function loadTopology() {
+        try {
+            const response = await fetch('/api/network-topology');
+            const data = await response.json();
+
+            topologyData = data;
+            document.getElementById('node-count').textContent = data.total_nodes || 0;
+            document.getElementById('device-count').textContent = data.total_devices || 0;
+
+            renderGraph(data);
+        } catch (error) {
+            console.error('Failed to load network topology:', error);
+        }
+    }
+
+    function renderGraph(data) {
+        // Clear existing graph
+        d3.select('#network-graph').selectAll('*').remove();
+
+        const svg = d3.select('#network-graph');
+        const container = document.getElementById('network-graph').parentElement;
+        const width = container.clientWidth;
+        const height = 600;
+
+        svg.attr('width', width).attr('height', height);
+
+        // Create graph data structure
+        const nodes = [
+            ...data.nodes.map(n => ({
+                ...n,
+                node_type: 'eero',
+                radius: 20,
+            })),
+            ...data.devices.map(d => ({
+                ...d,
+                node_type: 'device',
+                radius: 8,
+            }))
+        ];
+
+        // Create links from devices to nodes
+        const links = data.devices
+            .filter(d => d.node_id)
+            .map(d => ({
+                source: d.node_id,
+                target: d.id,
+                connection_type: d.connection_type,
+            }));
+
+        // Create force simulation
+        const simulation = d3.forceSimulation(nodes)
+            .force('link', d3.forceLink(links).id(d => d.id).distance(100))
+            .force('charge', d3.forceManyBody().strength(-300))
+            .force('center', d3.forceCenter(width / 2, height / 2))
+            .force('collision', d3.forceCollide().radius(d => d.radius + 5));
+
+        // Create container group
+        const g = svg.append('g');
+
+        // Add zoom behavior
+        const zoom = d3.zoom()
+            .scaleExtent([0.5, 3])
+            .on('zoom', (event) => {
+                g.attr('transform', event.transform);
+            });
+
+        svg.call(zoom);
+
+        // Draw links
+        const link = g.append('g')
+            .selectAll('line')
+            .data(links)
+            .join('line')
+            .attr('class', d => d.connection_type === 'wired' ? 'link-wired' : 'link-wireless');
+
+        // Draw nodes
+        const node = g.append('g')
+            .selectAll('circle')
+            .data(nodes)
+            .join('circle')
+            .attr('r', d => d.radius)
+            .attr('class', d => {
+                if (d.node_type === 'eero') {
+                    return d.is_gateway ? 'node-eero gateway' : 'node-eero';
+                }
+                return 'node-device';
+            })
+            .call(d3.drag()
+                .on('start', dragstarted)
+                .on('drag', dragged)
+                .on('end', dragended));
+
+        // Add labels
+        const labels = g.append('g')
+            .selectAll('text')
+            .data(nodes)
+            .join('text')
+            .attr('class', 'node-label')
+            .attr('dy', d => d.radius + 12)
+            .text(d => {
+                // Truncate long names
+                const name = d.name || d.id;
+                return name.length > 15 ? name.substring(0, 15) + '...' : name;
+            });
+
+        // Add tooltips
+        node.append('title')
+            .text(d => {
+                if (d.node_type === 'eero') {
+                    return `${d.name}\n${d.model}\n${d.is_gateway ? 'Gateway' : 'Node'}`;
+                } else {
+                    return `${d.name}\nType: ${d.type}\nIP: ${d.ip_address || 'N/A'}\nConnection: ${d.connection_type}`;
+                }
+            });
+
+        // Update positions on simulation tick
+        simulation.on('tick', () => {
+            link
+                .attr('x1', d => d.source.x)
+                .attr('y1', d => d.source.y)
+                .attr('x2', d => d.target.x)
+                .attr('y2', d => d.target.y);
+
+            node
+                .attr('cx', d => d.x)
+                .attr('cy', d => d.y);
+
+            labels
+                .attr('x', d => d.x)
+                .attr('y', d => d.y);
+        });
+
+        // Drag functions
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+    }
+
+    // Initial load
+    loadTopology();
+
+    // Refresh every 30 seconds
+    setInterval(loadTopology, 30000);
+
+    // Redraw on window resize
+    window.addEventListener('resize', () => {
+        if (topologyData) {
+            renderGraph(topologyData);
+        }
+    });
 </script>
 {% endblock %}
