@@ -31,33 +31,33 @@ class CollectorScheduler:
         logger.info("Starting collector scheduler")
         self.scheduler = AsyncIOScheduler()
 
-        # Add collection jobs
-        # Note: Using 5 minutes (300 seconds) as requested
-        collection_interval = 300  # 5 minutes
+        # Add collection jobs using configured intervals
+        device_interval = self.settings.collection_interval_devices
+        network_interval = self.settings.collection_interval_network
 
-        # Device collector - every 5 minutes
+        # Device collector
         self.scheduler.add_job(
             func=self._run_device_collector,
-            trigger=IntervalTrigger(seconds=collection_interval),
+            trigger=IntervalTrigger(seconds=device_interval),
             id="device_collector",
             name="Device Collector",
             replace_existing=True,
         )
 
-        # Network collector - every 5 minutes
+        # Network collector
         self.scheduler.add_job(
             func=self._run_network_collector,
-            trigger=IntervalTrigger(seconds=collection_interval),
+            trigger=IntervalTrigger(seconds=network_interval),
             id="network_collector",
             name="Network Collector",
             replace_existing=True,
         )
 
-        # Speedtest collector - every 5 minutes
+        # Speedtest collector - use network interval
         # (passive collection, won't trigger tests)
         self.scheduler.add_job(
             func=self._run_speedtest_collector,
-            trigger=IntervalTrigger(seconds=collection_interval),
+            trigger=IntervalTrigger(seconds=network_interval),
             id="speedtest_collector",
             name="Speedtest Collector",
             replace_existing=True,
@@ -66,7 +66,8 @@ class CollectorScheduler:
         # Start the scheduler
         self.scheduler.start()
         logger.info(
-            f"Scheduler started - collectors will run every {collection_interval}s"
+            f"Scheduler started - device collector: {device_interval}s, "
+            f"network/speedtest collectors: {network_interval}s"
         )
 
         # Run collectors immediately on startup
@@ -81,6 +82,13 @@ class CollectorScheduler:
             logger.info("Stopping collector scheduler")
             self.scheduler.shutdown()
             self.scheduler = None
+
+    def run_all_collectors_now(self) -> None:
+        """Trigger immediate collection run for all collectors."""
+        logger.info("Running all collectors immediately")
+        self._run_device_collector()
+        self._run_network_collector()
+        self._run_speedtest_collector()
 
     def _run_device_collector(self) -> None:
         """Run the device collector."""
