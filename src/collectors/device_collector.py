@@ -189,11 +189,12 @@ class DeviceCollector(BaseCollector):
         bandwidth_down = None
         bandwidth_up = None
 
-        # Signal strength (for wireless connections)
+        # Signal strength and bandwidth (for wireless connections)
         if connection_type == "wireless":
             # Signal is in the connectivity dict (not wireless which is a boolean)
             connectivity = device_data.get("connectivity")
             if isinstance(connectivity, dict):
+                # Signal strength
                 signal = connectivity.get("signal")
                 if signal:
                     # Extract numeric value from signal string (e.g., "-43 dBm")
@@ -202,11 +203,18 @@ class DeviceCollector(BaseCollector):
                     except (ValueError, IndexError):
                         signal_strength = None
 
-        # Bandwidth (if available)
-        usage = device_data.get("usage")
-        if isinstance(usage, dict):
-            bandwidth_down = usage.get("download_mbps")
-            bandwidth_up = usage.get("upload_mbps")
+                # Bandwidth from rx_rate_info and tx_rate_info
+                rx_rate_info = connectivity.get("rx_rate_info")
+                if isinstance(rx_rate_info, dict):
+                    rate_bps = rx_rate_info.get("rate_bps")
+                    if rate_bps is not None and rate_bps > 0:
+                        bandwidth_down = rate_bps / 1_000_000  # Convert bps to Mbps
+
+                tx_rate_info = connectivity.get("tx_rate_info")
+                if isinstance(tx_rate_info, dict):
+                    rate_bps = tx_rate_info.get("rate_bps")
+                    if rate_bps is not None and rate_bps > 0:
+                        bandwidth_up = rate_bps / 1_000_000  # Convert bps to Mbps
 
         # Create connection record
         connection = DeviceConnection(
