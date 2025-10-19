@@ -2,6 +2,11 @@
 
 {% block title %}Dashboard - eeroVista{% endblock %}
 
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+{% endblock %}
+
 {% block content %}
 <h1 class="mt-4 mb-4">Network Dashboard</h1>
 
@@ -41,11 +46,53 @@
 </div>
 
 <div class="card">
-    <h2 class="card-title">Quick Stats</h2>
-    <div style="height: 300px; display: flex; align-items: center; justify-content: center;">
-        <p class="text-muted">Charts and graphs will appear here once data collection begins</p>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2 class="card-title" style="margin: 0;">Bandwidth Usage</h2>
+        <div style="display: flex; gap: 0.5rem;">
+            <button class="interval-btn active" data-days="7" onclick="updateNetworkBandwidthDays(7)">7 Days</button>
+            <button class="interval-btn" data-days="30" onclick="updateNetworkBandwidthDays(30)">30 Days</button>
+        </div>
+    </div>
+    <div id="bandwidth-summary" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+        <div style="text-align: center; padding: 0.75rem; background: var(--surface0); border-radius: 8px;">
+            <div style="font-size: 1.5rem; font-weight: 600; color: var(--blue);" id="today-download">--</div>
+            <div style="font-size: 0.875rem; color: var(--subtext0);">Today Download</div>
+        </div>
+        <div style="text-align: center; padding: 0.75rem; background: var(--surface0); border-radius: 8px;">
+            <div style="font-size: 1.5rem; font-weight: 600; color: var(--mauve);" id="today-upload">--</div>
+            <div style="font-size: 0.875rem; color: var(--subtext0);">Today Upload</div>
+        </div>
+        <div style="text-align: center; padding: 0.75rem; background: var(--surface0); border-radius: 8px;">
+            <div style="font-size: 1.5rem; font-weight: 600; color: var(--text);" id="period-total">--</div>
+            <div style="font-size: 0.875rem; color: var(--subtext0);" id="period-label">7 Day Total</div>
+        </div>
+    </div>
+    <div style="height: 300px; position: relative;">
+        <canvas id="network-bandwidth-chart"></canvas>
     </div>
 </div>
+
+<style>
+    .interval-btn {
+        padding: 0.25rem 0.75rem;
+        background-color: var(--surface0);
+        color: var(--text);
+        border: 1px solid var(--surface1);
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.875rem;
+    }
+
+    .interval-btn.active {
+        background-color: var(--blue);
+        color: white;
+        border-color: var(--blue);
+    }
+
+    .interval-btn:hover:not(.active) {
+        background-color: var(--surface1);
+    }
+</style>
 
 <script>
     // Fetch dashboard statistics
@@ -114,10 +161,189 @@
         }
     }
 
+    // Network bandwidth chart variables
+    let networkBandwidthChart = null;
+    let currentDays = 7;
+
+    // Format bytes to human readable format
+    function formatBytes(mb) {
+        if (mb >= 1000) {
+            return `${(mb / 1000).toFixed(2)} GB`;
+        }
+        return `${mb.toFixed(2)} MB`;
+    }
+
+    // Load and render network bandwidth chart
+    async function loadNetworkBandwidthChart(days) {
+        try {
+            const response = await fetch(`/api/network/bandwidth-total?days=${days}`);
+            const data = await response.json();
+
+            if (!data.daily_breakdown || data.daily_breakdown.length === 0) {
+                console.log('No network bandwidth data available');
+                showNetworkNoDataMessage();
+                return;
+            }
+
+            // Update summary stats
+            updateBandwidthSummary(data, days);
+
+            // Render bar chart
+            renderNetworkBandwidthChart(data.daily_breakdown);
+        } catch (error) {
+            console.error('Failed to load network bandwidth chart:', error);
+            showNetworkNoDataMessage();
+        }
+    }
+
+    function updateBandwidthSummary(data, days) {
+        // Get today's data (last entry in breakdown)
+        const todayData = data.daily_breakdown[data.daily_breakdown.length - 1];
+
+        if (todayData) {
+            document.getElementById('today-download').textContent = formatBytes(todayData.download_mb);
+            document.getElementById('today-upload').textContent = formatBytes(todayData.upload_mb);
+        }
+
+        // Show period total
+        document.getElementById('period-total').textContent = formatBytes(data.totals.total_mb);
+        document.getElementById('period-label').textContent = days === 7 ? '7 Day Total' : '30 Day Total';
+    }
+
+    function showNetworkNoDataMessage() {
+        const ctx = document.getElementById('network-bandwidth-chart');
+        if (ctx) {
+            // Destroy existing chart if present
+            if (networkBandwidthChart) {
+                networkBandwidthChart.destroy();
+                networkBandwidthChart = null;
+            }
+            // Replace canvas with message
+            const container = ctx.parentElement;
+            container.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--subtext0); font-size: 1rem;">Bandwidth data is accumulating... Check back soon!</div>';
+        }
+    }
+
+    // Render network bandwidth bar chart
+    function renderNetworkBandwidthChart(dailyData) {
+        const ctx = document.getElementById('network-bandwidth-chart');
+        if (!ctx) return;
+
+        // Destroy existing chart
+        if (networkBandwidthChart) {
+            networkBandwidthChart.destroy();
+        }
+
+        const labels = dailyData.map(d => d.date);
+        const downloadData = dailyData.map(d => d.download_mb);
+        const uploadData = dailyData.map(d => d.upload_mb);
+
+        networkBandwidthChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Download',
+                        data: downloadData,
+                        backgroundColor: 'rgba(30, 102, 245, 0.8)', // Catppuccin blue
+                        borderColor: 'rgb(30, 102, 245)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Upload',
+                        data: uploadData,
+                        backgroundColor: 'rgba(136, 57, 239, 0.8)', // Catppuccin mauve
+                        borderColor: 'rgb(136, 57, 239)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            title: function(context) {
+                                const date = new Date(context[0].label);
+                                return date.toLocaleDateString('en-US', {
+                                    weekday: 'short',
+                                    month: 'short',
+                                    day: 'numeric'
+                                });
+                            },
+                            label: function(context) {
+                                return `${context.dataset.label}: ${formatBytes(context.parsed.y)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: false,
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        },
+                        ticks: {
+                            callback: function(value, index) {
+                                const date = new Date(this.getLabelForValue(value));
+                                return date.toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric'
+                                });
+                            }
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        stacked: false,
+                        title: {
+                            display: true,
+                            text: 'Data Usage (MB)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                if (value >= 1000) {
+                                    return (value / 1000).toFixed(1) + ' GB';
+                                }
+                                return value.toFixed(0) + ' MB';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Update network bandwidth days (called from button onclick)
+    function updateNetworkBandwidthDays(days) {
+        currentDays = days;
+
+        // Update button states
+        document.querySelectorAll('.interval-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (parseInt(btn.dataset.days) === days) {
+                btn.classList.add('active');
+            }
+        });
+
+        // Reload chart with new days
+        loadNetworkBandwidthChart(days);
+    }
+
     // Update all data
     function updateAll() {
         updateDashboardStats();
         updateCollectionStatus();
+        loadNetworkBandwidthChart(currentDays);
     }
 
     // Initial load

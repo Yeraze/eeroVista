@@ -199,6 +199,51 @@ class EeroClientWrapper:
             logger.error(f"Error getting devices: {e}")
             return None
 
+    def get_profiles(self, network_name: Optional[str] = None) -> Optional[list]:
+        """
+        Get list of profiles with device usage data.
+
+        Args:
+            network_name: Optional network name. If None, uses first network.
+
+        Note:
+            The profiles endpoint returns devices with actual usage data populated,
+            unlike the devices endpoint which returns usage as None.
+
+            We make a direct API call to avoid pydantic marshalling errors in the library.
+        """
+        try:
+            eero = self._get_client()
+            if not self.is_authenticated():
+                return None
+
+            if network_name is None:
+                # Get first network
+                networks = self.get_networks()
+                if not networks:
+                    return None
+                network_name = networks[0].name
+
+            # Get network ID
+            network_client = eero.network_clients.get(network_name)
+            if not network_client:
+                logger.error(f"Network '{network_name}' not found")
+                return None
+
+            network_id = network_client.network_info.url.split('/')[-1]
+
+            # Make direct API call to bypass pydantic marshalling issues
+            from eero.client.api_client import APIClient
+            api = APIClient(eero.session.cookie)
+            profiles_data = api.get(f"networks/{network_id}/profiles")
+
+            logger.info(f"Profiles API returned {len(profiles_data) if isinstance(profiles_data, list) else 0} profiles")
+            return profiles_data
+
+        except Exception as e:
+            logger.error(f"Error getting profiles: {e}", exc_info=True)
+            return None
+
     def refresh_session(self) -> bool:
         """Attempt to refresh the session."""
         try:

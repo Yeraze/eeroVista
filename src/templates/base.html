@@ -4,15 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}eeroVista{% endblock %}</title>
+    <link rel="icon" type="image/x-icon" href="/static/img/favicon.ico">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
     <link rel="stylesheet" href="/static/css/catppuccin-latte.css">
     {% block extra_css %}{% endblock %}
+    {% block extra_head %}{% endblock %}
 </head>
 <body>
     {% if authenticated %}
     <nav class="navbar" style="padding: 0;">
         <div class="container" style="display: flex; justify-content: space-between; align-items: center; padding-top: 0; padding-bottom: 0;">
-            <a href="/" class="navbar-brand" style="padding: 0; line-height: 0; margin: 0;">
-                <img src="/static/img/eerovista.png" alt="eeroVista" style="height: 96px; width: auto; display: block; margin: 0; padding: 0; vertical-align: top;">
+            <a href="/" class="navbar-brand" style="padding: 0; margin: 0; display: flex; align-items: center; gap: 0.75rem; text-decoration: none;">
+                <img src="/static/img/eerovista-icon.png" alt="eeroVista" style="height: 48px; width: auto; display: block; padding: 0.5rem 0;">
+                <span style="font-size: 1.5rem; font-weight: 600; color: var(--text);">eeroVista</span>
             </a>
             <ul class="navbar-nav">
                 <li><a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">Dashboard</a></li>

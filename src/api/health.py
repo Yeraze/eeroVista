@@ -302,6 +302,8 @@ async def get_devices() -> Dict[str, Any]:
                 ip_address = "N/A"
                 is_online = False
                 signal_strength = None
+                bandwidth_down = None
+                bandwidth_up = None
 
                 if latest_connection:
                     if latest_connection.eero_node_id:
@@ -313,6 +315,8 @@ async def get_devices() -> Dict[str, Any]:
                     is_online = latest_connection.is_connected or False
                     connection_type = latest_connection.connection_type or "unknown"
                     signal_strength = latest_connection.signal_strength
+                    bandwidth_down = latest_connection.bandwidth_down_mbps
+                    bandwidth_up = latest_connection.bandwidth_up_mbps
 
                 device_name = device.nickname or device.hostname or device.mac_address
 
@@ -331,6 +335,8 @@ async def get_devices() -> Dict[str, Any]:
                     "is_online": is_online,
                     "connection_type": connection_type,
                     "signal_strength": signal_strength,
+                    "bandwidth_down_mbps": bandwidth_down,
+                    "bandwidth_up_mbps": bandwidth_up,
                     "node": node_name or "N/A",
                     "mac_address": device.mac_address,
                     "last_seen": device.last_seen.isoformat() if device.last_seen else None,
@@ -428,4 +434,282 @@ async def get_device_aliases(mac_address: str) -> Dict[str, Any]:
         raise
     except Exception as e:
         logger.error(f"Failed to get device aliases: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/devices/{mac_address}/bandwidth-history")
+async def get_device_bandwidth_history(
+    mac_address: str, hours: int = 24
+) -> Dict[str, Any]:
+    """Get bandwidth usage history for a specific device.
+
+    Args:
+        mac_address: Device MAC address
+        hours: Number of hours of history to return (default: 24, max: 168)
+
+    Raises:
+        HTTPException: If hours is not between 1 and 168
+    """
+    # Validate hours parameter
+    if hours < 1 or hours > 168:
+        raise HTTPException(
+            status_code=400,
+            detail="hours parameter must be between 1 and 168 (7 days)"
+        )
+
+    try:
+        with get_db_context() as db:
+            from src.models.database import Device, DeviceConnection
+
+            # Find device
+            device = db.query(Device).filter(Device.mac_address == mac_address).first()
+            if not device:
+                raise HTTPException(status_code=404, detail="Device not found")
+
+            # Calculate time range
+            from datetime import timedelta
+            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+
+            # Get bandwidth history
+            connections = (
+                db.query(DeviceConnection)
+                .filter(
+                    DeviceConnection.device_id == device.id,
+                    DeviceConnection.timestamp >= cutoff_time,
+                )
+                .order_by(DeviceConnection.timestamp.asc())
+                .all()
+            )
+
+            # Format data for graphing
+            history = []
+            for conn in connections:
+                history.append({
+                    "timestamp": conn.timestamp.isoformat(),
+                    "download_mbps": conn.bandwidth_down_mbps,
+                    "upload_mbps": conn.bandwidth_up_mbps,
+                    "is_connected": conn.is_connected,
+                })
+
+            return {
+                "mac_address": mac_address,
+                "device_name": device.nickname or device.hostname or mac_address,
+                "hours": hours,
+                "data_points": len(history),
+                "history": history,
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get bandwidth history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/network/bandwidth-history")
+async def get_network_bandwidth_history(hours: int = 24) -> Dict[str, Any]:
+    """Get cumulative network-wide bandwidth usage history.
+
+    Args:
+        hours: Number of hours of history to return (default: 24, max: 168)
+
+    Raises:
+        HTTPException: If hours is not between 1 and 168
+    """
+    # Validate hours parameter
+    if hours < 1 or hours > 168:
+        raise HTTPException(
+            status_code=400,
+            detail="hours parameter must be between 1 and 168 (7 days)"
+        )
+
+    try:
+        from datetime import timedelta
+        from sqlalchemy import func
+
+        with get_db_context() as db:
+            from src.models.database import DeviceConnection
+
+            # Calculate time range
+            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+
+            # Get all connections in time range, aggregated by timestamp
+            # Group by timestamp and sum bandwidth across all devices
+            connections = (
+                db.query(
+                    DeviceConnection.timestamp,
+                    func.sum(DeviceConnection.bandwidth_down_mbps).label('total_download'),
+                    func.sum(DeviceConnection.bandwidth_up_mbps).label('total_upload'),
+                )
+                .filter(DeviceConnection.timestamp >= cutoff_time)
+                .group_by(DeviceConnection.timestamp)
+                .order_by(DeviceConnection.timestamp.asc())
+                .all()
+            )
+
+            # Format data for graphing
+            history = []
+            for conn in connections:
+                history.append({
+                    "timestamp": conn.timestamp.isoformat(),
+                    "download_mbps": float(conn.total_download) if conn.total_download else 0,
+                    "upload_mbps": float(conn.total_upload) if conn.total_upload else 0,
+                })
+
+            return {
+                "hours": hours,
+                "data_points": len(history),
+                "history": history,
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to get network bandwidth history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/devices/{mac_address}/bandwidth-total")
+async def get_device_bandwidth_total(
+    mac_address: str, days: int = 7
+) -> Dict[str, Any]:
+    """Get accumulated bandwidth totals for a device over multiple days.
+
+    Args:
+        mac_address: Device MAC address
+        days: Number of days to include (default: 7, max: 90)
+
+    Raises:
+        HTTPException: If days is not between 1 and 90
+    """
+    # Validate days parameter
+    if days < 1 or days > 90:
+        raise HTTPException(
+            status_code=400,
+            detail="days parameter must be between 1 and 90"
+        )
+
+    try:
+        from datetime import timedelta, date
+
+        with get_db_context() as db:
+            from src.models.database import Device, DailyBandwidth
+
+            # Find device
+            device = db.query(Device).filter(Device.mac_address == mac_address).first()
+            if not device:
+                raise HTTPException(status_code=404, detail="Device not found")
+
+            # Get daily bandwidth records
+            since_date = date.today() - timedelta(days=days - 1)
+            daily_records = (
+                db.query(DailyBandwidth)
+                .filter(
+                    DailyBandwidth.device_id == device.id,
+                    DailyBandwidth.date >= since_date
+                )
+                .order_by(DailyBandwidth.date)
+                .all()
+            )
+
+            # Calculate totals
+            total_download = sum(record.download_mb for record in daily_records)
+            total_upload = sum(record.upload_mb for record in daily_records)
+
+            # Format daily breakdown
+            daily_breakdown = []
+            for record in daily_records:
+                daily_breakdown.append({
+                    "date": record.date.isoformat(),
+                    "download_mb": round(record.download_mb, 2),
+                    "upload_mb": round(record.upload_mb, 2),
+                })
+
+            return {
+                "device": {
+                    "mac_address": device.mac_address,
+                    "name": device.nickname or device.hostname or device.mac_address,
+                },
+                "period": {
+                    "days": days,
+                    "start_date": since_date.isoformat(),
+                    "end_date": date.today().isoformat(),
+                },
+                "totals": {
+                    "download_mb": round(total_download, 2),
+                    "upload_mb": round(total_upload, 2),
+                    "total_mb": round(total_download + total_upload, 2),
+                },
+                "daily_breakdown": daily_breakdown,
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get device bandwidth total: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/network/bandwidth-total")
+async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
+    """Get network-wide accumulated bandwidth totals over multiple days.
+
+    Args:
+        days: Number of days to include (default: 7, max: 90)
+
+    Raises:
+        HTTPException: If days is not between 1 and 90
+    """
+    # Validate days parameter
+    if days < 1 or days > 90:
+        raise HTTPException(
+            status_code=400,
+            detail="days parameter must be between 1 and 90"
+        )
+
+    try:
+        from datetime import timedelta, date
+
+        with get_db_context() as db:
+            from src.models.database import DailyBandwidth
+
+            # Get daily bandwidth records for network-wide (device_id = NULL)
+            since_date = date.today() - timedelta(days=days - 1)
+            daily_records = (
+                db.query(DailyBandwidth)
+                .filter(
+                    DailyBandwidth.device_id == None,
+                    DailyBandwidth.date >= since_date
+                )
+                .order_by(DailyBandwidth.date)
+                .all()
+            )
+
+            # Calculate totals
+            total_download = sum(record.download_mb for record in daily_records)
+            total_upload = sum(record.upload_mb for record in daily_records)
+
+            # Format daily breakdown
+            daily_breakdown = []
+            for record in daily_records:
+                daily_breakdown.append({
+                    "date": record.date.isoformat(),
+                    "download_mb": round(record.download_mb, 2),
+                    "upload_mb": round(record.upload_mb, 2),
+                })
+
+            return {
+                "period": {
+                    "days": days,
+                    "start_date": since_date.isoformat(),
+                    "end_date": date.today().isoformat(),
+                },
+                "totals": {
+                    "download_mb": round(total_download, 2),
+                    "upload_mb": round(total_upload, 2),
+                    "total_mb": round(total_download + total_upload, 2),
+                },
+                "daily_breakdown": daily_breakdown,
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to get network bandwidth total: {e}")
         raise HTTPException(status_code=500, detail=str(e))

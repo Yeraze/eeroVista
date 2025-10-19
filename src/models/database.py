@@ -5,12 +5,14 @@ from typing import Optional
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
     Integer,
     String,
     Text,
+    UniqueConstraint,
     create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -144,6 +146,38 @@ class EeroNodeMetric(Base):
 
     # Relationships
     eero_node: Mapped["EeroNode"] = relationship(back_populates="metrics")
+
+
+class DailyBandwidth(Base):
+    """Daily accumulated bandwidth statistics per device."""
+
+    __tablename__ = "daily_bandwidth"
+    __table_args__ = (
+        UniqueConstraint('device_id', 'date', name='uix_device_date'),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    device_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("devices.id")
+    )  # NULL = network-wide totals
+    date: Mapped[datetime] = mapped_column(Date, nullable=False, index=True)
+
+    # Accumulated totals in MB for this day
+    download_mb: Mapped[float] = mapped_column(Float, default=0.0)
+    upload_mb: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Track last collection time to calculate deltas
+    last_collection_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    # Metadata
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    # Relationships
+    device: Mapped[Optional["Device"]] = relationship()
 
 
 class Config(Base):
