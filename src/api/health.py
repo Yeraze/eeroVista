@@ -164,27 +164,37 @@ async def get_devices() -> Dict[str, Any]:
                     .first()
                 )
 
+                # Get eero node name if connected to one
+                node_name = None
+                connection_type = "unknown"
+                ip_address = "N/A"
+                is_online = False
+                signal_strength = None
+
                 if latest_connection:
-                    # Get eero node name if connected to one
-                    node_name = None
                     if latest_connection.eero_node_id:
                         node = db.query(EeroNode).filter(EeroNode.id == latest_connection.eero_node_id).first()
                         if node:
                             node_name = node.location
 
-                    device_name = device.nickname or device.hostname or device.mac_address
+                    ip_address = latest_connection.ip_address or "N/A"
+                    is_online = latest_connection.is_connected or False
+                    connection_type = latest_connection.connection_type or "unknown"
+                    signal_strength = latest_connection.signal_strength
 
-                    devices_list.append({
-                        "name": device_name,
-                        "type": device.device_type or "unknown",
-                        "ip_address": latest_connection.ip_address or "N/A",
-                        "is_online": latest_connection.is_connected or False,
-                        "connection_type": latest_connection.connection_type or "unknown",
-                        "signal_strength": latest_connection.signal_strength,
-                        "node": node_name or "N/A",
-                        "mac_address": device.mac_address,
-                        "last_seen": device.last_seen.isoformat() if device.last_seen else None,
-                    })
+                device_name = device.nickname or device.hostname or device.mac_address
+
+                devices_list.append({
+                    "name": device_name,
+                    "type": device.device_type or "unknown",
+                    "ip_address": ip_address,
+                    "is_online": is_online,
+                    "connection_type": connection_type,
+                    "signal_strength": signal_strength,
+                    "node": node_name or "N/A",
+                    "mac_address": device.mac_address,
+                    "last_seen": device.last_seen.isoformat() if device.last_seen else None,
+                })
 
             return {
                 "devices": devices_list,
