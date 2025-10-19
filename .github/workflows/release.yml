@@ -87,7 +87,16 @@ jobs:
         run: |
           TAG=${{ github.event.release.tag_name || github.event.inputs.tag }}
 
-          cat >> release_notes.md <<EOF
+          # Fetch existing release notes
+          if [ "${{ github.event_name }}" == "release" ]; then
+            echo "Fetching existing release notes..."
+            gh release view ${TAG} --json body --jq .body > existing_notes.md || echo "" > existing_notes.md
+          else
+            echo "" > existing_notes.md
+          fi
+
+          # Create Docker information section
+          cat > docker_info.md <<EOF
 
           ## Docker Images
 
@@ -124,6 +133,11 @@ jobs:
           \`\`\`
           EOF
 
+          # Combine existing notes with Docker info
+          cat existing_notes.md docker_info.md > combined_notes.md
+
+          # Update release with combined notes
           if [ "${{ github.event_name }}" == "release" ]; then
-            gh release edit ${TAG} --notes-file release_notes.md
+            echo "Updating release notes..."
+            gh release edit ${TAG} --notes-file combined_notes.md
           fi

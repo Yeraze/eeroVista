@@ -1,6 +1,20 @@
 """Setup configuration for eeroVista."""
 
+from pathlib import Path
+
 from setuptools import find_packages, setup
+
+
+def read_requirements():
+    """Read requirements from requirements.txt."""
+    requirements_file = Path(__file__).parent / "requirements.txt"
+    with requirements_file.open() as f:
+        return [
+            line.strip()
+            for line in f
+            if line.strip() and not line.startswith("#")
+        ]
+
 
 setup(
     name="eerovista",
@@ -9,9 +23,5 @@ setup(
     author="eeroVista Contributors",
     packages=find_packages(),
     python_requires=">=3.11",
-    install_requires=[
-        line.strip()
-        for line in open("requirements.txt")
-        if line.strip() and not line.startswith("#")
-    ],
+    install_requires=read_requirements(),
 )
