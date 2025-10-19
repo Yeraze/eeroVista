@@ -210,6 +210,7 @@ class DeviceCollector(BaseCollector):
                         signal_strength = None
 
         # Actual bandwidth usage (available from profiles endpoint)
+        # Note: Eero API only populates usage data periodically (hourly/daily)
         usage = device_data.get("usage")
         if isinstance(usage, dict):
             # Usage contains actual data transfer rates in Mbps
