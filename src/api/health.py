@@ -302,6 +302,8 @@ async def get_devices() -> Dict[str, Any]:
                 ip_address = "N/A"
                 is_online = False
                 signal_strength = None
+                bandwidth_down = None
+                bandwidth_up = None
 
                 if latest_connection:
                     if latest_connection.eero_node_id:
@@ -313,6 +315,8 @@ async def get_devices() -> Dict[str, Any]:
                     is_online = latest_connection.is_connected or False
                     connection_type = latest_connection.connection_type or "unknown"
                     signal_strength = latest_connection.signal_strength
+                    bandwidth_down = latest_connection.bandwidth_down_mbps
+                    bandwidth_up = latest_connection.bandwidth_up_mbps
 
                 device_name = device.nickname or device.hostname or device.mac_address
 
@@ -331,6 +335,8 @@ async def get_devices() -> Dict[str, Any]:
                     "is_online": is_online,
                     "connection_type": connection_type,
                     "signal_strength": signal_strength,
+                    "bandwidth_down_mbps": bandwidth_down,
+                    "bandwidth_up_mbps": bandwidth_up,
                     "node": node_name or "N/A",
                     "mac_address": device.mac_address,
                     "last_seen": device.last_seen.isoformat() if device.last_seen else None,
@@ -428,4 +434,63 @@ async def get_device_aliases(mac_address: str) -> Dict[str, Any]:
         raise
     except Exception as e:
         logger.error(f"Failed to get device aliases: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/devices/{mac_address}/bandwidth-history")
+async def get_device_bandwidth_history(
+    mac_address: str, hours: int = 24
+) -> Dict[str, Any]:
+    """Get bandwidth usage history for a specific device.
+
+    Args:
+        mac_address: Device MAC address
+        hours: Number of hours of history to return (default: 24)
+    """
+    try:
+        with get_db_context() as db:
+            from src.models.database import Device, DeviceConnection
+
+            # Find device
+            device = db.query(Device).filter(Device.mac_address == mac_address).first()
+            if not device:
+                raise HTTPException(status_code=404, detail="Device not found")
+
+            # Calculate time range
+            from datetime import timedelta
+            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+
+            # Get bandwidth history
+            connections = (
+                db.query(DeviceConnection)
+                .filter(
+                    DeviceConnection.device_id == device.id,
+                    DeviceConnection.timestamp >= cutoff_time,
+                )
+                .order_by(DeviceConnection.timestamp.asc())
+                .all()
+            )
+
+            # Format data for graphing
+            history = []
+            for conn in connections:
+                history.append({
+                    "timestamp": conn.timestamp.isoformat(),
+                    "download_mbps": conn.bandwidth_down_mbps,
+                    "upload_mbps": conn.bandwidth_up_mbps,
+                    "is_connected": conn.is_connected,
+                })
+
+            return {
+                "mac_address": mac_address,
+                "device_name": device.nickname or device.hostname or mac_address,
+                "hours": hours,
+                "data_points": len(history),
+                "history": history,
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get bandwidth history: {e}")
         raise HTTPException(status_code=500, detail=str(e))

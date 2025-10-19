@@ -2,6 +2,11 @@
 
 {% block title %}Devices - eeroVista{% endblock %}
 
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+{% endblock %}
+
 {% block extra_css %}
 <style>
     .device-row {
@@ -224,6 +229,57 @@
         background-color: var(--red);
         color: white;
     }
+
+    /* Bandwidth graph styles */
+    .bandwidth-section {
+        margin-top: 1.5rem;
+        padding-top: 1rem;
+        border-top: 2px solid var(--surface0);
+    }
+
+    .bandwidth-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .bandwidth-title {
+        font-weight: 600;
+        color: var(--text);
+        font-size: 1.1rem;
+    }
+
+    .interval-selector {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .interval-btn {
+        padding: 0.25rem 0.75rem;
+        background-color: var(--surface0);
+        color: var(--text);
+        border: 1px solid var(--surface1);
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.875rem;
+    }
+
+    .interval-btn.active {
+        background-color: var(--blue);
+        color: white;
+        border-color: var(--blue);
+    }
+
+    .interval-btn:hover:not(.active) {
+        background-color: var(--surface1);
+    }
+
+    .chart-container {
+        position: relative;
+        height: 300px;
+        margin-bottom: 1rem;
+    }
 </style>
 {% endblock %}
 
@@ -243,12 +299,14 @@
                     <th class="sortable-header" data-column="ip_address">IP Address</th>
                     <th class="sortable-header" data-column="is_online">Status</th>
                     <th class="sortable-header" data-column="connection_type">Connection</th>
+                    <th class="sortable-header" data-column="bandwidth_down_mbps">Download</th>
+                    <th class="sortable-header" data-column="bandwidth_up_mbps">Upload</th>
                     <th class="sortable-header" data-column="node">Node</th>
                 </tr>
             </thead>
             <tbody id="devices-table-body">
                 <tr>
-                    <td colspan="6" class="text-center text-muted">
+                    <td colspan="8" class="text-center text-muted">
                         Loading devices...
                     </td>
                 </tr>
@@ -288,7 +346,7 @@
             console.error('Failed to load devices:', error);
             document.getElementById('devices-table-body').innerHTML = `
                 <tr>
-                    <td colspan="6" class="text-center text-muted">
+                    <td colspan="8" class="text-center text-muted">
                         Error loading devices. Please try refreshing the page.
                     </td>
                 </tr>
@@ -344,7 +402,7 @@
         if (devicesData.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="6" class="text-center text-muted">
+                    <td colspan="8" class="text-center text-muted">
                         No devices found
                     </td>
                 </tr>
@@ -358,6 +416,13 @@
                 ? '<span class="status-badge status-online">Online</span>'
                 : '<span class="status-badge status-offline">Offline</span>';
 
+            const downloadBw = device.bandwidth_down_mbps != null
+                ? `${device.bandwidth_down_mbps.toFixed(1)} Mbps`
+                : 'N/A';
+            const uploadBw = device.bandwidth_up_mbps != null
+                ? `${device.bandwidth_up_mbps.toFixed(1)} Mbps`
+                : 'N/A';
+
             return `
                 <tr class="device-row ${rowClass}" onclick="showDeviceDetails(${index})">
                     <td>${device.name}</td>
@@ -365,6 +430,8 @@
                     <td>${device.ip_address}</td>
                     <td>${statusBadge}</td>
                     <td>${device.connection_type}</td>
+                    <td>${downloadBw}</td>
+                    <td>${uploadBw}</td>
                     <td>${device.node}</td>
                 </tr>
             `;
@@ -408,6 +475,16 @@
                 <div class="info-label">Signal Strength:</div>
                 <div class="info-value">${device.signal_strength} dBm</div>
             </div>` : ''}
+            ${device.bandwidth_down_mbps !== null && device.bandwidth_down_mbps !== undefined ? `
+            <div class="info-row">
+                <div class="info-label">Current Download:</div>
+                <div class="info-value">${device.bandwidth_down_mbps.toFixed(1)} Mbps</div>
+            </div>` : ''}
+            ${device.bandwidth_up_mbps !== null && device.bandwidth_up_mbps !== undefined ? `
+            <div class="info-row">
+                <div class="info-label">Current Upload:</div>
+                <div class="info-value">${device.bandwidth_up_mbps.toFixed(1)} Mbps</div>
+            </div>` : ''}
             <div class="info-row">
                 <div class="info-label">Connected To:</div>
                 <div class="info-value">${device.node}</div>
@@ -417,6 +494,22 @@
                 <div class="info-label">Last Seen:</div>
                 <div class="info-value">${formatTimestamp(device.last_seen)}</div>
             </div>` : ''}
+        `;
+
+        // Add bandwidth history graph section
+        detailsHtml += `
+            <div class="bandwidth-section">
+                <div class="bandwidth-header">
+                    <div class="bandwidth-title">Bandwidth History</div>
+                    <div class="interval-selector">
+                        <button class="interval-btn active" data-interval="hour" onclick="updateBandwidthInterval('${device.mac_address}', 'hour')">Hourly</button>
+                        <button class="interval-btn" data-interval="day" onclick="updateBandwidthInterval('${device.mac_address}', 'day')">Daily</button>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="bandwidth-chart"></canvas>
+                </div>
+            </div>
         `;
 
         // Add aliases section
@@ -440,6 +533,9 @@
 
         // Add event listener for save button
         document.getElementById('save-aliases-btn').addEventListener('click', () => saveAliases(device.mac_address));
+
+        // Load bandwidth history
+        loadBandwidthChart(device.mac_address, 'hour');
     }
 
     function hideModal() {
@@ -511,6 +607,179 @@
             saveBtn.disabled = false;
             saveBtn.textContent = 'Save Aliases';
         }
+    }
+
+    // Bandwidth chart variables
+    let bandwidthChart = null;
+    let currentInterval = 'hour';
+
+    // Load and render bandwidth chart
+    async function loadBandwidthChart(macAddress, interval) {
+        try {
+            const hours = interval === 'day' ? 168 : 24; // 7 days or 24 hours
+            const response = await fetch(`/api/devices/${encodeURIComponent(macAddress)}/bandwidth-history?hours=${hours}`);
+            const data = await response.json();
+
+            if (!data.history || data.history.length === 0) {
+                console.log('No bandwidth history available');
+                return;
+            }
+
+            // Aggregate data by interval
+            const aggregatedData = aggregateByInterval(data.history, interval);
+
+            // Render chart
+            renderBandwidthChart(aggregatedData, interval);
+        } catch (error) {
+            console.error('Failed to load bandwidth chart:', error);
+        }
+    }
+
+    // Aggregate bandwidth data by hour or day
+    function aggregateByInterval(history, interval) {
+        const aggregated = {};
+
+        history.forEach(point => {
+            const date = new Date(point.timestamp);
+            let key;
+
+            if (interval === 'day') {
+                // Group by day
+                key = date.toISOString().split('T')[0]; // YYYY-MM-DD
+            } else {
+                // Group by hour
+                const hourStart = new Date(date);
+                hourStart.setMinutes(0, 0, 0);
+                key = hourStart.toISOString();
+            }
+
+            if (!aggregated[key]) {
+                aggregated[key] = {
+                    timestamp: key,
+                    download: [],
+                    upload: []
+                };
+            }
+
+            if (point.download_mbps !== null) aggregated[key].download.push(point.download_mbps);
+            if (point.upload_mbps !== null) aggregated[key].upload.push(point.upload_mbps);
+        });
+
+        // Calculate averages and convert to array
+        return Object.values(aggregated).map(item => ({
+            timestamp: item.timestamp,
+            download_mbps: item.download.length > 0
+                ? item.download.reduce((a, b) => a + b, 0) / item.download.length
+                : 0,
+            upload_mbps: item.upload.length > 0
+                ? item.upload.reduce((a, b) => a + b, 0) / item.upload.length
+                : 0
+        })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    }
+
+    // Render bandwidth chart using Chart.js
+    function renderBandwidthChart(data, interval) {
+        const ctx = document.getElementById('bandwidth-chart');
+        if (!ctx) return;
+
+        // Destroy existing chart
+        if (bandwidthChart) {
+            bandwidthChart.destroy();
+        }
+
+        const labels = data.map(d => d.timestamp);
+        const downloadData = data.map(d => d.download_mbps);
+        const uploadData = data.map(d => d.upload_mbps);
+
+        bandwidthChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Download (Mbps)',
+                        data: downloadData,
+                        borderColor: 'rgb(30, 102, 245)', // Catppuccin blue
+                        backgroundColor: 'rgba(30, 102, 245, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    },
+                    {
+                        label: 'Upload (Mbps)',
+                        data: uploadData,
+                        borderColor: 'rgb(136, 57, 239)', // Catppuccin mauve
+                        backgroundColor: 'rgba(136, 57, 239, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            title: function(context) {
+                                const timestamp = context[0].label;
+                                const date = new Date(timestamp);
+                                return interval === 'day'
+                                    ? date.toLocaleDateString()
+                                    : date.toLocaleString();
+                            },
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.parsed.y.toFixed(2)} Mbps`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: interval === 'day' ? 'day' : 'hour',
+                            displayFormats: {
+                                hour: 'MMM d, HH:mm',
+                                day: 'MMM d'
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Bandwidth (Mbps)'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Update bandwidth interval (called from button onclick)
+    function updateBandwidthInterval(macAddress, interval) {
+        currentInterval = interval;
+
+        // Update button states
+        document.querySelectorAll('.interval-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.dataset.interval === interval) {
+                btn.classList.add('active');
+            }
+        });
+
+        // Reload chart with new interval
+        loadBandwidthChart(macAddress, interval);
     }
 
     // Modal event listeners
