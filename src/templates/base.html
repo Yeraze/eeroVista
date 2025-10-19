@@ -10,9 +10,9 @@
 <body>
     {% if authenticated %}
     <nav class="navbar" style="padding: 0;">
-        <div class="container" style="display: flex; justify-content: space-between; align-items: center;">
-            <a href="/" class="navbar-brand" style="padding: 0; line-height: 0;">
-                <img src="/static/img/eerovista.png" alt="eeroVista" style="height: 96px; width: auto; display: block;">
+        <div class="container" style="display: flex; justify-content: space-between; align-items: center; padding-top: 0; padding-bottom: 0;">
+            <a href="/" class="navbar-brand" style="padding: 0; line-height: 0; margin: 0;">
+                <img src="/static/img/eerovista.png" alt="eeroVista" style="height: 96px; width: auto; display: block; margin: 0; padding: 0; vertical-align: top;">
             </a>
             <ul class="navbar-nav">
                 <li><a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">Dashboard</a></li>
