@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from src import __version__
 from src.eero_client import EeroClientWrapper
-from src.utils.database import get_db
+from src.utils.database import get_db, get_db_context
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ async def health_check(client: EeroClientWrapper = Depends(get_eero_client)) -> 
     db_status = "connected"
     try:
         # Try a simple query
-        with get_db() as db:
+        with get_db_context() as db:
             from src.models.database import Config
             db.query(Config).first()
     except Exception as e:

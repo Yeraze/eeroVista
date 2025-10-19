@@ -37,9 +37,23 @@ def get_session_factory():
     return _SessionLocal
 
 
-@contextmanager
 def get_db() -> Generator[Session, None, None]:
-    """Get database session context manager."""
+    """Get database session for FastAPI dependency injection."""
+    SessionLocal = get_session_factory()
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@contextmanager
+def get_db_context() -> Generator[Session, None, None]:
+    """Get database session context manager for direct use (e.g., CLI scripts)."""
     SessionLocal = get_session_factory()
     db = SessionLocal()
     try:

@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.config import ensure_data_directory, get_settings
 from src.eero_client import EeroClientWrapper
-from src.utils.database import get_db, init_database
+from src.utils.database import get_db_context, init_database
 
 
 def main():
@@ -34,7 +34,7 @@ def main():
     init_database()
 
     # Get database session and client
-    with get_db() as db:
+    with get_db_context() as db:
         client = EeroClientWrapper(db)
 
         # Check if already authenticated
