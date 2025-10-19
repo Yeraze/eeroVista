@@ -25,7 +25,7 @@ services:
       # Logging
       - LOG_LEVEL=INFO
 
-      # DNS Server Configuration
+      # DNS Server Configuration (change domain to customize)
       - DNS_DOMAIN=eero.local
       - DNSMASQ_HOSTS_PATH=/etc/dnsmasq.d/eerovista.hosts
 
