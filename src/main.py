@@ -8,6 +8,10 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from src import __version__
+
+# IMPORTANT: Apply eero-client patch before any imports that use eero
+from src.utils.eero_patch import patch_eero_client  # noqa: F401
+
 from src.api import health, setup, web
 from src.config import ensure_data_directory, get_settings
 from src.scheduler.jobs import get_scheduler

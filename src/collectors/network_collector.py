@@ -28,7 +28,7 @@ class NetworkCollector(BaseCollector):
             devices_data = self.eero_client.get_devices()
             total_devices = len(devices_data) if devices_data else 0
             online_devices = (
-                sum(1 for d in devices_data if d.connected)
+                sum(1 for d in devices_data if (d.get("connected") if isinstance(d, dict) else d.connected))
                 if devices_data
                 else 0
             )
