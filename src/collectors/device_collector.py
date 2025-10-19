@@ -28,13 +28,19 @@ class DeviceCollector(BaseCollector):
             # Create/update eero nodes in database
             eero_node_map = self._process_eero_nodes(eeros_data)
 
-            # Get devices from Eero API
-            devices_data = self.eero_client.get_devices()
-            if not devices_data:
-                logger.warning("No devices found")
+            # Get profiles (which contain devices with actual usage data)
+            profiles_data = self.eero_client.get_profiles()
+            if not profiles_data:
+                logger.warning("No profiles found")
                 return {"items_collected": 0, "errors": 0}
 
-            logger.info(f"Retrieved {len(devices_data)} device entries from Eero API")
+            # Extract all devices from all profiles
+            devices_data = []
+            for profile in profiles_data:
+                if isinstance(profile, dict) and 'devices' in profile:
+                    devices_data.extend(profile['devices'])
+
+            logger.info(f"Retrieved {len(devices_data)} device entries from Eero API (via profiles)")
 
             # Count entry types for debugging
             type_counts = {}
@@ -189,7 +195,7 @@ class DeviceCollector(BaseCollector):
         bandwidth_down = None
         bandwidth_up = None
 
-        # Signal strength and bandwidth (for wireless connections)
+        # Signal strength (for wireless connections)
         if connection_type == "wireless":
             # Signal is in the connectivity dict (not wireless which is a boolean)
             connectivity = device_data.get("connectivity")
@@ -203,18 +209,12 @@ class DeviceCollector(BaseCollector):
                     except (ValueError, IndexError):
                         signal_strength = None
 
-                # Bandwidth from rx_rate_info and tx_rate_info
-                rx_rate_info = connectivity.get("rx_rate_info")
-                if isinstance(rx_rate_info, dict):
-                    rate_bps = rx_rate_info.get("rate_bps")
-                    if rate_bps is not None and rate_bps > 0:
-                        bandwidth_down = rate_bps / 1_000_000  # Convert bps to Mbps
-
-                tx_rate_info = connectivity.get("tx_rate_info")
-                if isinstance(tx_rate_info, dict):
-                    rate_bps = tx_rate_info.get("rate_bps")
-                    if rate_bps is not None and rate_bps > 0:
-                        bandwidth_up = rate_bps / 1_000_000  # Convert bps to Mbps
+        # Actual bandwidth usage (available from profiles endpoint)
+        usage = device_data.get("usage")
+        if isinstance(usage, dict):
+            # Usage contains actual data transfer rates in Mbps
+            bandwidth_down = usage.get("down_mbps")
+            bandwidth_up = usage.get("up_mbps")
 
         # Create connection record
         connection = DeviceConnection(

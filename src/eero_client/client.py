@@ -199,6 +199,45 @@ class EeroClientWrapper:
             logger.error(f"Error getting devices: {e}")
             return None
 
+    def get_profiles(self, network_name: Optional[str] = None) -> Optional[list]:
+        """
+        Get list of profiles with device usage data.
+
+        Args:
+            network_name: Optional network name. If None, uses first network.
+
+        Note:
+            The profiles endpoint returns devices with actual usage data populated,
+            unlike the devices endpoint which returns usage as None.
+        """
+        try:
+            eero = self._get_client()
+            if not self.is_authenticated():
+                return None
+
+            if network_name is None:
+                # Get first network
+                networks = self.get_networks()
+                if not networks:
+                    return None
+                # Networks are NetworkInfo Pydantic models, access name as attribute
+                network_name = networks[0].name
+
+            # Get profiles for network using network_clients
+            network_client = eero.network_clients.get(network_name)
+            if not network_client:
+                logger.error(f"Network '{network_name}' not found")
+                return None
+
+            # Get profiles - returns raw dicts due to pydantic schema issues
+            # Each profile contains devices with usage data
+            profiles_data = network_client.profiles
+            return profiles_data
+
+        except Exception as e:
+            logger.error(f"Error getting profiles: {e}")
+            return None
+
     def refresh_session(self) -> bool:
         """Attempt to refresh the session."""
         try:
