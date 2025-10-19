@@ -141,3 +141,60 @@ async def dashboard_stats() -> Dict[str, Any]:
             "guest_network_enabled": False,
             "error": str(e),
         }
+
+
+@router.get("/devices")
+async def get_devices() -> Dict[str, Any]:
+    """Get list of all devices with their latest connection status."""
+    try:
+        with get_db_context() as db:
+            from src.models.database import Device, DeviceConnection, EeroNode
+
+            # Get all devices with their most recent connection
+            devices_list = []
+
+            devices = db.query(Device).all()
+
+            for device in devices:
+                # Get most recent connection record
+                latest_connection = (
+                    db.query(DeviceConnection)
+                    .filter(DeviceConnection.device_id == device.id)
+                    .order_by(DeviceConnection.timestamp.desc())
+                    .first()
+                )
+
+                if latest_connection:
+                    # Get eero node name if connected to one
+                    node_name = None
+                    if latest_connection.eero_node_id:
+                        node = db.query(EeroNode).filter(EeroNode.id == latest_connection.eero_node_id).first()
+                        if node:
+                            node_name = node.location
+
+                    device_name = device.nickname or device.hostname or device.mac_address
+
+                    devices_list.append({
+                        "name": device_name,
+                        "type": device.device_type or "unknown",
+                        "ip_address": latest_connection.ip_address or "N/A",
+                        "is_online": latest_connection.is_connected or False,
+                        "connection_type": latest_connection.connection_type or "unknown",
+                        "signal_strength": latest_connection.signal_strength,
+                        "node": node_name or "N/A",
+                        "mac_address": device.mac_address,
+                        "last_seen": device.last_seen.isoformat() if device.last_seen else None,
+                    })
+
+            return {
+                "devices": devices_list,
+                "total": len(devices_list),
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to get devices: {e}")
+        return {
+            "devices": [],
+            "total": 0,
+            "error": str(e),
+        }
