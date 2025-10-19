@@ -12,6 +12,7 @@ from copy import copy
 from typing import Any
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic.errors import PydanticSchemaGenerationError
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,10 @@ def patch_eero_client():
                             # FIX: Use list[model] instead of list[type(model)]
                             return TypeAdapter(list[model]).validate_python(result)  # type: ignore
                         return model.model_validate(result)  # type: ignore
+                    except PydanticSchemaGenerationError as e:
+                        # Schema generation failed - this is the known bug, return raw data
+                        logger.debug(f"Schema generation failed for {action}, returning raw data (expected)")
+                        return result
                     except ValidationError as e:
                         if model == ErrorMeta:
                             logger.warning(f"Not Implemented: {action} (expected error)")

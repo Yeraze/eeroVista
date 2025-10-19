@@ -37,6 +37,11 @@ class DeviceCollector(BaseCollector):
             # Process each device
             for device_data in devices_data:
                 try:
+                    # Skip non-dict entries (sometimes API returns booleans)
+                    if not isinstance(device_data, dict):
+                        logger.debug(f"Skipping non-dict device entry: {type(device_data)}")
+                        continue
+
                     self._process_device(device_data, eero_node_map)
                     devices_processed += 1
                 except Exception as e:
@@ -66,7 +71,26 @@ class DeviceCollector(BaseCollector):
 
         for eero_data in eeros_data:
             try:
-                eero_url = eero_data.get("url", "")
+                # Handle both dict (from patched eero-client) and Pydantic model
+                if isinstance(eero_data, dict):
+                    eero_url = eero_data.get("url", "")
+                    location_data = eero_data.get("location")
+                    # Location might be a string or dict
+                    if isinstance(location_data, dict):
+                        location = location_data.get("name")
+                    else:
+                        location = location_data  # Already a string
+                    model = eero_data.get("model")
+                    mac_address = eero_data.get("mac_address")
+                    is_gateway = eero_data.get("gateway", False)
+                else:
+                    # Pydantic model - use attribute access
+                    eero_url = eero_data.url
+                    location = eero_data.location.name if hasattr(eero_data.location, 'name') else eero_data.location
+                    model = eero_data.model
+                    mac_address = eero_data.mac_address
+                    is_gateway = eero_data.gateway if hasattr(eero_data, 'gateway') else False
+
                 if not eero_url:
                     continue
 
@@ -84,19 +108,19 @@ class DeviceCollector(BaseCollector):
                     # Create new node
                     node = EeroNode(
                         eero_id=eero_id,
-                        location=eero_data.get("location", {}).get("name"),
-                        model=eero_data.get("model"),
-                        mac_address=eero_data.get("mac_address"),
-                        is_gateway=eero_data.get("gateway", False),
+                        location=location,
+                        model=model,
+                        mac_address=mac_address,
+                        is_gateway=is_gateway,
                     )
                     self.db.add(node)
                     self.db.flush()  # Get the ID
                 else:
                     # Update existing node
-                    node.location = eero_data.get("location", {}).get("name")
-                    node.model = eero_data.get("model")
-                    node.mac_address = eero_data.get("mac_address")
-                    node.is_gateway = eero_data.get("gateway", False)
+                    node.location = location
+                    node.model = model
+                    node.mac_address = mac_address
+                    node.is_gateway = is_gateway
                     node.last_seen = datetime.utcnow()
 
                 eero_node_map[eero_url] = node.id
