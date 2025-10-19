@@ -14,9 +14,6 @@ eero-client>=2.1.0
 # Background Tasks
 apscheduler>=3.10.0
 
-# Data Processing
-pandas>=2.1.0
-
 # Monitoring Exports
 prometheus-client>=0.19.0
 
