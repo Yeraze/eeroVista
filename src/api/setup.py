@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from src import __version__
 from src.eero_client import EeroClientWrapper
 from src.utils.database import get_db
 
@@ -30,7 +31,7 @@ async def setup_page(request: Request, client: EeroClientWrapper = Depends(get_e
         return RedirectResponse(url="/", status_code=302)
 
     return templates.TemplateResponse(
-        "setup.html", {"request": request, "step": "phone"}
+        "setup.html", {"request": request, "step": "phone", "version": __version__}
     )
 
 

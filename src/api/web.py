@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from src import __version__
 from src.eero_client import EeroClientWrapper
 from src.utils.database import get_db
 
@@ -49,6 +50,7 @@ async def dashboard(
             "request": request,
             "network_name": network_name,
             "authenticated": True,
+            "version": __version__,
         },
     )
 
@@ -67,6 +69,7 @@ async def devices_page(
         {
             "request": request,
             "authenticated": True,
+            "version": __version__,
         },
     )
 
@@ -85,6 +88,7 @@ async def network_page(
         {
             "request": request,
             "authenticated": True,
+            "version": __version__,
         },
     )
 
@@ -103,6 +107,7 @@ async def speedtest_page(
         {
             "request": request,
             "authenticated": True,
+            "version": __version__,
         },
     )
 
@@ -126,5 +131,6 @@ async def settings_page(
             "request": request,
             "authenticated": True,
             "settings": settings,
+            "version": __version__,
         },
     )
