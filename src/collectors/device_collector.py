@@ -1,11 +1,11 @@
 """Device collector for tracking connected devices."""
 
 import logging
-from datetime import datetime
-from typing import Dict
+from datetime import datetime, date
+from typing import Dict, Optional
 
 from src.collectors.base import BaseCollector
-from src.models.database import Device, DeviceConnection, EeroNode
+from src.models.database import Device, DeviceConnection, DailyBandwidth, EeroNode
 
 logger = logging.getLogger(__name__)
 
@@ -28,19 +28,34 @@ class DeviceCollector(BaseCollector):
             # Create/update eero nodes in database
             eero_node_map = self._process_eero_nodes(eeros_data)
 
-            # Get profiles (which contain devices with actual usage data)
-            profiles_data = self.eero_client.get_profiles()
-            if not profiles_data:
-                logger.warning("No profiles found")
+            # Get devices from Eero API (primary source - has all devices)
+            devices_data = self.eero_client.get_devices()
+            if not devices_data:
+                logger.warning("No devices found")
                 return {"items_collected": 0, "errors": 0}
 
-            # Extract all devices from all profiles
-            devices_data = []
-            for profile in profiles_data:
-                if isinstance(profile, dict) and 'devices' in profile:
-                    devices_data.extend(profile['devices'])
+            logger.info(f"Retrieved {len(devices_data)} device entries from Eero devices API")
 
-            logger.info(f"Retrieved {len(devices_data)} device entries from Eero API (via profiles)")
+            # Get profiles to overlay usage data (profiles contain usage stats when available)
+            profiles_data = self.eero_client.get_profiles()
+            usage_map = {}
+            if profiles_data:
+                # Build a map of MAC address to usage data
+                for profile in profiles_data:
+                    if isinstance(profile, dict) and 'devices' in profile:
+                        for device in profile['devices']:
+                            mac = device.get('mac')
+                            usage = device.get('usage')
+                            if mac and usage:
+                                usage_map[mac] = usage
+                logger.info(f"Retrieved usage data for {len(usage_map)} devices from profiles")
+
+            # Overlay usage data onto devices
+            for device in devices_data:
+                if isinstance(device, dict):
+                    mac = device.get('mac')
+                    if mac and mac in usage_map:
+                        device['usage'] = usage_map[mac]
 
             # Count entry types for debugging
             type_counts = {}
@@ -48,6 +63,11 @@ class DeviceCollector(BaseCollector):
                 t = type(entry).__name__
                 type_counts[t] = type_counts.get(t, 0) + 1
             logger.info(f"Device entry types: {type_counts}")
+
+            # Track network-wide bandwidth totals
+            network_bandwidth_down = 0.0
+            network_bandwidth_up = 0.0
+            timestamp = datetime.utcnow()
 
             # Process each device
             for device_data in devices_data:
@@ -59,10 +79,27 @@ class DeviceCollector(BaseCollector):
 
                     self._process_device(device_data, eero_node_map)
                     devices_processed += 1
+
+                    # Accumulate network-wide bandwidth
+                    usage = device_data.get("usage")
+                    if isinstance(usage, dict):
+                        down = usage.get("down_mbps", 0.0) or 0.0
+                        up = usage.get("up_mbps", 0.0) or 0.0
+                        network_bandwidth_down += down
+                        network_bandwidth_up += up
+
                 except Exception as e:
                     device_name = device_data.get("nickname") or device_data.get("hostname") or device_data.get("mac", "unknown")
                     logger.error(f"Error processing device '{device_name}': {e}", exc_info=True)
                     errors += 1
+
+            # Update network-wide bandwidth accumulation
+            self._update_bandwidth_accumulation(
+                device_id=None,  # None = network-wide
+                bandwidth_down_mbps=network_bandwidth_down,
+                bandwidth_up_mbps=network_bandwidth_up,
+                timestamp=timestamp
+            )
 
             self.db.commit()
 
@@ -218,10 +255,11 @@ class DeviceCollector(BaseCollector):
             bandwidth_up = usage.get("up_mbps")
 
         # Create connection record
+        timestamp = datetime.utcnow()
         connection = DeviceConnection(
             device_id=device.id,
             eero_node_id=eero_node_id,
-            timestamp=datetime.utcnow(),
+            timestamp=timestamp,
             is_connected=is_connected,
             connection_type=connection_type,
             signal_strength=signal_strength,
@@ -230,6 +268,14 @@ class DeviceCollector(BaseCollector):
             bandwidth_up_mbps=bandwidth_up,
         )
         self.db.add(connection)
+
+        # Update accumulated bandwidth statistics for this device
+        self._update_bandwidth_accumulation(
+            device_id=device.id,
+            bandwidth_down_mbps=bandwidth_down,
+            bandwidth_up_mbps=bandwidth_up,
+            timestamp=timestamp
+        )
 
     def _guess_device_type(self, device_data: dict) -> str:
         """Guess device type based on available data."""
@@ -252,3 +298,69 @@ class DeviceCollector(BaseCollector):
             return "printer"
         else:
             return "unknown"
+
+    def _update_bandwidth_accumulation(
+        self,
+        device_id: Optional[int],
+        bandwidth_down_mbps: Optional[float],
+        bandwidth_up_mbps: Optional[float],
+        timestamp: datetime
+    ) -> None:
+        """
+        Update accumulated bandwidth statistics for a device or network-wide.
+
+        Args:
+            device_id: Device ID (None for network-wide totals)
+            bandwidth_down_mbps: Current download rate in Mbps
+            bandwidth_up_mbps: Current upload rate in Mbps
+            timestamp: Current collection timestamp
+        """
+        if bandwidth_down_mbps is None or bandwidth_up_mbps is None:
+            return
+
+        today = date.today()
+
+        # Get or create daily bandwidth record
+        bandwidth_record = (
+            self.db.query(DailyBandwidth)
+            .filter(
+                DailyBandwidth.device_id == device_id,
+                DailyBandwidth.date == today
+            )
+            .first()
+        )
+
+        if not bandwidth_record:
+            bandwidth_record = DailyBandwidth(
+                device_id=device_id,
+                date=today,
+                download_mb=0.0,
+                upload_mb=0.0,
+                last_collection_time=None,
+            )
+            self.db.add(bandwidth_record)
+
+        # Calculate accumulated bandwidth since last collection
+        if bandwidth_record.last_collection_time:
+            # Calculate time delta in seconds
+            time_delta = (timestamp - bandwidth_record.last_collection_time).total_seconds()
+
+            # Convert Mbps to MB: (Mbps * seconds) / 8 bits per byte
+            # Mbps = megabits per second, so Mbps * seconds = megabits
+            # megabits / 8 = megabytes
+            download_mb = (bandwidth_down_mbps * time_delta) / 8.0
+            upload_mb = (bandwidth_up_mbps * time_delta) / 8.0
+
+            # Add to accumulated totals
+            bandwidth_record.download_mb += download_mb
+            bandwidth_record.upload_mb += upload_mb
+
+            logger.debug(
+                f"Accumulated bandwidth for device {device_id}: "
+                f"+{download_mb:.4f} MB down, +{upload_mb:.4f} MB up "
+                f"(delta: {time_delta:.1f}s)"
+            )
+
+        # Update last collection time for next calculation
+        bandwidth_record.last_collection_time = timestamp
+        bandwidth_record.updated_at = timestamp

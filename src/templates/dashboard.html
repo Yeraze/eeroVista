@@ -47,10 +47,24 @@
 
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-        <h2 class="card-title" style="margin: 0;">Network Bandwidth</h2>
+        <h2 class="card-title" style="margin: 0;">Bandwidth Usage</h2>
         <div style="display: flex; gap: 0.5rem;">
-            <button class="interval-btn active" data-interval="hour" onclick="updateNetworkBandwidthInterval('hour')">Hourly</button>
-            <button class="interval-btn" data-interval="day" onclick="updateNetworkBandwidthInterval('day')">Daily</button>
+            <button class="interval-btn active" data-days="7" onclick="updateNetworkBandwidthDays(7)">7 Days</button>
+            <button class="interval-btn" data-days="30" onclick="updateNetworkBandwidthDays(30)">30 Days</button>
+        </div>
+    </div>
+    <div id="bandwidth-summary" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+        <div style="text-align: center; padding: 0.75rem; background: var(--surface0); border-radius: 8px;">
+            <div style="font-size: 1.5rem; font-weight: 600; color: var(--blue);" id="today-download">--</div>
+            <div style="font-size: 0.875rem; color: var(--subtext0);">Today Download</div>
+        </div>
+        <div style="text-align: center; padding: 0.75rem; background: var(--surface0); border-radius: 8px;">
+            <div style="font-size: 1.5rem; font-weight: 600; color: var(--mauve);" id="today-upload">--</div>
+            <div style="font-size: 0.875rem; color: var(--subtext0);">Today Upload</div>
+        </div>
+        <div style="text-align: center; padding: 0.75rem; background: var(--surface0); border-radius: 8px;">
+            <div style="font-size: 1.5rem; font-weight: 600; color: var(--text);" id="period-total">--</div>
+            <div style="font-size: 0.875rem; color: var(--subtext0);" id="period-label">7 Day Total</div>
         </div>
     </div>
     <div style="height: 300px; position: relative;">
@@ -149,42 +163,51 @@
 
     // Network bandwidth chart variables
     let networkBandwidthChart = null;
-    let currentNetworkInterval = 'hour';
+    let currentDays = 7;
+
+    // Format bytes to human readable format
+    function formatBytes(mb) {
+        if (mb >= 1000) {
+            return `${(mb / 1000).toFixed(2)} GB`;
+        }
+        return `${mb.toFixed(2)} MB`;
+    }
 
     // Load and render network bandwidth chart
-    async function loadNetworkBandwidthChart(interval) {
+    async function loadNetworkBandwidthChart(days) {
         try {
-            const hours = interval === 'day' ? 168 : 24; // 7 days or 24 hours
-            const response = await fetch(`/api/network/bandwidth-history?hours=${hours}`);
+            const response = await fetch(`/api/network/bandwidth-total?days=${days}`);
             const data = await response.json();
 
-            if (!data.history || data.history.length === 0) {
-                console.log('No network bandwidth history available');
+            if (!data.daily_breakdown || data.daily_breakdown.length === 0) {
+                console.log('No network bandwidth data available');
                 showNetworkNoDataMessage();
                 return;
             }
 
-            // Filter out entries with null/zero bandwidth values
-            const validData = data.history.filter(point =>
-                (point.download_mbps !== null && point.download_mbps > 0) ||
-                (point.upload_mbps !== null && point.upload_mbps > 0)
-            );
+            // Update summary stats
+            updateBandwidthSummary(data, days);
 
-            if (validData.length === 0) {
-                console.log('No valid network bandwidth data available');
-                showNetworkNoDataMessage();
-                return;
-            }
-
-            // Aggregate data by interval
-            const aggregatedData = aggregateNetworkByInterval(validData, interval);
-
-            // Render chart
-            renderNetworkBandwidthChart(aggregatedData, interval);
+            // Render bar chart
+            renderNetworkBandwidthChart(data.daily_breakdown);
         } catch (error) {
             console.error('Failed to load network bandwidth chart:', error);
             showNetworkNoDataMessage();
         }
+    }
+
+    function updateBandwidthSummary(data, days) {
+        // Get today's data (last entry in breakdown)
+        const todayData = data.daily_breakdown[data.daily_breakdown.length - 1];
+
+        if (todayData) {
+            document.getElementById('today-download').textContent = formatBytes(todayData.download_mb);
+            document.getElementById('today-upload').textContent = formatBytes(todayData.upload_mb);
+        }
+
+        // Show period total
+        document.getElementById('period-total').textContent = formatBytes(data.totals.total_mb);
+        document.getElementById('period-label').textContent = days === 7 ? '7 Day Total' : '30 Day Total';
     }
 
     function showNetworkNoDataMessage() {
@@ -197,54 +220,12 @@
             }
             // Replace canvas with message
             const container = ctx.parentElement;
-            container.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--subtext0); font-size: 1rem;">No bandwidth data available from Eero API</div>';
+            container.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--subtext0); font-size: 1rem;">Bandwidth data is accumulating... Check back soon!</div>';
         }
     }
 
-    // Aggregate network bandwidth data by hour or day
-    function aggregateNetworkByInterval(history, interval) {
-        const aggregated = {};
-
-        history.forEach(point => {
-            const date = new Date(point.timestamp);
-            let key;
-
-            if (interval === 'day') {
-                // Group by day
-                key = date.toISOString().split('T')[0]; // YYYY-MM-DD
-            } else {
-                // Group by hour
-                const hourStart = new Date(date);
-                hourStart.setMinutes(0, 0, 0);
-                key = hourStart.toISOString();
-            }
-
-            if (!aggregated[key]) {
-                aggregated[key] = {
-                    timestamp: key,
-                    download: [],
-                    upload: []
-                };
-            }
-
-            if (point.download_mbps !== null) aggregated[key].download.push(point.download_mbps);
-            if (point.upload_mbps !== null) aggregated[key].upload.push(point.upload_mbps);
-        });
-
-        // Calculate averages and convert to array
-        return Object.values(aggregated).map(item => ({
-            timestamp: item.timestamp,
-            download_mbps: item.download.length > 0
-                ? item.download.reduce((a, b) => a + b, 0) / item.download.length
-                : 0,
-            upload_mbps: item.upload.length > 0
-                ? item.upload.reduce((a, b) => a + b, 0) / item.upload.length
-                : 0
-        })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    }
-
-    // Render network bandwidth chart using Chart.js
-    function renderNetworkBandwidthChart(data, interval) {
+    // Render network bandwidth bar chart
+    function renderNetworkBandwidthChart(dailyData) {
         const ctx = document.getElementById('network-bandwidth-chart');
         if (!ctx) return;
 
@@ -253,30 +234,28 @@
             networkBandwidthChart.destroy();
         }
 
-        const labels = data.map(d => d.timestamp);
-        const downloadData = data.map(d => d.download_mbps);
-        const uploadData = data.map(d => d.upload_mbps);
+        const labels = dailyData.map(d => d.date);
+        const downloadData = dailyData.map(d => d.download_mb);
+        const uploadData = dailyData.map(d => d.upload_mb);
 
         networkBandwidthChart = new Chart(ctx, {
-            type: 'line',
+            type: 'bar',
             data: {
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Total Download (Mbps)',
+                        label: 'Download',
                         data: downloadData,
-                        borderColor: 'rgb(30, 102, 245)', // Catppuccin blue
-                        backgroundColor: 'rgba(30, 102, 245, 0.1)',
-                        tension: 0.3,
-                        fill: true
+                        backgroundColor: 'rgba(30, 102, 245, 0.8)', // Catppuccin blue
+                        borderColor: 'rgb(30, 102, 245)',
+                        borderWidth: 1
                     },
                     {
-                        label: 'Total Upload (Mbps)',
+                        label: 'Upload',
                         data: uploadData,
-                        borderColor: 'rgb(136, 57, 239)', // Catppuccin mauve
-                        backgroundColor: 'rgba(136, 57, 239, 0.1)',
-                        tension: 0.3,
-                        fill: true
+                        backgroundColor: 'rgba(136, 57, 239, 0.8)', // Catppuccin mauve
+                        borderColor: 'rgb(136, 57, 239)',
+                        borderWidth: 1
                     }
                 ]
             },
@@ -293,38 +272,50 @@
                         intersect: false,
                         callbacks: {
                             title: function(context) {
-                                const timestamp = context[0].label;
-                                const date = new Date(timestamp);
-                                return interval === 'day'
-                                    ? date.toLocaleDateString()
-                                    : date.toLocaleString();
+                                const date = new Date(context[0].label);
+                                return date.toLocaleDateString('en-US', {
+                                    weekday: 'short',
+                                    month: 'short',
+                                    day: 'numeric'
+                                });
                             },
                             label: function(context) {
-                                return `${context.dataset.label}: ${context.parsed.y.toFixed(2)} Mbps`;
+                                return `${context.dataset.label}: ${formatBytes(context.parsed.y)}`;
                             }
                         }
                     }
                 },
                 scales: {
                     x: {
-                        type: 'time',
-                        time: {
-                            unit: interval === 'day' ? 'day' : 'hour',
-                            displayFormats: {
-                                hour: 'MMM d, HH:mm',
-                                day: 'MMM d'
-                            }
-                        },
+                        stacked: false,
                         title: {
                             display: true,
-                            text: 'Time'
+                            text: 'Date'
+                        },
+                        ticks: {
+                            callback: function(value, index) {
+                                const date = new Date(this.getLabelForValue(value));
+                                return date.toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric'
+                                });
+                            }
                         }
                     },
                     y: {
                         beginAtZero: true,
+                        stacked: false,
                         title: {
                             display: true,
-                            text: 'Network Bandwidth (Mbps)'
+                            text: 'Data Usage (MB)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                if (value >= 1000) {
+                                    return (value / 1000).toFixed(1) + ' GB';
+                                }
+                                return value.toFixed(0) + ' MB';
+                            }
                         }
                     }
                 }
@@ -332,27 +323,27 @@
         });
     }
 
-    // Update network bandwidth interval (called from button onclick)
-    function updateNetworkBandwidthInterval(interval) {
-        currentNetworkInterval = interval;
+    // Update network bandwidth days (called from button onclick)
+    function updateNetworkBandwidthDays(days) {
+        currentDays = days;
 
         // Update button states
         document.querySelectorAll('.interval-btn').forEach(btn => {
             btn.classList.remove('active');
-            if (btn.dataset.interval === interval) {
+            if (parseInt(btn.dataset.days) === days) {
                 btn.classList.add('active');
             }
         });
 
-        // Reload chart with new interval
-        loadNetworkBandwidthChart(interval);
+        // Reload chart with new days
+        loadNetworkBandwidthChart(days);
     }
 
     // Update all data
     function updateAll() {
         updateDashboardStats();
         updateCollectionStatus();
-        loadNetworkBandwidthChart(currentNetworkInterval);
+        loadNetworkBandwidthChart(currentDays);
     }
 
     // Initial load

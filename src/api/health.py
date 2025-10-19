@@ -545,3 +545,131 @@ async def get_network_bandwidth_history(hours: int = 24) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to get network bandwidth history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/devices/{mac_address}/bandwidth-total")
+async def get_device_bandwidth_total(
+    mac_address: str, days: int = 7
+) -> Dict[str, Any]:
+    """Get accumulated bandwidth totals for a device over multiple days.
+
+    Args:
+        mac_address: Device MAC address
+        days: Number of days to include (default: 7)
+    """
+    try:
+        from datetime import timedelta, date
+
+        with get_db_context() as db:
+            from src.models.database import Device, DailyBandwidth
+
+            # Find device
+            device = db.query(Device).filter(Device.mac_address == mac_address).first()
+            if not device:
+                raise HTTPException(status_code=404, detail="Device not found")
+
+            # Get daily bandwidth records
+            since_date = date.today() - timedelta(days=days - 1)
+            daily_records = (
+                db.query(DailyBandwidth)
+                .filter(
+                    DailyBandwidth.device_id == device.id,
+                    DailyBandwidth.date >= since_date
+                )
+                .order_by(DailyBandwidth.date)
+                .all()
+            )
+
+            # Calculate totals
+            total_download = sum(record.download_mb for record in daily_records)
+            total_upload = sum(record.upload_mb for record in daily_records)
+
+            # Format daily breakdown
+            daily_breakdown = []
+            for record in daily_records:
+                daily_breakdown.append({
+                    "date": record.date.isoformat(),
+                    "download_mb": round(record.download_mb, 2),
+                    "upload_mb": round(record.upload_mb, 2),
+                })
+
+            return {
+                "device": {
+                    "mac_address": device.mac_address,
+                    "name": device.nickname or device.hostname or device.mac_address,
+                },
+                "period": {
+                    "days": days,
+                    "start_date": since_date.isoformat(),
+                    "end_date": date.today().isoformat(),
+                },
+                "totals": {
+                    "download_mb": round(total_download, 2),
+                    "upload_mb": round(total_upload, 2),
+                    "total_mb": round(total_download + total_upload, 2),
+                },
+                "daily_breakdown": daily_breakdown,
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get device bandwidth total: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/network/bandwidth-total")
+async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
+    """Get network-wide accumulated bandwidth totals over multiple days.
+
+    Args:
+        days: Number of days to include (default: 7)
+    """
+    try:
+        from datetime import timedelta, date
+
+        with get_db_context() as db:
+            from src.models.database import DailyBandwidth
+
+            # Get daily bandwidth records for network-wide (device_id = NULL)
+            since_date = date.today() - timedelta(days=days - 1)
+            daily_records = (
+                db.query(DailyBandwidth)
+                .filter(
+                    DailyBandwidth.device_id == None,
+                    DailyBandwidth.date >= since_date
+                )
+                .order_by(DailyBandwidth.date)
+                .all()
+            )
+
+            # Calculate totals
+            total_download = sum(record.download_mb for record in daily_records)
+            total_upload = sum(record.upload_mb for record in daily_records)
+
+            # Format daily breakdown
+            daily_breakdown = []
+            for record in daily_records:
+                daily_breakdown.append({
+                    "date": record.date.isoformat(),
+                    "download_mb": round(record.download_mb, 2),
+                    "upload_mb": round(record.upload_mb, 2),
+                })
+
+            return {
+                "period": {
+                    "days": days,
+                    "start_date": since_date.isoformat(),
+                    "end_date": date.today().isoformat(),
+                },
+                "totals": {
+                    "download_mb": round(total_download, 2),
+                    "upload_mb": round(total_upload, 2),
+                    "total_mb": round(total_download + total_upload, 2),
+                },
+                "daily_breakdown": daily_breakdown,
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to get network bandwidth total: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

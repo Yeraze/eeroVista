@@ -287,8 +287,31 @@
 <h1 class="mt-4 mb-4">Connected Devices</h1>
 
 <div class="card">
-    <div class="card-title">Device List (<span id="device-count">0</span> devices)</div>
-    <p class="text-muted">Click column headers to sort. Click on a device row to view details. Offline devices are dimmed.</p>
+    <div class="card-title">Device List (<span id="device-count">0</span> devices, <span id="visible-count">0</span> shown)</div>
+    <p class="text-muted">Click column headers to sort. Click on a device row to view details.</p>
+
+    <!-- Filter controls -->
+    <div style="display: flex; gap: 1rem; align-items: center; margin: 1rem 0; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 200px;">
+            <input
+                type="text"
+                id="filter-input"
+                placeholder="Filter devices by name, IP, or type..."
+                style="width: 100%; padding: 0.5rem; border: 1px solid var(--surface1); border-radius: 4px; background: var(--base); color: var(--text);"
+            />
+        </div>
+        <div>
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;">
+                <input
+                    type="checkbox"
+                    id="show-offline-checkbox"
+                    checked
+                    style="width: 18px; height: 18px; cursor: pointer;"
+                />
+                <span>Show Offline Devices</span>
+            </label>
+        </div>
+    </div>
 
     <div class="mt-3" style="overflow-x: auto;">
         <table class="table">
@@ -299,14 +322,12 @@
                     <th class="sortable-header" data-column="ip_address">IP Address</th>
                     <th class="sortable-header" data-column="is_online">Status</th>
                     <th class="sortable-header" data-column="connection_type">Connection</th>
-                    <th class="sortable-header" data-column="bandwidth_down_mbps">Download</th>
-                    <th class="sortable-header" data-column="bandwidth_up_mbps">Upload</th>
                     <th class="sortable-header" data-column="node">Node</th>
                 </tr>
             </thead>
             <tbody id="devices-table-body">
                 <tr>
-                    <td colspan="8" class="text-center text-muted">
+                    <td colspan="6" class="text-center text-muted">
                         Loading devices...
                     </td>
                 </tr>
@@ -331,6 +352,8 @@
 <script>
     let devicesData = [];
     let currentSort = { column: 'name', direction: 'asc' };
+    let filterText = '';
+    let showOffline = true;
 
     // Fetch devices from API
     async function loadDevices() {
@@ -341,12 +364,17 @@
             devicesData = data.devices || [];
             document.getElementById('device-count').textContent = devicesData.length;
 
-            renderDevices();
+            // Re-apply current sort if one is active
+            if (currentSort.column) {
+                applySortWithoutToggle();
+            } else {
+                renderDevices();
+            }
         } catch (error) {
             console.error('Failed to load devices:', error);
             document.getElementById('devices-table-body').innerHTML = `
                 <tr>
-                    <td colspan="8" class="text-center text-muted">
+                    <td colspan="6" class="text-center text-muted">
                         Error loading devices. Please try refreshing the page.
                     </td>
                 </tr>
@@ -363,6 +391,13 @@
             currentSort.column = column;
             currentSort.direction = 'asc';
         }
+
+        applySortWithoutToggle();
+    }
+
+    // Apply current sort without toggling direction
+    function applySortWithoutToggle() {
+        const column = currentSort.column;
 
         devicesData.sort((a, b) => {
             let aVal = a[column];
@@ -395,43 +430,79 @@
         });
     }
 
-    // Render devices table
+    // Render devices table with filtering
     function renderDevices() {
         const tbody = document.getElementById('devices-table-body');
 
         if (devicesData.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="8" class="text-center text-muted">
+                    <td colspan="6" class="text-center text-muted">
                         No devices found
+                    </td>
+                </tr>
+            `;
+            document.getElementById('visible-count').textContent = '0';
+            return;
+        }
+
+        // Apply filters
+        const filteredDevices = devicesData.filter(device => {
+            // Filter by offline status
+            if (!showOffline && !device.is_online) {
+                return false;
+            }
+
+            // Filter by text search
+            if (filterText) {
+                const searchLower = filterText.toLowerCase();
+                const matchesName = device.name.toLowerCase().includes(searchLower);
+                const matchesIP = device.ip_address.toLowerCase().includes(searchLower);
+                const matchesType = device.type.toLowerCase().includes(searchLower);
+                const matchesNode = device.node.toLowerCase().includes(searchLower);
+
+                if (!matchesName && !matchesIP && !matchesType && !matchesNode) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+
+        // Update visible count
+        document.getElementById('visible-count').textContent = filteredDevices.length;
+
+        if (filteredDevices.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center text-muted">
+                        No devices match the current filters
                     </td>
                 </tr>
             `;
             return;
         }
 
-        tbody.innerHTML = devicesData.map((device, index) => {
+        // Build the device index map for showDeviceDetails
+        const deviceIndexMap = new Map();
+        devicesData.forEach((device, index) => {
+            deviceIndexMap.set(device, index);
+        });
+
+        tbody.innerHTML = filteredDevices.map(device => {
+            const originalIndex = deviceIndexMap.get(device);
             const rowClass = device.is_online ? '' : 'offline';
             const statusBadge = device.is_online
                 ? '<span class="status-badge status-online">Online</span>'
                 : '<span class="status-badge status-offline">Offline</span>';
 
-            const downloadBw = device.bandwidth_down_mbps != null && device.bandwidth_down_mbps > 0
-                ? `${device.bandwidth_down_mbps.toFixed(1)} Mbps`
-                : '<span style="color: var(--subtext0);">N/A</span>';
-            const uploadBw = device.bandwidth_up_mbps != null && device.bandwidth_up_mbps > 0
-                ? `${device.bandwidth_up_mbps.toFixed(1)} Mbps`
-                : '<span style="color: var(--subtext0);">N/A</span>';
-
             return `
-                <tr class="device-row ${rowClass}" onclick="showDeviceDetails(${index})">
+                <tr class="device-row ${rowClass}" onclick="showDeviceDetails(${originalIndex})">
                     <td>${device.name}</td>
                     <td>${device.type}</td>
                     <td>${device.ip_address}</td>
                     <td>${statusBadge}</td>
                     <td>${device.connection_type}</td>
-                    <td>${downloadBw}</td>
-                    <td>${uploadBw}</td>
                     <td>${device.node}</td>
                 </tr>
             `;
@@ -496,14 +567,24 @@
             </div>` : ''}
         `;
 
-        // Add bandwidth history graph section
+        // Add bandwidth usage section
         detailsHtml += `
             <div class="bandwidth-section">
                 <div class="bandwidth-header">
-                    <div class="bandwidth-title">Bandwidth History</div>
+                    <div class="bandwidth-title">Bandwidth Usage</div>
                     <div class="interval-selector">
-                        <button class="interval-btn active" data-interval="hour" onclick="updateBandwidthInterval('${device.mac_address}', 'hour')">Hourly</button>
-                        <button class="interval-btn" data-interval="day" onclick="updateBandwidthInterval('${device.mac_address}', 'day')">Daily</button>
+                        <button class="interval-btn active" data-days="7" onclick="updateBandwidthDays('${device.mac_address}', 7)">7 Days</button>
+                        <button class="interval-btn" data-days="30" onclick="updateBandwidthDays('${device.mac_address}', 30)">30 Days</button>
+                    </div>
+                </div>
+                <div id="device-bandwidth-summary" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-bottom: 1rem; padding: 0 0.25rem;">
+                    <div style="text-align: center; padding: 0.5rem; background: var(--surface0); border-radius: 6px;">
+                        <div style="font-size: 1.25rem; font-weight: 600; color: var(--blue);" id="device-period-download">--</div>
+                        <div style="font-size: 0.75rem; color: var(--subtext0);">Download</div>
+                    </div>
+                    <div style="text-align: center; padding: 0.5rem; background: var(--surface0); border-radius: 6px;">
+                        <div style="font-size: 1.25rem; font-weight: 600; color: var(--mauve);" id="device-period-upload">--</div>
+                        <div style="font-size: 0.75rem; color: var(--subtext0);">Upload</div>
                     </div>
                 </div>
                 <div class="chart-container">
@@ -534,8 +615,8 @@
         // Add event listener for save button
         document.getElementById('save-aliases-btn').addEventListener('click', () => saveAliases(device.mac_address));
 
-        // Load bandwidth history
-        loadBandwidthChart(device.mac_address, 'hour');
+        // Load bandwidth data
+        loadBandwidthChart(device.mac_address, 7);
     }
 
     function hideModal() {
@@ -611,37 +692,34 @@
 
     // Bandwidth chart variables
     let bandwidthChart = null;
-    let currentInterval = 'hour';
+    let currentDays = 7;
 
-    // Load and render bandwidth chart
-    async function loadBandwidthChart(macAddress, interval) {
+    // Format bytes to human readable format
+    function formatBytes(mb) {
+        if (mb >= 1000) {
+            return `${(mb / 1000).toFixed(2)} GB`;
+        }
+        return `${mb.toFixed(2)} MB`;
+    }
+
+    // Load and render bandwidth chart for device
+    async function loadBandwidthChart(macAddress, days) {
         try {
-            const hours = interval === 'day' ? 168 : 24; // 7 days or 24 hours
-            const response = await fetch(`/api/devices/${encodeURIComponent(macAddress)}/bandwidth-history?hours=${hours}`);
+            const response = await fetch(`/api/devices/${encodeURIComponent(macAddress)}/bandwidth-total?days=${days}`);
             const data = await response.json();
 
-            if (!data.history || data.history.length === 0) {
-                console.log('No bandwidth history available');
+            if (!data.daily_breakdown || data.daily_breakdown.length === 0) {
+                console.log('No bandwidth data available for device');
                 showNoDataMessage();
                 return;
             }
 
-            // Filter out entries with null bandwidth values
-            const validData = data.history.filter(point =>
-                point.download_mbps !== null || point.upload_mbps !== null
-            );
+            // Update summary
+            document.getElementById('device-period-download').textContent = formatBytes(data.totals.download_mb);
+            document.getElementById('device-period-upload').textContent = formatBytes(data.totals.upload_mb);
 
-            if (validData.length === 0) {
-                console.log('No valid bandwidth data available');
-                showNoDataMessage();
-                return;
-            }
-
-            // Aggregate data by interval
-            const aggregatedData = aggregateByInterval(validData, interval);
-
-            // Render chart
-            renderBandwidthChart(aggregatedData, interval);
+            // Render bar chart
+            renderBandwidthChart(data.daily_breakdown);
         } catch (error) {
             console.error('Failed to load bandwidth chart:', error);
             showNoDataMessage();
@@ -651,54 +729,12 @@
     function showNoDataMessage() {
         const chartContainer = document.querySelector('.bandwidth-section .chart-container');
         if (chartContainer) {
-            chartContainer.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--subtext0);">No bandwidth data available from Eero API</div>';
+            chartContainer.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--subtext0);">Bandwidth data is accumulating... Check back soon!</div>';
         }
     }
 
-    // Aggregate bandwidth data by hour or day
-    function aggregateByInterval(history, interval) {
-        const aggregated = {};
-
-        history.forEach(point => {
-            const date = new Date(point.timestamp);
-            let key;
-
-            if (interval === 'day') {
-                // Group by day
-                key = date.toISOString().split('T')[0]; // YYYY-MM-DD
-            } else {
-                // Group by hour
-                const hourStart = new Date(date);
-                hourStart.setMinutes(0, 0, 0);
-                key = hourStart.toISOString();
-            }
-
-            if (!aggregated[key]) {
-                aggregated[key] = {
-                    timestamp: key,
-                    download: [],
-                    upload: []
-                };
-            }
-
-            if (point.download_mbps !== null) aggregated[key].download.push(point.download_mbps);
-            if (point.upload_mbps !== null) aggregated[key].upload.push(point.upload_mbps);
-        });
-
-        // Calculate averages and convert to array
-        return Object.values(aggregated).map(item => ({
-            timestamp: item.timestamp,
-            download_mbps: item.download.length > 0
-                ? item.download.reduce((a, b) => a + b, 0) / item.download.length
-                : 0,
-            upload_mbps: item.upload.length > 0
-                ? item.upload.reduce((a, b) => a + b, 0) / item.upload.length
-                : 0
-        })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    }
-
-    // Render bandwidth chart using Chart.js
-    function renderBandwidthChart(data, interval) {
+    // Render bandwidth bar chart
+    function renderBandwidthChart(dailyData) {
         const ctx = document.getElementById('bandwidth-chart');
         if (!ctx) return;
 
@@ -707,30 +743,28 @@
             bandwidthChart.destroy();
         }
 
-        const labels = data.map(d => d.timestamp);
-        const downloadData = data.map(d => d.download_mbps);
-        const uploadData = data.map(d => d.upload_mbps);
+        const labels = dailyData.map(d => d.date);
+        const downloadData = dailyData.map(d => d.download_mb);
+        const uploadData = dailyData.map(d => d.upload_mb);
 
         bandwidthChart = new Chart(ctx, {
-            type: 'line',
+            type: 'bar',
             data: {
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Download (Mbps)',
+                        label: 'Download',
                         data: downloadData,
-                        borderColor: 'rgb(30, 102, 245)', // Catppuccin blue
-                        backgroundColor: 'rgba(30, 102, 245, 0.1)',
-                        tension: 0.3,
-                        fill: true
+                        backgroundColor: 'rgba(30, 102, 245, 0.8)', // Catppuccin blue
+                        borderColor: 'rgb(30, 102, 245)',
+                        borderWidth: 1
                     },
                     {
-                        label: 'Upload (Mbps)',
+                        label: 'Upload',
                         data: uploadData,
-                        borderColor: 'rgb(136, 57, 239)', // Catppuccin mauve
-                        backgroundColor: 'rgba(136, 57, 239, 0.1)',
-                        tension: 0.3,
-                        fill: true
+                        backgroundColor: 'rgba(136, 57, 239, 0.8)', // Catppuccin mauve
+                        borderColor: 'rgb(136, 57, 239)',
+                        borderWidth: 1
                     }
                 ]
             },
@@ -747,38 +781,50 @@
                         intersect: false,
                         callbacks: {
                             title: function(context) {
-                                const timestamp = context[0].label;
-                                const date = new Date(timestamp);
-                                return interval === 'day'
-                                    ? date.toLocaleDateString()
-                                    : date.toLocaleString();
+                                const date = new Date(context[0].label);
+                                return date.toLocaleDateString('en-US', {
+                                    weekday: 'short',
+                                    month: 'short',
+                                    day: 'numeric'
+                                });
                             },
                             label: function(context) {
-                                return `${context.dataset.label}: ${context.parsed.y.toFixed(2)} Mbps`;
+                                return `${context.dataset.label}: ${formatBytes(context.parsed.y)}`;
                             }
                         }
                     }
                 },
                 scales: {
                     x: {
-                        type: 'time',
-                        time: {
-                            unit: interval === 'day' ? 'day' : 'hour',
-                            displayFormats: {
-                                hour: 'MMM d, HH:mm',
-                                day: 'MMM d'
-                            }
-                        },
+                        stacked: false,
                         title: {
                             display: true,
-                            text: 'Time'
+                            text: 'Date'
+                        },
+                        ticks: {
+                            callback: function(value, index) {
+                                const date = new Date(this.getLabelForValue(value));
+                                return date.toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric'
+                                });
+                            }
                         }
                     },
                     y: {
                         beginAtZero: true,
+                        stacked: false,
                         title: {
                             display: true,
-                            text: 'Bandwidth (Mbps)'
+                            text: 'Data Usage (MB)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                if (value >= 1000) {
+                                    return (value / 1000).toFixed(1) + ' GB';
+                                }
+                                return value.toFixed(0) + ' MB';
+                            }
                         }
                     }
                 }
@@ -786,20 +832,20 @@
         });
     }
 
-    // Update bandwidth interval (called from button onclick)
-    function updateBandwidthInterval(macAddress, interval) {
-        currentInterval = interval;
+    // Update bandwidth days (called from button onclick)
+    function updateBandwidthDays(macAddress, days) {
+        currentDays = days;
 
         // Update button states
         document.querySelectorAll('.interval-btn').forEach(btn => {
             btn.classList.remove('active');
-            if (btn.dataset.interval === interval) {
+            if (parseInt(btn.dataset.days) === days) {
                 btn.classList.add('active');
             }
         });
 
-        // Reload chart with new interval
-        loadBandwidthChart(macAddress, interval);
+        // Reload chart with new days
+        loadBandwidthChart(macAddress, days);
     }
 
     // Modal event listeners
@@ -822,6 +868,17 @@
         header.addEventListener('click', () => {
             sortDevices(header.dataset.column);
         });
+    });
+
+    // Add filter event listeners
+    document.getElementById('filter-input').addEventListener('input', (e) => {
+        filterText = e.target.value;
+        renderDevices();
+    });
+
+    document.getElementById('show-offline-checkbox').addEventListener('change', (e) => {
+        showOffline = e.target.checked;
+        renderDevices();
     });
 
     // Initial load
