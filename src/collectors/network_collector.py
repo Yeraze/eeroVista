@@ -28,16 +28,27 @@ class NetworkCollector(BaseCollector):
             devices_data = self.eero_client.get_devices()
             total_devices = len(devices_data) if devices_data else 0
             online_devices = (
-                sum(1 for d in devices_data if d.get("connected", False))
+                sum(1 for d in devices_data if d.connected)
                 if devices_data
                 else 0
             )
 
+            # Get full network details from network client
+            eero = self.eero_client._get_client()
+            network_client = eero.network_clients.get(network.name)
+
+            if not network_client:
+                logger.warning(f"Network client for '{network.name}' not found")
+                return {"items_collected": 0, "errors": 1}
+
+            # Get full network details
+            network_details = network_client.networks
+
             # Check guest network status
-            guest_enabled = network.get("guest_network", {}).get("enabled", False)
+            guest_enabled = network_details.guest_network.enabled if hasattr(network_details, 'guest_network') else False
 
             # WAN status
-            wan_status = network.get("status", "unknown")
+            wan_status = network_details.status if hasattr(network_details, 'status') else "unknown"
 
             # Create network metric record
             metric = NetworkMetric(

@@ -21,23 +21,28 @@ class SpeedtestCollector(BaseCollector):
                 logger.warning("No networks found")
                 return {"items_collected": 0, "errors": 1}
 
-            network_url = networks[0].get("url")
-            if not network_url:
+            network_name = networks[0].name
+            if not network_name:
                 return {"items_collected": 0, "errors": 1}
 
-            # Try to get speedtest results
-            # Note: The exact endpoint might vary based on eero-client implementation
+            # Try to get speedtest results from network client
             try:
                 eero = self.eero_client._get_client()
-                speedtest_data = eero.get(network_url + "/speedtest")
+                network_client = eero.network_clients.get(network_name)
+
+                if not network_client:
+                    logger.warning(f"Network '{network_name}' not found")
+                    return {"items_collected": 0, "errors": 1}
+
+                # Get speedtest data from network details
+                speedtest_data = network_client.speedtest
 
                 if not speedtest_data:
                     # No speedtest data available
                     return {"items_collected": 0, "errors": 0}
 
-                # Check if we already have this speedtest result
-                # (to avoid duplicates)
-                test_date = speedtest_data.get("date")
+                # Check if we already have this speedtest result (to avoid duplicates)
+                test_date = speedtest_data.date
                 if test_date:
                     # Check if we already have a test from this time
                     existing = (
@@ -52,15 +57,13 @@ class SpeedtestCollector(BaseCollector):
 
                 # Create speedtest record
                 speedtest = Speedtest(
-                    timestamp=datetime.fromisoformat(test_date)
-                    if test_date
-                    else datetime.utcnow(),
-                    download_mbps=speedtest_data.get("down", {}).get("value"),
-                    upload_mbps=speedtest_data.get("up", {}).get("value"),
-                    latency_ms=speedtest_data.get("latency", {}).get("value"),
+                    timestamp=test_date if test_date else datetime.utcnow(),
+                    download_mbps=speedtest_data.down.value if speedtest_data.down else None,
+                    upload_mbps=speedtest_data.up.value if speedtest_data.up else None,
+                    latency_ms=None,  # Not typically provided by Eero
                     jitter_ms=None,  # Not typically provided by Eero
-                    server_location=speedtest_data.get("server", {}).get("location"),
-                    isp=speedtest_data.get("isp"),
+                    server_location=None,  # Not in the Speed model
+                    isp=None,  # Not in the Speed model
                 )
                 self.db.add(speedtest)
                 self.db.commit()

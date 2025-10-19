@@ -125,62 +125,75 @@ class EeroClientWrapper:
             if not account:
                 return None
 
-            networks = account.get("networks", {}).get("data", [])
+            # Account is a Pydantic model, access attributes directly
+            networks = account.networks.data
             return networks
 
         except Exception as e:
             logger.error(f"Error getting networks: {e}")
             return None
 
-    def get_eeros(self, network_id: Optional[str] = None) -> Optional[list]:
+    def get_eeros(self, network_name: Optional[str] = None) -> Optional[list]:
         """
         Get list of eero devices (nodes).
 
         Args:
-            network_id: Optional network ID. If None, uses first network.
+            network_name: Optional network name. If None, uses first network.
         """
         try:
             eero = self._get_client()
             if not self.is_authenticated():
                 return None
 
-            if network_id is None:
+            if network_name is None:
                 # Get first network
                 networks = self.get_networks()
                 if not networks:
                     return None
-                network_id = networks[0]["url"]
+                # Networks are NetworkInfo Pydantic models, access name as attribute
+                network_name = networks[0].name
 
-            # Get eeros for network
-            eeros_data = eero.get(network_id + "/eeros")
-            return eeros_data.get("data", [])
+            # Get eeros for network using network_clients
+            network_client = eero.network_clients.get(network_name)
+            if not network_client:
+                logger.error(f"Network '{network_name}' not found")
+                return None
+
+            eeros_data = network_client.eeros
+            return eeros_data
 
         except Exception as e:
             logger.error(f"Error getting eeros: {e}")
             return None
 
-    def get_devices(self, network_id: Optional[str] = None) -> Optional[list]:
+    def get_devices(self, network_name: Optional[str] = None) -> Optional[list]:
         """
         Get list of connected devices.
 
         Args:
-            network_id: Optional network ID. If None, uses first network.
+            network_name: Optional network name. If None, uses first network.
         """
         try:
             eero = self._get_client()
             if not self.is_authenticated():
                 return None
 
-            if network_id is None:
+            if network_name is None:
                 # Get first network
                 networks = self.get_networks()
                 if not networks:
                     return None
-                network_id = networks[0]["url"]
+                # Networks are NetworkInfo Pydantic models, access name as attribute
+                network_name = networks[0].name
 
-            # Get devices for network
-            devices_data = eero.get(network_id + "/devices")
-            return devices_data.get("data", [])
+            # Get devices for network using network_clients
+            network_client = eero.network_clients.get(network_name)
+            if not network_client:
+                logger.error(f"Network '{network_name}' not found")
+                return None
+
+            devices_data = network_client.devices
+            return devices_data
 
         except Exception as e:
             logger.error(f"Error getting devices: {e}")
