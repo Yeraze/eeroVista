@@ -345,21 +345,55 @@ class DeviceCollector(BaseCollector):
             # Calculate time delta in seconds
             time_delta = (timestamp - bandwidth_record.last_collection_time).total_seconds()
 
-            # Convert Mbps to MB: (Mbps * seconds) / 8 bits per byte
-            # Mbps = megabits per second, so Mbps * seconds = megabits
-            # megabits / 8 = megabytes
-            download_mb = (bandwidth_down_mbps * time_delta) / 8.0
-            upload_mb = (bandwidth_up_mbps * time_delta) / 8.0
+            # Validate time delta is reasonable
+            # Skip accumulation if time_delta is too large (>10 minutes) to prevent
+            # inaccurate data from stale bandwidth rates
+            MAX_TIME_DELTA = 600  # 10 minutes in seconds
+            EXPECTED_INTERVAL = 60  # Expected collection interval in seconds
 
-            # Add to accumulated totals
-            bandwidth_record.download_mb += download_mb
-            bandwidth_record.upload_mb += upload_mb
+            if time_delta > MAX_TIME_DELTA:
+                logger.warning(
+                    f"Skipping bandwidth accumulation for device {device_id}: "
+                    f"time delta ({time_delta:.1f}s) exceeds maximum ({MAX_TIME_DELTA}s). "
+                    f"This usually indicates data collection was interrupted."
+                )
+            elif time_delta > EXPECTED_INTERVAL * 2:
+                # Log warning but still accumulate if within max threshold
+                logger.warning(
+                    f"Large time delta detected for device {device_id}: "
+                    f"{time_delta:.1f}s (expected ~{EXPECTED_INTERVAL}s). "
+                    f"Bandwidth calculations may be less accurate."
+                )
 
-            logger.debug(
-                f"Accumulated bandwidth for device {device_id}: "
-                f"+{download_mb:.4f} MB down, +{upload_mb:.4f} MB up "
-                f"(delta: {time_delta:.1f}s)"
-            )
+                # Convert Mbps to MB: (Mbps * seconds) / 8 bits per byte
+                # Mbps = megabits per second, so Mbps * seconds = megabits
+                # megabits / 8 = megabytes
+                download_mb = (bandwidth_down_mbps * time_delta) / 8.0
+                upload_mb = (bandwidth_up_mbps * time_delta) / 8.0
+
+                # Add to accumulated totals
+                bandwidth_record.download_mb += download_mb
+                bandwidth_record.upload_mb += upload_mb
+
+                logger.debug(
+                    f"Accumulated bandwidth for device {device_id}: "
+                    f"+{download_mb:.4f} MB down, +{upload_mb:.4f} MB up "
+                    f"(delta: {time_delta:.1f}s)"
+                )
+            else:
+                # Normal case: time delta is within expected range
+                download_mb = (bandwidth_down_mbps * time_delta) / 8.0
+                upload_mb = (bandwidth_up_mbps * time_delta) / 8.0
+
+                # Add to accumulated totals
+                bandwidth_record.download_mb += download_mb
+                bandwidth_record.upload_mb += upload_mb
+
+                logger.debug(
+                    f"Accumulated bandwidth for device {device_id}: "
+                    f"+{download_mb:.4f} MB down, +{upload_mb:.4f} MB up "
+                    f"(delta: {time_delta:.1f}s)"
+                )
 
         # Update last collection time for next calculation
         bandwidth_record.last_collection_time = timestamp

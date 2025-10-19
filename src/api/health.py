@@ -445,8 +445,18 @@ async def get_device_bandwidth_history(
 
     Args:
         mac_address: Device MAC address
-        hours: Number of hours of history to return (default: 24)
+        hours: Number of hours of history to return (default: 24, max: 168)
+
+    Raises:
+        HTTPException: If hours is not between 1 and 168
     """
+    # Validate hours parameter
+    if hours < 1 or hours > 168:
+        raise HTTPException(
+            status_code=400,
+            detail="hours parameter must be between 1 and 168 (7 days)"
+        )
+
     try:
         with get_db_context() as db:
             from src.models.database import Device, DeviceConnection
@@ -501,8 +511,18 @@ async def get_network_bandwidth_history(hours: int = 24) -> Dict[str, Any]:
     """Get cumulative network-wide bandwidth usage history.
 
     Args:
-        hours: Number of hours of history to return (default: 24)
+        hours: Number of hours of history to return (default: 24, max: 168)
+
+    Raises:
+        HTTPException: If hours is not between 1 and 168
     """
+    # Validate hours parameter
+    if hours < 1 or hours > 168:
+        raise HTTPException(
+            status_code=400,
+            detail="hours parameter must be between 1 and 168 (7 days)"
+        )
+
     try:
         from datetime import timedelta
         from sqlalchemy import func
@@ -555,8 +575,18 @@ async def get_device_bandwidth_total(
 
     Args:
         mac_address: Device MAC address
-        days: Number of days to include (default: 7)
+        days: Number of days to include (default: 7, max: 90)
+
+    Raises:
+        HTTPException: If days is not between 1 and 90
     """
+    # Validate days parameter
+    if days < 1 or days > 90:
+        raise HTTPException(
+            status_code=400,
+            detail="days parameter must be between 1 and 90"
+        )
+
     try:
         from datetime import timedelta, date
 
@@ -623,8 +653,18 @@ async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
     """Get network-wide accumulated bandwidth totals over multiple days.
 
     Args:
-        days: Number of days to include (default: 7)
+        days: Number of days to include (default: 7, max: 90)
+
+    Raises:
+        HTTPException: If days is not between 1 and 90
     """
+    # Validate days parameter
+    if days < 1 or days > 90:
+        raise HTTPException(
+            status_code=400,
+            detail="days parameter must be between 1 and 90"
+        )
+
     try:
         from datetime import timedelta, date
 
