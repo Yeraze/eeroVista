@@ -150,18 +150,54 @@ async def get_network_topology() -> Dict[str, Any]:
         with get_db_context() as db:
             from src.models.database import Device, DeviceConnection, EeroNode
 
+            # Add Internet node
+            nodes = [{
+                "id": "internet",
+                "name": "Internet",
+                "type": "internet",
+                "model": None,
+                "is_gateway": False,
+            }]
+
             # Get all eero nodes
-            nodes = []
             eero_nodes = db.query(EeroNode).all()
+            gateway_node_id = None
 
             for node in eero_nodes:
+                node_id = f"node_{node.id}"
                 nodes.append({
-                    "id": f"node_{node.id}",
+                    "id": node_id,
                     "name": node.location or f"Eero {node.id}",
                     "type": "eero_node",
                     "model": node.model,
                     "is_gateway": node.is_gateway or False,
                 })
+
+                if node.is_gateway:
+                    gateway_node_id = node_id
+
+            # Create mesh connections between eero nodes
+            # In a mesh network, nodes connect to each other
+            mesh_links = []
+            node_ids = [f"node_{n.id}" for n in eero_nodes]
+
+            # Connect gateway to Internet
+            if gateway_node_id:
+                mesh_links.append({
+                    "source": "internet",
+                    "target": gateway_node_id,
+                    "connection_type": "mesh",
+                })
+
+            # Create mesh connections between nodes
+            # For simplicity, connect each non-gateway node to the gateway
+            for i, node in enumerate(eero_nodes):
+                if not node.is_gateway and gateway_node_id:
+                    mesh_links.append({
+                        "source": gateway_node_id,
+                        "target": f"node_{node.id}",
+                        "connection_type": "mesh",
+                    })
 
             # Get all online devices with their connections
             devices_list = []
@@ -192,6 +228,7 @@ async def get_network_topology() -> Dict[str, Any]:
             return {
                 "nodes": nodes,
                 "devices": devices_list,
+                "mesh_links": mesh_links,
                 "total_nodes": len(nodes),
                 "total_devices": len(devices_list),
             }

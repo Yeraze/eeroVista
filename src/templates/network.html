@@ -29,6 +29,12 @@
         stroke-width: 2px;
     }
 
+    .node-internet {
+        fill: var(--sky);
+        stroke: var(--blue);
+        stroke-width: 4px;
+    }
+
     .link-wired {
         stroke: var(--text);
         stroke-width: 2px;
@@ -40,6 +46,12 @@
         stroke-width: 1.5px;
         stroke-dasharray: 5,5;
         stroke-opacity: 0.4;
+    }
+
+    .link-mesh {
+        stroke: var(--peach);
+        stroke-width: 3px;
+        stroke-opacity: 0.7;
     }
 
     .node-label {
@@ -95,6 +107,10 @@
 
     <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
         <div class="legend-item">
+            <div class="legend-circle" style="background: var(--sky); border-color: var(--blue);"></div>
+            <span style="font-size: 0.875rem;">Internet</span>
+        </div>
+        <div class="legend-item">
             <div class="legend-circle" style="background: var(--green); border-color: var(--teal);"></div>
             <span style="font-size: 0.875rem;">Gateway Node</span>
         </div>
@@ -105,6 +121,10 @@
         <div class="legend-item">
             <div class="legend-circle" style="background: var(--lavender); border-color: var(--mauve);"></div>
             <span style="font-size: 0.875rem;">Device</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-line" style="background: var(--peach);"></div>
+            <span style="font-size: 0.875rem;">Mesh</span>
         </div>
         <div class="legend-item">
             <div class="legend-line"></div>
@@ -154,8 +174,8 @@
         const nodes = [
             ...data.nodes.map(n => ({
                 ...n,
-                node_type: 'eero',
-                radius: 20,
+                node_type: n.type === 'internet' ? 'internet' : 'eero',
+                radius: n.type === 'internet' ? 25 : 20,
             })),
             ...data.devices.map(d => ({
                 ...d,
@@ -164,14 +184,21 @@
             }))
         ];
 
-        // Create links from devices to nodes
-        const links = data.devices
-            .filter(d => d.node_id)
-            .map(d => ({
-                source: d.node_id,
-                target: d.id,
-                connection_type: d.connection_type,
-            }));
+        // Create links from mesh connections and device connections
+        const links = [
+            ...(data.mesh_links || []).map(l => ({
+                source: l.source,
+                target: l.target,
+                connection_type: 'mesh',
+            })),
+            ...data.devices
+                .filter(d => d.node_id)
+                .map(d => ({
+                    source: d.node_id,
+                    target: d.id,
+                    connection_type: d.connection_type,
+                }))
+        ];
 
         // Create force simulation
         const simulation = d3.forceSimulation(nodes)
@@ -197,7 +224,11 @@
             .selectAll('line')
             .data(links)
             .join('line')
-            .attr('class', d => d.connection_type === 'wired' ? 'link-wired' : 'link-wireless');
+            .attr('class', d => {
+                if (d.connection_type === 'mesh') return 'link-mesh';
+                if (d.connection_type === 'wired') return 'link-wired';
+                return 'link-wireless';
+            });
 
         // Draw nodes
         const node = g.append('g')
@@ -206,6 +237,9 @@
             .join('circle')
             .attr('r', d => d.radius)
             .attr('class', d => {
+                if (d.node_type === 'internet') {
+                    return 'node-internet';
+                }
                 if (d.node_type === 'eero') {
                     return d.is_gateway ? 'node-eero gateway' : 'node-eero';
                 }
@@ -232,6 +266,9 @@
         // Add tooltips
         node.append('title')
             .text(d => {
+                if (d.node_type === 'internet') {
+                    return 'Internet Connection';
+                }
                 if (d.node_type === 'eero') {
                     return `${d.name}\n${d.model}\n${d.is_gateway ? 'Gateway' : 'Node'}`;
                 } else {
