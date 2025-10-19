@@ -195,6 +195,7 @@ body {
   color: var(--text);
   font-size: 1rem;
   transition: border-color 0.2s;
+  box-sizing: border-box;  /* Include padding and border in width */
 }
 
 .form-control:focus {
