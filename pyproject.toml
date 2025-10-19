@@ -1,6 +1,6 @@
 [project]
 name = "eerovista"
-version = "0.2.1"
+version = "0.2.2"
 description = "Read-only monitoring for Eero mesh networks"
 requires-python = ">=3.11"
 
