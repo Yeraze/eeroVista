@@ -1,0 +1,143 @@
+name: Build and Publish Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag name for the release (e.g., v1.0.0)'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    name: Build and Push Multi-arch Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  create-release-notes:
+    name: Update Release Notes
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update release with Docker info
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=${{ github.event.release.tag_name || github.event.inputs.tag }}
+
+          # Fetch existing release notes
+          if [ "${{ github.event_name }}" == "release" ]; then
+            echo "Fetching existing release notes..."
+            gh release view ${TAG} --json body --jq .body > existing_notes.md || echo "" > existing_notes.md
+          else
+            echo "" > existing_notes.md
+          fi
+
+          # Create Docker information section
+          cat > docker_info.md <<EOF
+
+          ## Docker Images
+
+          Multi-architecture Docker images are available on GitHub Container Registry:
+
+          \`\`\`bash
+          # Pull the latest release
+          docker pull ghcr.io/${{ github.repository }}:${TAG}
+
+          # Or use latest
+          docker pull ghcr.io/${{ github.repository }}:latest
+          \`\`\`
+
+          ### Supported Architectures
+          - \`linux/amd64\` - x86_64 systems
+          - \`linux/arm64\` - ARM 64-bit (Raspberry Pi 4/5, Apple Silicon)
+          - \`linux/arm/v7\` - ARM 32-bit (Raspberry Pi 2/3)
+
+          ### Running with Docker
+
+          \`\`\`bash
+          docker run -d \\
+            --name eerovista \\
+            -p 8080:8080 \\
+            -v eerovista-data:/data \\
+            ghcr.io/${{ github.repository }}:${TAG}
+          \`\`\`
+
+          Or use docker-compose:
+
+          \`\`\`bash
+          curl -O https://raw.githubusercontent.com/${{ github.repository }}/${TAG}/docker-compose.yml
+          docker compose up -d
+          \`\`\`
+          EOF
+
+          # Combine existing notes with Docker info
+          cat existing_notes.md docker_info.md > combined_notes.md
+
+          # Update release with combined notes
+          if [ "${{ github.event_name }}" == "release" ]; then
+            echo "Updating release notes..."
+            gh release edit ${TAG} --notes-file combined_notes.md
+          fi

@@ -32,3 +32,4 @@ The project is organized as:
 ## Development Commands
 
 (To be added as project structure is defined)
+- Never push directly to main, always create a branch & PR
