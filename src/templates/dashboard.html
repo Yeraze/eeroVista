@@ -48,6 +48,29 @@
 </div>
 
 <script>
+    // Fetch dashboard statistics
+    async function updateDashboardStats() {
+        try {
+            const response = await fetch('/api/dashboard-stats');
+            const data = await response.json();
+
+            // Update stat cards
+            document.getElementById('devices-online').textContent = data.devices_online || 0;
+            document.getElementById('devices-total').textContent = data.devices_total || 0;
+            document.getElementById('eero-nodes').textContent = data.eero_nodes || 0;
+
+            // Update network status badge
+            const statusElement = document.getElementById('network-status');
+            const statusClass = data.wan_status === 'online' ? 'badge-success' :
+                               data.wan_status === 'offline' ? 'badge-danger' : 'badge-warning';
+            const statusText = data.wan_status || 'Unknown';
+            statusElement.innerHTML = `<span class="badge ${statusClass}">${statusText}</span>`;
+
+        } catch (error) {
+            console.error('Failed to fetch dashboard stats:', error);
+        }
+    }
+
     // Fetch collection status
     async function updateCollectionStatus() {
         try {
@@ -91,10 +114,16 @@
         }
     }
 
+    // Update all data
+    function updateAll() {
+        updateDashboardStats();
+        updateCollectionStatus();
+    }
+
     // Initial load
-    updateCollectionStatus();
+    updateAll();
 
     // Update every 30 seconds
-    setInterval(updateCollectionStatus, 30000);
+    setInterval(updateAll, 30000);
 </script>
 {% endblock %}

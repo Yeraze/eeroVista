@@ -92,3 +92,52 @@ async def collection_status() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to get collection status: {e}")
         return {"collections": {}, "error": str(e)}
+
+
+@router.get("/dashboard-stats")
+async def dashboard_stats() -> Dict[str, Any]:
+    """Get current dashboard statistics."""
+    try:
+        with get_db_context() as db:
+            from src.models.database import EeroNode, NetworkMetric
+
+            # Get latest network metric
+            latest_metric = (
+                db.query(NetworkMetric)
+                .order_by(NetworkMetric.timestamp.desc())
+                .first()
+            )
+
+            # Count eero nodes
+            eero_count = db.query(EeroNode).count()
+
+            if latest_metric:
+                return {
+                    "devices_online": latest_metric.total_devices_online or 0,
+                    "devices_total": latest_metric.total_devices or 0,
+                    "eero_nodes": eero_count,
+                    "wan_status": latest_metric.wan_status or "unknown",
+                    "guest_network_enabled": latest_metric.guest_network_enabled or False,
+                    "last_update": latest_metric.timestamp.isoformat(),
+                }
+            else:
+                # No data collected yet
+                return {
+                    "devices_online": 0,
+                    "devices_total": 0,
+                    "eero_nodes": eero_count,
+                    "wan_status": "unknown",
+                    "guest_network_enabled": False,
+                    "last_update": None,
+                }
+
+    except Exception as e:
+        logger.error(f"Failed to get dashboard stats: {e}")
+        return {
+            "devices_online": 0,
+            "devices_total": 0,
+            "eero_nodes": 0,
+            "wan_status": "error",
+            "guest_network_enabled": False,
+            "error": str(e),
+        }
