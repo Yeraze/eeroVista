@@ -28,7 +28,7 @@ class EeroClientWrapper:
             # If we have a stored session, restore it
             session_token = self.auth_manager.get_session_token()
             if session_token:
-                self._eero.login_cookie = session_token
+                self._eero.session.cookie = session_token
                 logger.info("Restored Eero session from stored token")
 
         return self._eero
@@ -84,8 +84,8 @@ class EeroClientWrapper:
             eero.login_verify(verification_code, user_token)
 
             # Save the session cookie
-            if eero.login_cookie:
-                self.auth_manager.save_session_token(eero.login_cookie)
+            if eero.session.cookie:
+                self.auth_manager.save_session_token(eero.session.cookie)
                 logger.info("Successfully authenticated with Eero")
                 return {"success": True, "message": "Authentication successful"}
             else:
