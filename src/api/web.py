@@ -42,7 +42,7 @@ async def dashboard(
 
     # Get basic network info
     networks = client.get_networks()
-    network_name = networks[0].get("name") if networks else "Unknown"
+    network_name = networks[0].name if networks else "Unknown"
 
     return templates.TemplateResponse(
         "dashboard.html",
