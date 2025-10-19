@@ -9,10 +9,10 @@
 </head>
 <body>
     {% if authenticated %}
-    <nav class="navbar">
+    <nav class="navbar" style="padding: 0;">
         <div class="container" style="display: flex; justify-content: space-between; align-items: center;">
-            <a href="/" class="navbar-brand">
-                <img src="/static/img/eerovista.png" alt="eeroVista" style="height: 96px; width: auto; object-fit: cover; object-position: center; clip-path: inset(25% 0 25% 0);">
+            <a href="/" class="navbar-brand" style="padding: 0; line-height: 0;">
+                <img src="/static/img/eerovista.png" alt="eeroVista" style="height: 96px; width: auto; display: block;">
             </a>
             <ul class="navbar-nav">
                 <li><a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">Dashboard</a></li>
