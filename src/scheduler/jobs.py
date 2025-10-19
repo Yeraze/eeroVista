@@ -94,6 +94,13 @@ class CollectorScheduler:
                     logger.info(
                         f"Device collection complete: {result.get('items_collected')} devices"
                     )
+
+                    # Update DNS hosts file after successful device collection
+                    try:
+                        from src.services.dns_service import update_dns_on_device_change
+                        update_dns_on_device_change()
+                    except Exception as dns_error:
+                        logger.error(f"DNS update failed: {dns_error}", exc_info=True)
                 else:
                     logger.error(f"Device collection failed: {result.get('error')}")
 

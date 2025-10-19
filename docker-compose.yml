@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+      - "5353:53/udp"  # DNS server (exposed on host port 5353)
+      - "5353:53/tcp"  # DNS server TCP
     volumes:
       - ./data:/data
     environment:
@@ -22,6 +24,10 @@ services:
 
       # Logging
       - LOG_LEVEL=INFO
+
+      # DNS Server Configuration
+      - DNS_DOMAIN=eero.local
+      - DNSMASQ_HOSTS_PATH=/etc/dnsmasq.d/eerovista.hosts
 
       # Optional: Pre-configured session token (normally set via web UI)
       # - EERO_SESSION_TOKEN=

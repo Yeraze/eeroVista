@@ -6,6 +6,10 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
+    dnsmasq \
+    supervisor \
+    curl \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -16,15 +20,24 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
 COPY static/ ./static/
 
-# Create data directory
-RUN mkdir -p /data
+# Copy configuration files
+COPY config/dnsmasq.conf /etc/dnsmasq.conf
+COPY config/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Expose port
+# Create data directory and DNS directories
+RUN mkdir -p /data /etc/dnsmasq.d /var/run/dnsmasq
+
+# Create empty hosts file for dnsmasq
+RUN touch /etc/dnsmasq.d/eerovista.hosts
+
+# Expose ports (web and DNS)
 EXPOSE 8080
+EXPOSE 53/udp
+EXPOSE 53/tcp
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV DATABASE_PATH=/data/eerovista.db
 
-# Run application
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Run application via supervisor
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
