@@ -90,6 +90,101 @@
         border-radius: 50%;
         border: 2px solid;
     }
+
+    /* Modal styles */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .modal-overlay.active {
+        display: flex;
+    }
+
+    .modal-content {
+        background-color: var(--base);
+        border: 2px solid var(--surface0);
+        border-radius: 12px;
+        padding: 1.5rem;
+        max-width: 500px;
+        width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 2px solid var(--surface0);
+    }
+
+    .modal-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--text);
+        margin: 0;
+    }
+
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        color: var(--subtext0);
+        cursor: pointer;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+    }
+
+    .modal-close:hover {
+        background-color: var(--surface0);
+        color: var(--text);
+    }
+
+    .modal-body {
+        color: var(--text);
+    }
+
+    .info-row {
+        display: flex;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--surface0);
+    }
+
+    .info-row:last-child {
+        border-bottom: none;
+    }
+
+    .info-label {
+        font-weight: 600;
+        color: var(--subtext1);
+        min-width: 140px;
+    }
+
+    .info-value {
+        color: var(--text);
+        word-break: break-word;
+    }
+
+    .node-cursor {
+        cursor: pointer;
+    }
 </style>
 {% endblock %}
 
@@ -137,6 +232,19 @@
     </div>
 
     <svg id="network-graph"></svg>
+</div>
+
+<!-- Node Details Modal -->
+<div id="node-modal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title" id="modal-title">Node Details</h2>
+            <button class="modal-close" id="modal-close">&times;</button>
+        </div>
+        <div class="modal-body" id="modal-body">
+            <!-- Content will be populated dynamically -->
+        </div>
+    </div>
 </div>
 
 <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -237,13 +345,19 @@
             .join('circle')
             .attr('r', d => d.radius)
             .attr('class', d => {
+                let classes = 'node-cursor ';
                 if (d.node_type === 'internet') {
-                    return 'node-internet';
+                    classes += 'node-internet';
+                } else if (d.node_type === 'eero') {
+                    classes += d.is_gateway ? 'node-eero gateway' : 'node-eero';
+                } else {
+                    classes += 'node-device';
                 }
-                if (d.node_type === 'eero') {
-                    return d.is_gateway ? 'node-eero gateway' : 'node-eero';
-                }
-                return 'node-device';
+                return classes;
+            })
+            .on('click', (event, d) => {
+                event.stopPropagation();
+                showNodeDetails(d);
             })
             .call(d3.drag()
                 .on('start', dragstarted)
@@ -311,6 +425,128 @@
             d.fy = null;
         }
     }
+
+    // Modal functions
+    function showNodeDetails(nodeData) {
+        const modal = document.getElementById('node-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalBody = document.getElementById('modal-body');
+
+        // Set title based on node type
+        modalTitle.textContent = nodeData.name || 'Node Details';
+
+        // Build the details HTML based on node type
+        let detailsHtml = '';
+
+        if (nodeData.node_type === 'internet') {
+            detailsHtml = `
+                <div class="info-row">
+                    <div class="info-label">Type:</div>
+                    <div class="info-value">Internet Connection</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Description:</div>
+                    <div class="info-value">External network connection point</div>
+                </div>
+            `;
+        } else if (nodeData.node_type === 'eero') {
+            detailsHtml = `
+                <div class="info-row">
+                    <div class="info-label">Type:</div>
+                    <div class="info-value">Eero ${nodeData.is_gateway ? 'Gateway' : 'Node'}</div>
+                </div>
+                ${nodeData.model ? `
+                <div class="info-row">
+                    <div class="info-label">Model:</div>
+                    <div class="info-value">${nodeData.model}</div>
+                </div>` : ''}
+                ${nodeData.eero_id ? `
+                <div class="info-row">
+                    <div class="info-label">Eero ID:</div>
+                    <div class="info-value">${nodeData.eero_id}</div>
+                </div>` : ''}
+                ${nodeData.mac_address ? `
+                <div class="info-row">
+                    <div class="info-label">MAC Address:</div>
+                    <div class="info-value">${nodeData.mac_address}</div>
+                </div>` : ''}
+                ${nodeData.last_seen ? `
+                <div class="info-row">
+                    <div class="info-label">Last Seen:</div>
+                    <div class="info-value">${formatTimestamp(nodeData.last_seen)}</div>
+                </div>` : ''}
+            `;
+        } else if (nodeData.node_type === 'device') {
+            detailsHtml = `
+                <div class="info-row">
+                    <div class="info-label">Type:</div>
+                    <div class="info-value">${nodeData.type}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Status:</div>
+                    <div class="info-value">${nodeData.is_online ? '<span style="color: var(--green);">● Online</span>' : '<span style="color: var(--subtext0);">● Offline</span>'}</div>
+                </div>
+                ${nodeData.ip_address ? `
+                <div class="info-row">
+                    <div class="info-label">IP Address:</div>
+                    <div class="info-value">${nodeData.ip_address}</div>
+                </div>` : ''}
+                ${nodeData.mac_address ? `
+                <div class="info-row">
+                    <div class="info-label">MAC Address:</div>
+                    <div class="info-value">${nodeData.mac_address}</div>
+                </div>` : ''}
+                <div class="info-row">
+                    <div class="info-label">Connection:</div>
+                    <div class="info-value">${nodeData.connection_type}</div>
+                </div>
+                ${nodeData.signal_strength !== null && nodeData.signal_strength !== undefined ? `
+                <div class="info-row">
+                    <div class="info-label">Signal Strength:</div>
+                    <div class="info-value">${nodeData.signal_strength}</div>
+                </div>` : ''}
+                ${nodeData.node_name ? `
+                <div class="info-row">
+                    <div class="info-label">Connected To:</div>
+                    <div class="info-value">${nodeData.node_name}</div>
+                </div>` : ''}
+                ${nodeData.last_seen ? `
+                <div class="info-row">
+                    <div class="info-label">Last Seen:</div>
+                    <div class="info-value">${formatTimestamp(nodeData.last_seen)}</div>
+                </div>` : ''}
+            `;
+        }
+
+        modalBody.innerHTML = detailsHtml;
+        modal.classList.add('active');
+    }
+
+    function hideModal() {
+        const modal = document.getElementById('node-modal');
+        modal.classList.remove('active');
+    }
+
+    function formatTimestamp(isoString) {
+        if (!isoString) return 'N/A';
+        const date = new Date(isoString);
+        return date.toLocaleString();
+    }
+
+    // Modal event listeners
+    document.getElementById('modal-close').addEventListener('click', hideModal);
+    document.getElementById('node-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'node-modal') {
+            hideModal();
+        }
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            hideModal();
+        }
+    });
 
     // Initial load
     loadTopology();

@@ -72,3 +72,25 @@ def init_database() -> None:
 
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
+
+    # Run migrations
+    _run_migrations(engine)
+
+
+def _run_migrations(engine) -> None:
+    """Run database migrations."""
+    import logging
+    from sqlalchemy import inspect, text
+
+    logger = logging.getLogger(__name__)
+    inspector = inspect(engine)
+
+    # Migration: Add aliases column to devices table if it doesn't exist
+    if "devices" in inspector.get_table_names():
+        columns = [col["name"] for col in inspector.get_columns("devices")]
+        if "aliases" not in columns:
+            logger.info("Running migration: Adding 'aliases' column to devices table")
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE devices ADD COLUMN aliases TEXT"))
+                conn.commit()
+            logger.info("Migration complete: 'aliases' column added")

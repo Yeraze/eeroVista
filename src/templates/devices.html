@@ -48,6 +48,182 @@
         background-color: var(--surface1);
         color: var(--subtext0);
     }
+
+    /* Make rows clickable */
+    .device-row {
+        cursor: pointer;
+    }
+    .device-row:hover {
+        background-color: var(--surface0);
+    }
+
+    /* Modal styles */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .modal-overlay.active {
+        display: flex;
+    }
+
+    .modal-content {
+        background-color: var(--base);
+        border: 2px solid var(--surface0);
+        border-radius: 12px;
+        padding: 1.5rem;
+        max-width: 500px;
+        width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 2px solid var(--surface0);
+    }
+
+    .modal-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--text);
+        margin: 0;
+    }
+
+    .modal-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        color: var(--subtext0);
+        cursor: pointer;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+    }
+
+    .modal-close:hover {
+        background-color: var(--surface0);
+        color: var(--text);
+    }
+
+    .modal-body {
+        color: var(--text);
+    }
+
+    .info-row {
+        display: flex;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--surface0);
+    }
+
+    .info-row:last-child {
+        border-bottom: none;
+    }
+
+    .info-label {
+        font-weight: 600;
+        color: var(--subtext1);
+        min-width: 140px;
+    }
+
+    .info-value {
+        color: var(--text);
+        word-break: break-word;
+    }
+
+    .aliases-section {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 2px solid var(--surface0);
+    }
+
+    .aliases-label {
+        font-weight: 600;
+        color: var(--subtext1);
+        margin-bottom: 0.5rem;
+    }
+
+    .aliases-textarea {
+        width: 100%;
+        min-height: 100px;
+        padding: 0.5rem;
+        background-color: var(--mantle);
+        color: var(--text);
+        border: 1px solid var(--surface0);
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 0.875rem;
+        resize: vertical;
+    }
+
+    .aliases-textarea:focus {
+        outline: none;
+        border-color: var(--blue);
+    }
+
+    .aliases-help {
+        font-size: 0.75rem;
+        color: var(--subtext0);
+        margin-top: 0.25rem;
+    }
+
+    .save-button {
+        margin-top: 0.75rem;
+        padding: 0.5rem 1rem;
+        background-color: var(--blue);
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 500;
+    }
+
+    .save-button:hover {
+        background-color: var(--sapphire);
+    }
+
+    .save-button:disabled {
+        background-color: var(--surface1);
+        color: var(--subtext0);
+        cursor: not-allowed;
+    }
+
+    .save-message {
+        display: none;
+        margin-top: 0.5rem;
+        padding: 0.5rem;
+        border-radius: 4px;
+        font-size: 0.875rem;
+    }
+
+    .save-message.success {
+        display: block;
+        background-color: var(--green);
+        color: white;
+    }
+
+    .save-message.error {
+        display: block;
+        background-color: var(--red);
+        color: white;
+    }
 </style>
 {% endblock %}
 
@@ -56,7 +232,7 @@
 
 <div class="card">
     <div class="card-title">Device List (<span id="device-count">0</span> devices)</div>
-    <p class="text-muted">Click column headers to sort. Offline devices are dimmed.</p>
+    <p class="text-muted">Click column headers to sort. Click on a device row to view details. Offline devices are dimmed.</p>
 
     <div class="mt-3" style="overflow-x: auto;">
         <table class="table">
@@ -78,6 +254,19 @@
                 </tr>
             </tbody>
         </table>
+    </div>
+</div>
+
+<!-- Device Details Modal -->
+<div id="device-modal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title" id="modal-title">Device Details</h2>
+            <button class="modal-close" id="modal-close">&times;</button>
+        </div>
+        <div class="modal-body" id="modal-body">
+            <!-- Content will be populated dynamically -->
+        </div>
     </div>
 </div>
 
@@ -163,14 +352,14 @@
             return;
         }
 
-        tbody.innerHTML = devicesData.map(device => {
+        tbody.innerHTML = devicesData.map((device, index) => {
             const rowClass = device.is_online ? '' : 'offline';
             const statusBadge = device.is_online
                 ? '<span class="status-badge status-online">Online</span>'
                 : '<span class="status-badge status-offline">Offline</span>';
 
             return `
-                <tr class="device-row ${rowClass}">
+                <tr class="device-row ${rowClass}" onclick="showDeviceDetails(${index})">
                     <td>${device.name}</td>
                     <td>${device.type}</td>
                     <td>${device.ip_address}</td>
@@ -181,6 +370,163 @@
             `;
         }).join('');
     }
+
+    // Modal functions
+    function showDeviceDetails(deviceIndex) {
+        const device = devicesData[deviceIndex];
+        const modal = document.getElementById('device-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalBody = document.getElementById('modal-body');
+
+        // Set title
+        modalTitle.textContent = device.name;
+
+        // Build the details HTML
+        let detailsHtml = `
+            <div class="info-row">
+                <div class="info-label">Type:</div>
+                <div class="info-value">${device.type}</div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">Status:</div>
+                <div class="info-value">${device.is_online ? '<span style="color: var(--green);">● Online</span>' : '<span style="color: var(--subtext0);">● Offline</span>'}</div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">IP Address:</div>
+                <div class="info-value">${device.ip_address}</div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">MAC Address:</div>
+                <div class="info-value">${device.mac_address}</div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">Connection:</div>
+                <div class="info-value">${device.connection_type}</div>
+            </div>
+            ${device.signal_strength !== null && device.signal_strength !== undefined ? `
+            <div class="info-row">
+                <div class="info-label">Signal Strength:</div>
+                <div class="info-value">${device.signal_strength} dBm</div>
+            </div>` : ''}
+            <div class="info-row">
+                <div class="info-label">Connected To:</div>
+                <div class="info-value">${device.node}</div>
+            </div>
+            ${device.last_seen ? `
+            <div class="info-row">
+                <div class="info-label">Last Seen:</div>
+                <div class="info-value">${formatTimestamp(device.last_seen)}</div>
+            </div>` : ''}
+        `;
+
+        // Add aliases section
+        const aliasesValue = device.aliases ? device.aliases.join('\n') : '';
+        detailsHtml += `
+            <div class="aliases-section">
+                <div class="aliases-label">DNS Aliases</div>
+                <textarea id="aliases-textarea" class="aliases-textarea" placeholder="Enter DNS aliases, one per line">${aliasesValue}</textarea>
+                <div class="aliases-help">Each alias will be added as an alternate DNS name for this device</div>
+                <button id="save-aliases-btn" class="save-button">Save Aliases</button>
+                <div id="save-message" class="save-message"></div>
+            </div>
+        `;
+
+        modalBody.innerHTML = detailsHtml;
+
+        // Store device MAC for saving
+        modalBody.dataset.deviceMac = device.mac_address;
+
+        modal.classList.add('active');
+
+        // Add event listener for save button
+        document.getElementById('save-aliases-btn').addEventListener('click', () => saveAliases(device.mac_address));
+    }
+
+    function hideModal() {
+        const modal = document.getElementById('device-modal');
+        modal.classList.remove('active');
+    }
+
+    function formatTimestamp(isoString) {
+        if (!isoString) return 'N/A';
+        const date = new Date(isoString);
+        return date.toLocaleString();
+    }
+
+    // Save aliases to server
+    async function saveAliases(macAddress) {
+        const textarea = document.getElementById('aliases-textarea');
+        const saveBtn = document.getElementById('save-aliases-btn');
+        const saveMessage = document.getElementById('save-message');
+
+        // Get aliases from textarea (one per line)
+        const aliasesText = textarea.value;
+        const aliases = aliasesText
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0);
+
+        // Disable button and show loading
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        saveMessage.className = 'save-message';
+        saveMessage.textContent = '';
+
+        try {
+            const response = await fetch(`/api/devices/${encodeURIComponent(macAddress)}/aliases`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ aliases: aliases }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            // Show success message
+            saveMessage.className = 'save-message success';
+            saveMessage.textContent = `Aliases saved successfully! DNS updated.`;
+
+            // Update the device in our local data
+            const deviceIndex = devicesData.findIndex(d => d.mac_address === macAddress);
+            if (deviceIndex !== -1) {
+                devicesData[deviceIndex].aliases = data.aliases;
+            }
+
+            // Hide message after 3 seconds
+            setTimeout(() => {
+                saveMessage.className = 'save-message';
+            }, 3000);
+
+        } catch (error) {
+            console.error('Failed to save aliases:', error);
+            saveMessage.className = 'save-message error';
+            saveMessage.textContent = `Error saving aliases: ${error.message}`;
+        } finally {
+            // Re-enable button
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Aliases';
+        }
+    }
+
+    // Modal event listeners
+    document.getElementById('modal-close').addEventListener('click', hideModal);
+    document.getElementById('device-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'device-modal') {
+            hideModal();
+        }
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            hideModal();
+        }
+    });
 
     // Add click handlers to sortable headers
     document.querySelectorAll('.sortable-header').forEach(header => {

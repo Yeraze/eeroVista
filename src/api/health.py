@@ -1,10 +1,12 @@
 """Health check and status API endpoints."""
 
+import json
 import logging
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src import __version__
@@ -14,6 +16,12 @@ from src.utils.database import get_db, get_db_context
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["health"])
+
+
+# Request models
+class DeviceAliasesRequest(BaseModel):
+    """Request model for updating device aliases."""
+    aliases: List[str]
 
 # Track when the app started
 APP_START_TIME = datetime.utcnow()
@@ -171,6 +179,9 @@ async def get_network_topology() -> Dict[str, Any]:
                     "type": "eero_node",
                     "model": node.model,
                     "is_gateway": node.is_gateway or False,
+                    "eero_id": node.eero_id,
+                    "mac_address": node.mac_address,
+                    "last_seen": node.last_seen.isoformat() if node.last_seen else None,
                 })
 
                 if node.is_gateway:
@@ -216,6 +227,13 @@ async def get_network_topology() -> Dict[str, Any]:
                 if latest_connection and latest_connection.is_connected:
                     device_name = device.nickname or device.hostname or device.mac_address
 
+                    # Get node name
+                    node_name = None
+                    if latest_connection.eero_node_id:
+                        node = db.query(EeroNode).filter(EeroNode.id == latest_connection.eero_node_id).first()
+                        if node:
+                            node_name = node.location
+
                     devices_list.append({
                         "id": f"device_{device.id}",
                         "name": device_name,
@@ -223,6 +241,11 @@ async def get_network_topology() -> Dict[str, Any]:
                         "connection_type": latest_connection.connection_type or "unknown",
                         "ip_address": latest_connection.ip_address,
                         "node_id": f"node_{latest_connection.eero_node_id}" if latest_connection.eero_node_id else None,
+                        "node_name": node_name or "N/A",
+                        "mac_address": device.mac_address,
+                        "signal_strength": latest_connection.signal_strength,
+                        "last_seen": device.last_seen.isoformat() if device.last_seen else None,
+                        "is_online": latest_connection.is_connected or False,
                     })
 
             return {
@@ -285,6 +308,14 @@ async def get_devices() -> Dict[str, Any]:
 
                 device_name = device.nickname or device.hostname or device.mac_address
 
+                # Parse aliases
+                aliases = []
+                if device.aliases:
+                    try:
+                        aliases = json.loads(device.aliases)
+                    except json.JSONDecodeError:
+                        logger.error(f"Invalid JSON in aliases for device {device.mac_address}")
+
                 devices_list.append({
                     "name": device_name,
                     "type": device.device_type or "unknown",
@@ -295,6 +326,7 @@ async def get_devices() -> Dict[str, Any]:
                     "node": node_name or "N/A",
                     "mac_address": device.mac_address,
                     "last_seen": device.last_seen.isoformat() if device.last_seen else None,
+                    "aliases": aliases,
                 })
 
             return {
@@ -309,3 +341,83 @@ async def get_devices() -> Dict[str, Any]:
             "total": 0,
             "error": str(e),
         }
+
+
+@router.put("/devices/{mac_address}/aliases")
+async def update_device_aliases(
+    mac_address: str,
+    request: DeviceAliasesRequest
+) -> Dict[str, Any]:
+    """Update aliases for a specific device."""
+    try:
+        with get_db_context() as db:
+            from src.models.database import Device
+
+            # Find device by MAC address
+            device = db.query(Device).filter(Device.mac_address == mac_address).first()
+
+            if not device:
+                raise HTTPException(status_code=404, detail="Device not found")
+
+            # Validate and clean aliases
+            cleaned_aliases = []
+            for alias in request.aliases:
+                alias = alias.strip()
+                # Basic validation: alphanumeric, hyphens, underscores
+                if alias and alias.replace('-', '').replace('_', '').replace('.', '').isalnum():
+                    cleaned_aliases.append(alias)
+                elif alias:
+                    logger.warning(f"Skipping invalid alias: {alias}")
+
+            # Store aliases as JSON
+            device.aliases = json.dumps(cleaned_aliases) if cleaned_aliases else None
+            db.commit()
+
+            logger.info(f"Updated aliases for device {mac_address}: {cleaned_aliases}")
+
+            # Trigger DNS update
+            from src.services.dns_service import update_dns_hosts
+            update_dns_hosts(db)
+
+            return {
+                "success": True,
+                "mac_address": mac_address,
+                "aliases": cleaned_aliases,
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update device aliases: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/devices/{mac_address}/aliases")
+async def get_device_aliases(mac_address: str) -> Dict[str, Any]:
+    """Get aliases for a specific device."""
+    try:
+        with get_db_context() as db:
+            from src.models.database import Device
+
+            device = db.query(Device).filter(Device.mac_address == mac_address).first()
+
+            if not device:
+                raise HTTPException(status_code=404, detail="Device not found")
+
+            aliases = []
+            if device.aliases:
+                try:
+                    aliases = json.loads(device.aliases)
+                except json.JSONDecodeError:
+                    logger.error(f"Invalid JSON in aliases for device {mac_address}")
+
+            return {
+                "mac_address": mac_address,
+                "aliases": aliases,
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get device aliases: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

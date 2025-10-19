@@ -53,6 +53,7 @@ class Device(Base):
     hostname: Mapped[Optional[str]] = mapped_column(String)
     nickname: Mapped[Optional[str]] = mapped_column(String)
     device_type: Mapped[Optional[str]] = mapped_column(String)
+    aliases: Mapped[Optional[str]] = mapped_column(Text)  # JSON array of alias strings
     first_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime)
 

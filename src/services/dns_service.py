@@ -1,5 +1,6 @@
 """DNS service for managing dnsmasq hosts file."""
 
+import json
 import logging
 import os
 import re
@@ -100,6 +101,18 @@ def generate_hosts_file() -> Tuple[int, int]:
                 hosts_entries.append(f"{ip_address}\t{hostname}.{DNS_DOMAIN}\t{hostname}")
                 devices_with_ip += 1
 
+                # Add aliases if they exist
+                if device.aliases:
+                    try:
+                        aliases = json.loads(device.aliases)
+                        for alias in aliases:
+                            alias_hostname = sanitize_hostname(alias)
+                            if alias_hostname:
+                                # Add entry for each alias
+                                hosts_entries.append(f"{ip_address}\t{alias_hostname}.{DNS_DOMAIN}\t{alias_hostname}")
+                    except json.JSONDecodeError:
+                        logger.error(f"Invalid JSON in aliases for device {device.id}")
+
             # Write to hosts file
             hosts_content = "\n".join(hosts_entries) + "\n"
 
@@ -163,3 +176,15 @@ def update_dns_on_device_change() -> None:
         logger.info(f"DNS update complete: {total} entries, {with_ip} devices with IPs")
     except Exception as e:
         logger.error(f"DNS update failed: {e}", exc_info=True)
+
+
+def update_dns_hosts(db: Session) -> None:
+    """
+    Update DNS hosts file directly using an existing database session.
+    This is useful for immediate updates after alias changes.
+    """
+    try:
+        total, with_ip = generate_hosts_file()
+        logger.info(f"DNS hosts updated: {total} entries, {with_ip} devices with IPs")
+    except Exception as e:
+        logger.error(f"Failed to update DNS hosts: {e}", exc_info=True)
