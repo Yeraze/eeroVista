@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}eeroVista{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/catppuccin-latte.css">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    {% if authenticated %}
+    <nav class="navbar">
+        <div class="container" style="display: flex; justify-content: space-between; align-items: center;">
+            <a href="/" class="navbar-brand">eeroVista</a>
+            <ul class="navbar-nav">
+                <li><a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">Dashboard</a></li>
+                <li><a href="/devices" class="nav-link {% if request.url.path == '/devices' %}active{% endif %}">Devices</a></li>
+                <li><a href="/network" class="nav-link {% if request.url.path == '/network' %}active{% endif %}">Network</a></li>
+                <li><a href="/speedtest" class="nav-link {% if request.url.path == '/speedtest' %}active{% endif %}">Speedtest</a></li>
+                <li><a href="/settings" class="nav-link {% if request.url.path == '/settings' %}active{% endif %}">Settings</a></li>
+            </ul>
+        </div>
+    </nav>
+    {% endif %}
+
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+    <script>
+        // Global utilities
+        function showAlert(message, type = 'info') {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.textContent = message;
+
+            const container = document.querySelector('.container');
+            container.insertBefore(alertDiv, container.firstChild);
+
+            setTimeout(() => alertDiv.remove(), 5000);
+        }
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

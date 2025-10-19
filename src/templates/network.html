@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Network - eeroVista{% endblock %}
+
+{% block content %}
+<h1 class="mt-4 mb-4">Network Topology</h1>
+
+<div class="card">
+    <div class="card-title">Eero Mesh Network</div>
+    <p class="text-muted">Visualization of your mesh network nodes</p>
+
+    <div style="height: 400px; display: flex; align-items: center; justify-content: center; background-color: var(--base); border-radius: 8px; margin-top: 1rem;">
+        <p class="text-muted">Network topology visualization will appear here</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">Node Status</div>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Location</th>
+                <th>Model</th>
+                <th>Status</th>
+                <th>Connected Devices</th>
+                <th>Gateway</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td colspan="5" class="text-center text-muted">Loading node information...</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+    // TODO: Fetch network topology from API
+    console.log('Network page loaded - topology visualization pending');
+</script>
+{% endblock %}

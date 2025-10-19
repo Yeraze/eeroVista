@@ -1,0 +1,30 @@
+# Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+jinja2>=3.1.0
+python-multipart>=0.0.6
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+
+# Eero API Client
+eero-client>=2.1.0
+
+# Background Tasks
+apscheduler>=3.10.0
+
+# Data Processing
+pandas>=2.1.0
+
+# Monitoring Exports
+prometheus-client>=0.19.0
+
+# HTTP Client (for testing)
+httpx>=0.25.0
+
+# Utilities
+python-dateutil>=2.8.0
+cryptography>=41.0.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0

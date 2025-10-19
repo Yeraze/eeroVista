@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  eerovista-dev:
+    build: .
+    container_name: eerovista-dev
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - ./src:/app/src  # Mount source for live reload
+      - ./static:/app/static
+    environment:
+      - DATABASE_PATH=/data/eerovista.db
+      - COLLECTION_INTERVAL_DEVICES=30
+      - COLLECTION_INTERVAL_NETWORK=60
+      - DATA_RETENTION_RAW_DAYS=7
+      - DATA_RETENTION_HOURLY_DAYS=30
+      - DATA_RETENTION_DAILY_DAYS=365
+      - LOG_LEVEL=DEBUG
+      - DEBUG=true
+    command: uvicorn src.main:app --reload --host 0.0.0.0 --port 8080

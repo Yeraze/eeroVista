@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - eeroVista{% endblock %}
+
+{% block content %}
+<h1 class="mt-4 mb-4">Network Dashboard</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value" id="devices-online">--</div>
+        <div class="stat-label">Devices Online</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="devices-total">--</div>
+        <div class="stat-label">Total Devices</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="eero-nodes">--</div>
+        <div class="stat-label">Eero Nodes</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="network-status">
+            <span class="badge badge-success">Connected</span>
+        </div>
+        <div class="stat-label">Network Status</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2 class="card-title">Network: {{ network_name }}</h2>
+    <p class="text-muted">Real-time monitoring and historical data collection</p>
+
+    <div class="alert alert-info mt-3">
+        <strong>Note:</strong> Data collection will begin shortly. Metrics will appear as data is gathered from your Eero network.
+    </div>
+</div>
+
+<div class="card">
+    <h2 class="card-title">Quick Stats</h2>
+    <div style="height: 300px; display: flex; align-items: center; justify-content: center;">
+        <p class="text-muted">Charts and graphs will appear here once data collection begins</p>
+    </div>
+</div>
+
+<script>
+    // TODO: Fetch real-time data from API
+    // This is a placeholder for the dashboard functionality
+    console.log('Dashboard loaded - data collection will be implemented next');
+</script>
+{% endblock %}

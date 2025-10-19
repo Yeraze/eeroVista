@@ -1,0 +1,382 @@
+/**
+ * Catppuccin Latte Theme for eeroVista
+ * https://github.com/catppuccin/catppuccin
+ */
+
+:root {
+  /* Accent Colors */
+  --rosewater: #dc8a78;
+  --flamingo: #dd7878;
+  --pink: #ea76cb;
+  --mauve: #8839ef;
+  --red: #d20f39;
+  --maroon: #e64553;
+  --peach: #fe640b;
+  --yellow: #df8e1d;
+  --green: #40a02b;
+  --teal: #179299;
+  --sky: #04a5e5;
+  --sapphire: #209fb5;
+  --blue: #1e66f5;
+  --lavender: #7287fd;
+
+  /* Text Colors */
+  --text: #4c4f69;
+  --subtext1: #5c5f77;
+  --subtext0: #6c6f85;
+
+  /* Overlay Colors */
+  --overlay2: #7c7f93;
+  --overlay1: #8c8fa1;
+  --overlay0: #9ca0b0;
+
+  /* Surface Colors */
+  --surface2: #acb0be;
+  --surface1: #bcc0cc;
+  --surface0: #ccd0da;
+
+  /* Base Colors */
+  --base: #eff1f5;
+  --mantle: #e6e9ef;
+  --crust: #dce0e8;
+
+  /* Semantic Colors */
+  --primary: var(--blue);
+  --success: var(--green);
+  --warning: var(--yellow);
+  --danger: var(--red);
+  --info: var(--teal);
+}
+
+/* Base Styles */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--base);
+  color: var(--text);
+  margin: 0;
+  padding: 0;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* Navigation */
+.navbar {
+  background-color: var(--mantle);
+  border-bottom: 2px solid var(--surface0);
+  padding: 1rem 0;
+}
+
+.navbar-brand {
+  color: var(--blue);
+  font-size: 1.5rem;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.navbar-nav {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  gap: 2rem;
+}
+
+.nav-link {
+  color: var(--text);
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.nav-link:hover {
+  background-color: var(--surface0);
+  color: var(--blue);
+}
+
+.nav-link.active {
+  background-color: var(--blue);
+  color: var(--base);
+}
+
+/* Cards */
+.card {
+  background-color: var(--mantle);
+  border: 1px solid var(--surface0);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.card-title {
+  color: var(--text);
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.card-subtitle {
+  color: var(--subtext1);
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Buttons */
+.btn {
+  padding: 0.5rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.btn-primary {
+  background-color: var(--blue);
+  color: var(--base);
+}
+
+.btn-primary:hover {
+  background-color: var(--sapphire);
+}
+
+.btn-success {
+  background-color: var(--green);
+  color: var(--base);
+}
+
+.btn-success:hover {
+  background-color: var(--teal);
+}
+
+.btn-danger {
+  background-color: var(--red);
+  color: var(--base);
+}
+
+.btn-danger:hover {
+  background-color: var(--maroon);
+}
+
+.btn-secondary {
+  background-color: var(--surface1);
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background-color: var(--surface2);
+}
+
+/* Forms */
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-label {
+  display: block;
+  color: var(--text);
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.form-control {
+  width: 100%;
+  padding: 0.75rem;
+  border: 2px solid var(--surface0);
+  border-radius: 6px;
+  background-color: var(--base);
+  color: var(--text);
+  font-size: 1rem;
+  transition: border-color 0.2s;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+.form-text {
+  display: block;
+  color: var(--subtext0);
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+/* Alerts */
+.alert {
+  padding: 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.alert-success {
+  background-color: rgba(64, 160, 43, 0.1);
+  border: 1px solid var(--green);
+  color: var(--green);
+}
+
+.alert-danger {
+  background-color: rgba(210, 15, 57, 0.1);
+  border: 1px solid var(--red);
+  color: var(--red);
+}
+
+.alert-warning {
+  background-color: rgba(223, 142, 29, 0.1);
+  border: 1px solid var(--yellow);
+  color: var(--yellow);
+}
+
+.alert-info {
+  background-color: rgba(23, 146, 153, 0.1);
+  border: 1px solid var(--teal);
+  color: var(--teal);
+}
+
+/* Tables */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: var(--mantle);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.table th {
+  background-color: var(--surface0);
+  color: var(--text);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.75rem;
+}
+
+.table td {
+  padding: 0.75rem;
+  border-top: 1px solid var(--surface0);
+  color: var(--text);
+}
+
+.table tr:hover {
+  background-color: var(--base);
+}
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.badge-success {
+  background-color: var(--green);
+  color: var(--base);
+}
+
+.badge-danger {
+  background-color: var(--red);
+  color: var(--base);
+}
+
+.badge-warning {
+  background-color: var(--yellow);
+  color: var(--base);
+}
+
+.badge-info {
+  background-color: var(--teal);
+  color: var(--base);
+}
+
+/* Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card {
+  background-color: var(--mantle);
+  border: 1px solid var(--surface0);
+  border-radius: 8px;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: var(--blue);
+  margin-bottom: 0.5rem;
+}
+
+.stat-label {
+  color: var(--subtext1);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Loading Spinner */
+.spinner {
+  border: 3px solid var(--surface0);
+  border-top: 3px solid var(--blue);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 2rem auto;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Utility Classes */
+.text-center {
+  text-align: center;
+}
+
+.text-muted {
+  color: var(--subtext1);
+}
+
+.mt-1 {
+  margin-top: 0.5rem;
+}
+.mt-2 {
+  margin-top: 1rem;
+}
+.mt-3 {
+  margin-top: 1.5rem;
+}
+.mt-4 {
+  margin-top: 2rem;
+}
+
+.mb-1 {
+  margin-bottom: 0.5rem;
+}
+.mb-2 {
+  margin-bottom: 1rem;
+}
+.mb-3 {
+  margin-bottom: 1.5rem;
+}
+.mb-4 {
+  margin-bottom: 2rem;
+}

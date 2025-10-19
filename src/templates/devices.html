@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Devices - eeroVista{% endblock %}
+
+{% block content %}
+<h1 class="mt-4 mb-4">Connected Devices</h1>
+
+<div class="card">
+    <div class="card-title">Device List</div>
+    <p class="text-muted">Real-time view of all devices on your network</p>
+
+    <div class="mt-3">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Device Name</th>
+                    <th>Status</th>
+                    <th>Connection</th>
+                    <th>Signal</th>
+                    <th>IP Address</th>
+                    <th>Node</th>
+                </tr>
+            </thead>
+            <tbody id="devices-table-body">
+                <tr>
+                    <td colspan="6" class="text-center text-muted">
+                        Loading devices...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // TODO: Fetch devices from API
+    console.log('Devices page loaded - API integration pending');
+</script>
+{% endblock %}

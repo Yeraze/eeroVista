@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}Setup - eeroVista{% endblock %}
+
+{% block content %}
+<div style="max-width: 500px; margin: 4rem auto;">
+    <div class="card">
+        <h1 class="card-title text-center">Welcome to eeroVista</h1>
+        <p class="text-center text-muted">Let's connect to your Eero network</p>
+
+        <div id="phone-step">
+            <form id="phone-form" class="mt-4">
+                <div class="form-group">
+                    <label for="phone" class="form-label">Phone Number</label>
+                    <input
+                        type="tel"
+                        id="phone"
+                        name="phone"
+                        class="form-control"
+                        placeholder="+1234567890"
+                        required
+                    >
+                    <small class="form-text">Enter the phone number associated with your Eero account</small>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;" id="send-code-btn">
+                    Send Verification Code
+                </button>
+            </form>
+        </div>
+
+        <div id="code-step" style="display: none;">
+            <form id="code-form" class="mt-4">
+                <div class="form-group">
+                    <label for="code" class="form-label">Verification Code</label>
+                    <input
+                        type="text"
+                        id="code"
+                        name="code"
+                        class="form-control"
+                        placeholder="123456"
+                        required
+                        maxlength="6"
+                        pattern="[0-9]{6}"
+                    >
+                    <small class="form-text">Enter the 6-digit code sent to your phone via SMS</small>
+                </div>
+                <button type="submit" class="btn btn-success" style="width: 100%;" id="verify-code-btn">
+                    Verify & Complete Setup
+                </button>
+                <button type="button" class="btn btn-secondary mt-2" style="width: 100%;" onclick="backToPhone()">
+                    Use Different Phone Number
+                </button>
+            </form>
+        </div>
+
+        <div id="success-step" style="display: none;">
+            <div class="alert alert-success text-center">
+                <strong>Success!</strong> Authentication complete.
+            </div>
+            <p class="text-center text-muted">Redirecting to dashboard...</p>
+        </div>
+
+        <div id="alert-container" class="mt-3"></div>
+    </div>
+
+    <p class="text-center text-muted mt-4">
+        <small>Your credentials are stored securely and encrypted.</small>
+    </p>
+</div>
+
+<script>
+    const phoneForm = document.getElementById('phone-form');
+    const codeForm = document.getElementById('code-form');
+    const phoneStep = document.getElementById('phone-step');
+    const codeStep = document.getElementById('code-step');
+    const successStep = document.getElementById('success-step');
+    const alertContainer = document.getElementById('alert-container');
+
+    function showAlert(message, type = 'info') {
+        alertContainer.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+        setTimeout(() => alertContainer.innerHTML = '', 5000);
+    }
+
+    function backToPhone() {
+        phoneStep.style.display = 'block';
+        codeStep.style.display = 'none';
+        document.getElementById('phone').value = '';
+        document.getElementById('code').value = '';
+    }
+
+    phoneForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const phone = document.getElementById('phone').value;
+        const sendBtn = document.getElementById('send-code-btn');
+
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Sending...';
+
+        try {
+            const formData = new FormData();
+            formData.append('phone', phone);
+
+            const response = await fetch('/setup/send-code', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                phoneStep.style.display = 'none';
+                codeStep.style.display = 'block';
+                showAlert(result.message, 'success');
+            } else {
+                showAlert(result.message, 'danger');
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send Verification Code';
+            }
+        } catch (error) {
+            showAlert('Network error. Please try again.', 'danger');
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Send Verification Code';
+        }
+    });
+
+    codeForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const code = document.getElementById('code').value;
+        const verifyBtn = document.getElementById('verify-code-btn');
+
+        verifyBtn.disabled = true;
+        verifyBtn.textContent = 'Verifying...';
+
+        try {
+            const formData = new FormData();
+            formData.append('code', code);
+
+            const response = await fetch('/setup/verify-code', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                codeStep.style.display = 'none';
+                successStep.style.display = 'block';
+
+                // Redirect to dashboard after 2 seconds
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            } else {
+                showAlert(result.message, 'danger');
+                verifyBtn.disabled = false;
+                verifyBtn.textContent = 'Verify & Complete Setup';
+                document.getElementById('code').value = '';
+                document.getElementById('code').focus();
+            }
+        } catch (error) {
+            showAlert('Network error. Please try again.', 'danger');
+            verifyBtn.disabled = false;
+            verifyBtn.textContent = 'Verify & Complete Setup';
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - eeroVista{% endblock %}
+
+{% block content %}
+<h1 class="mt-4 mb-4">Settings</h1>
+
+<div class="card">
+    <div class="card-title">Configuration</div>
+    <p class="text-muted">Current eeroVista configuration (read-only)</p>
+
+    <table class="table mt-3">
+        <tr>
+            <th style="width: 40%;">Setting</th>
+            <th>Value</th>
+        </tr>
+        <tr>
+            <td>Version</td>
+            <td><span class="badge badge-info">{{ settings.version }}</span></td>
+        </tr>
+        <tr>
+            <td>Database Path</td>
+            <td><code>{{ settings.database_path }}</code></td>
+        </tr>
+        <tr>
+            <td>Device Collection Interval</td>
+            <td>{{ settings.collection_interval_devices }} seconds</td>
+        </tr>
+        <tr>
+            <td>Network Collection Interval</td>
+            <td>{{ settings.collection_interval_network }} seconds</td>
+        </tr>
+        <tr>
+            <td>Raw Data Retention</td>
+            <td>{{ settings.data_retention_raw_days }} days</td>
+        </tr>
+        <tr>
+            <td>Hourly Data Retention</td>
+            <td>{{ settings.data_retention_hourly_days }} days</td>
+        </tr>
+        <tr>
+            <td>Daily Data Retention</td>
+            <td>{{ settings.data_retention_daily_days }} days</td>
+        </tr>
+        <tr>
+            <td>Log Level</td>
+            <td><span class="badge badge-info">{{ settings.log_level }}</span></td>
+        </tr>
+    </table>
+
+    <div class="alert alert-info mt-3">
+        <strong>Note:</strong> To modify settings, edit environment variables in docker-compose.yml and restart the container.
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">Authentication Status</div>
+    <table class="table">
+        <tr>
+            <th style="width: 40%;">Eero Account</th>
+            <td><span class="badge badge-success">Authenticated</span></td>
+        </tr>
+        <tr>
+            <th>Session Status</th>
+            <td>Active</td>
+        </tr>
+    </table>
+</div>
+
+<div class="card">
+    <div class="card-title">System Information</div>
+    <table class="table">
+        <tr>
+            <th style="width: 40%;">Application</th>
+            <td>eeroVista</td>
+        </tr>
+        <tr>
+            <th>Mode</th>
+            <td><span class="badge badge-info">Read-Only Monitoring</span></td>
+        </tr>
+        <tr>
+            <th>Theme</th>
+            <td>Catppuccin Latte</td>
+        </tr>
+    </table>
+</div>
+{% endblock %}
