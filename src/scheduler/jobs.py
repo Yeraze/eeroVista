@@ -83,6 +83,13 @@ class CollectorScheduler:
             self.scheduler.shutdown()
             self.scheduler = None
 
+    def run_all_collectors_now(self) -> None:
+        """Trigger immediate collection run for all collectors."""
+        logger.info("Running all collectors immediately")
+        self._run_device_collector()
+        self._run_network_collector()
+        self._run_speedtest_collector()
+
     def _run_device_collector(self) -> None:
         """Run the device collector."""
         try:
