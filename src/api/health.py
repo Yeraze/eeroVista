@@ -53,3 +53,42 @@ async def health_check(client: EeroClientWrapper = Depends(get_eero_client)) -> 
         "eero_api": eero_status,
         "timestamp": datetime.utcnow().isoformat(),
     }
+
+
+@router.get("/collection-status")
+async def collection_status() -> Dict[str, Any]:
+    """Get data collection status and timestamps."""
+    try:
+        with get_db_context() as db:
+            from src.models.database import Config
+
+            # Get last collection timestamps
+            collectors = ["device", "network", "speedtest"]
+            last_collections = {}
+
+            for collector_type in collectors:
+                config_key = f"last_collection_{collector_type}"
+                config = db.query(Config).filter(Config.key == config_key).first()
+
+                if config and config.value:
+                    try:
+                        timestamp = datetime.fromisoformat(config.value)
+                        last_collections[collector_type] = {
+                            "timestamp": config.value,
+                            "seconds_ago": int(
+                                (datetime.utcnow() - timestamp).total_seconds()
+                            ),
+                        }
+                    except Exception:
+                        last_collections[collector_type] = None
+                else:
+                    last_collections[collector_type] = None
+
+            return {
+                "collections": last_collections,
+                "collection_interval_seconds": 300,  # 5 minutes
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to get collection status: {e}")
+        return {"collections": {}, "error": str(e)}

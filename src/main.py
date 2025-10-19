@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from src import __version__
 from src.api import health, setup, web
 from src.config import ensure_data_directory, get_settings
+from src.scheduler.jobs import get_scheduler
 from src.utils.database import init_database
 
 # Configure logging
@@ -35,13 +36,16 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing database...")
     init_database()
 
-    # TODO: Start background collectors
+    # Start background collectors
+    logger.info("Starting background data collectors...")
+    scheduler = get_scheduler()
+    scheduler.start()
 
     yield
 
     # Shutdown
     logger.info("Shutting down eeroVista")
-    # TODO: Stop background collectors
+    scheduler.stop()
 
 
 # Create FastAPI app

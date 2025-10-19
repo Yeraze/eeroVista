@@ -30,8 +30,13 @@
     <h2 class="card-title">Network: {{ network_name }}</h2>
     <p class="text-muted">Real-time monitoring and historical data collection</p>
 
-    <div class="alert alert-info mt-3">
-        <strong>Note:</strong> Data collection will begin shortly. Metrics will appear as data is gathered from your Eero network.
+    <div id="collection-status" style="margin-top: 1rem;">
+        <p class="text-muted">
+            <strong>Last Data Collection:</strong> <span id="last-collection-time">Checking...</span>
+        </p>
+        <p class="text-muted" style="font-size: 0.85rem;">
+            Data collectors run every 5 minutes
+        </p>
     </div>
 </div>
 
@@ -43,8 +48,53 @@
 </div>
 
 <script>
-    // TODO: Fetch real-time data from API
-    // This is a placeholder for the dashboard functionality
-    console.log('Dashboard loaded - data collection will be implemented next');
+    // Fetch collection status
+    async function updateCollectionStatus() {
+        try {
+            const response = await fetch('/api/collection-status');
+            const data = await response.json();
+
+            if (data.collections) {
+                const deviceCollection = data.collections.device;
+
+                if (deviceCollection && deviceCollection.timestamp) {
+                    const secondsAgo = deviceCollection.seconds_ago;
+                    const timeAgo = formatTimeAgo(secondsAgo);
+                    const statusElement = document.getElementById('last-collection-time');
+
+                    if (secondsAgo < 360) {  // Less than 6 minutes
+                        statusElement.innerHTML = `<span style="color: var(--green);">${timeAgo}</span>`;
+                    } else if (secondsAgo < 900) {  // Less than 15 minutes
+                        statusElement.innerHTML = `<span style="color: var(--yellow);">${timeAgo}</span>`;
+                    } else {
+                        statusElement.innerHTML = `<span style="color: var(--red);">${timeAgo}</span>`;
+                    }
+                } else {
+                    document.getElementById('last-collection-time').textContent = 'No data collected yet';
+                }
+            }
+        } catch (error) {
+            console.error('Failed to fetch collection status:', error);
+            document.getElementById('last-collection-time').textContent = 'Error fetching status';
+        }
+    }
+
+    function formatTimeAgo(seconds) {
+        if (seconds < 60) {
+            return `${seconds} seconds ago`;
+        } else if (seconds < 3600) {
+            const minutes = Math.floor(seconds / 60);
+            return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+        } else {
+            const hours = Math.floor(seconds / 3600);
+            return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+        }
+    }
+
+    // Initial load
+    updateCollectionStatus();
+
+    // Update every 30 seconds
+    setInterval(updateCollectionStatus, 30000);
 </script>
 {% endblock %}
