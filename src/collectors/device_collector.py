@@ -34,6 +34,15 @@ class DeviceCollector(BaseCollector):
                 logger.warning("No devices found")
                 return {"items_collected": 0, "errors": 0}
 
+            logger.info(f"Retrieved {len(devices_data)} device entries from Eero API")
+
+            # Count entry types for debugging
+            type_counts = {}
+            for entry in devices_data:
+                t = type(entry).__name__
+                type_counts[t] = type_counts.get(t, 0) + 1
+            logger.info(f"Device entry types: {type_counts}")
+
             # Process each device
             for device_data in devices_data:
                 try:
@@ -45,7 +54,8 @@ class DeviceCollector(BaseCollector):
                     self._process_device(device_data, eero_node_map)
                     devices_processed += 1
                 except Exception as e:
-                    logger.error(f"Error processing device: {e}")
+                    device_name = device_data.get("nickname") or device_data.get("hostname") or device_data.get("mac", "unknown")
+                    logger.error(f"Error processing device '{device_name}': {e}", exc_info=True)
                     errors += 1
 
             self.db.commit()
@@ -165,12 +175,14 @@ class DeviceCollector(BaseCollector):
 
         # Get connected eero node
         eero_node_id = None
-        connected_to = device_data.get("source", {}).get("location")
-        if connected_to:
-            # Try to match by eero URL
-            eero_url = device_data.get("source", {}).get("url")
-            if eero_url and eero_url in eero_node_map:
-                eero_node_id = eero_node_map[eero_url]
+        source = device_data.get("source")
+        if isinstance(source, dict):
+            connected_to = source.get("location")
+            if connected_to:
+                # Try to match by eero URL
+                eero_url = source.get("url")
+                if eero_url and eero_url in eero_node_map:
+                    eero_node_id = eero_node_map[eero_url]
 
         # Get signal and bandwidth info
         signal_strength = None
@@ -179,13 +191,20 @@ class DeviceCollector(BaseCollector):
 
         # Signal strength (for wireless connections)
         if connection_type == "wireless":
-            # Signal is in the wireless dict
-            wireless_data = device_data.get("wireless", {})
-            signal_strength = wireless_data.get("signal_strength")
+            # Signal is in the connectivity dict (not wireless which is a boolean)
+            connectivity = device_data.get("connectivity")
+            if isinstance(connectivity, dict):
+                signal = connectivity.get("signal")
+                if signal:
+                    # Extract numeric value from signal string (e.g., "-43 dBm")
+                    try:
+                        signal_strength = int(signal.split()[0]) if isinstance(signal, str) else signal
+                    except (ValueError, IndexError):
+                        signal_strength = None
 
         # Bandwidth (if available)
-        usage = device_data.get("usage", {})
-        if usage:
+        usage = device_data.get("usage")
+        if isinstance(usage, dict):
             bandwidth_down = usage.get("download_mbps")
             bandwidth_up = usage.get("upload_mbps")
 
