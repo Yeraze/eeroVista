@@ -4,6 +4,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from eero import Eero
+from eero.session import MemorySessionStorage
 from sqlalchemy.orm import Session
 
 from src.eero_client.auth import AuthManager
@@ -23,13 +24,17 @@ class EeroClientWrapper:
     def _get_client(self) -> Eero:
         """Get or create Eero client instance."""
         if self._eero is None:
-            self._eero = Eero()
-
-            # If we have a stored session, restore it
+            # Check if we have a stored session token
             session_token = self.auth_manager.get_session_token()
+
             if session_token:
-                self._eero.session.cookie = session_token
+                # Create Eero instance with session token
+                session = MemorySessionStorage(cookie=session_token)
+                self._eero = Eero(session=session)
                 logger.info("Restored Eero session from stored token")
+            else:
+                # Create new Eero instance without session
+                self._eero = Eero()
 
         return self._eero
 

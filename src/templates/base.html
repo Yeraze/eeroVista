@@ -11,7 +11,10 @@
     {% if authenticated %}
     <nav class="navbar">
         <div class="container" style="display: flex; justify-content: space-between; align-items: center;">
-            <a href="/" class="navbar-brand">eeroVista</a>
+            <a href="/" class="navbar-brand" style="display: flex; align-items: center; gap: 0.5rem;">
+                <img src="/static/img/eerovista.png" alt="eeroVista" style="height: 32px; width: auto;">
+                <span>eeroVista</span>
+            </a>
             <ul class="navbar-nav">
                 <li><a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">Dashboard</a></li>
                 <li><a href="/devices" class="nav-link {% if request.url.path == '/devices' %}active{% endif %}">Devices</a></li>
