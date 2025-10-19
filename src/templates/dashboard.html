@@ -2,6 +2,11 @@
 
 {% block title %}Dashboard - eeroVista{% endblock %}
 
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+{% endblock %}
+
 {% block content %}
 <h1 class="mt-4 mb-4">Network Dashboard</h1>
 
@@ -41,11 +46,39 @@
 </div>
 
 <div class="card">
-    <h2 class="card-title">Quick Stats</h2>
-    <div style="height: 300px; display: flex; align-items: center; justify-content: center;">
-        <p class="text-muted">Charts and graphs will appear here once data collection begins</p>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2 class="card-title" style="margin: 0;">Network Bandwidth</h2>
+        <div style="display: flex; gap: 0.5rem;">
+            <button class="interval-btn active" data-interval="hour" onclick="updateNetworkBandwidthInterval('hour')">Hourly</button>
+            <button class="interval-btn" data-interval="day" onclick="updateNetworkBandwidthInterval('day')">Daily</button>
+        </div>
+    </div>
+    <div style="height: 300px; position: relative;">
+        <canvas id="network-bandwidth-chart"></canvas>
     </div>
 </div>
+
+<style>
+    .interval-btn {
+        padding: 0.25rem 0.75rem;
+        background-color: var(--surface0);
+        color: var(--text);
+        border: 1px solid var(--surface1);
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.875rem;
+    }
+
+    .interval-btn.active {
+        background-color: var(--blue);
+        color: white;
+        border-color: var(--blue);
+    }
+
+    .interval-btn:hover:not(.active) {
+        background-color: var(--surface1);
+    }
+</style>
 
 <script>
     // Fetch dashboard statistics
@@ -114,10 +147,184 @@
         }
     }
 
+    // Network bandwidth chart variables
+    let networkBandwidthChart = null;
+    let currentNetworkInterval = 'hour';
+
+    // Load and render network bandwidth chart
+    async function loadNetworkBandwidthChart(interval) {
+        try {
+            const hours = interval === 'day' ? 168 : 24; // 7 days or 24 hours
+            const response = await fetch(`/api/network/bandwidth-history?hours=${hours}`);
+            const data = await response.json();
+
+            if (!data.history || data.history.length === 0) {
+                console.log('No network bandwidth history available');
+                return;
+            }
+
+            // Aggregate data by interval
+            const aggregatedData = aggregateNetworkByInterval(data.history, interval);
+
+            // Render chart
+            renderNetworkBandwidthChart(aggregatedData, interval);
+        } catch (error) {
+            console.error('Failed to load network bandwidth chart:', error);
+        }
+    }
+
+    // Aggregate network bandwidth data by hour or day
+    function aggregateNetworkByInterval(history, interval) {
+        const aggregated = {};
+
+        history.forEach(point => {
+            const date = new Date(point.timestamp);
+            let key;
+
+            if (interval === 'day') {
+                // Group by day
+                key = date.toISOString().split('T')[0]; // YYYY-MM-DD
+            } else {
+                // Group by hour
+                const hourStart = new Date(date);
+                hourStart.setMinutes(0, 0, 0);
+                key = hourStart.toISOString();
+            }
+
+            if (!aggregated[key]) {
+                aggregated[key] = {
+                    timestamp: key,
+                    download: [],
+                    upload: []
+                };
+            }
+
+            if (point.download_mbps !== null) aggregated[key].download.push(point.download_mbps);
+            if (point.upload_mbps !== null) aggregated[key].upload.push(point.upload_mbps);
+        });
+
+        // Calculate averages and convert to array
+        return Object.values(aggregated).map(item => ({
+            timestamp: item.timestamp,
+            download_mbps: item.download.length > 0
+                ? item.download.reduce((a, b) => a + b, 0) / item.download.length
+                : 0,
+            upload_mbps: item.upload.length > 0
+                ? item.upload.reduce((a, b) => a + b, 0) / item.upload.length
+                : 0
+        })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    }
+
+    // Render network bandwidth chart using Chart.js
+    function renderNetworkBandwidthChart(data, interval) {
+        const ctx = document.getElementById('network-bandwidth-chart');
+        if (!ctx) return;
+
+        // Destroy existing chart
+        if (networkBandwidthChart) {
+            networkBandwidthChart.destroy();
+        }
+
+        const labels = data.map(d => d.timestamp);
+        const downloadData = data.map(d => d.download_mbps);
+        const uploadData = data.map(d => d.upload_mbps);
+
+        networkBandwidthChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Total Download (Mbps)',
+                        data: downloadData,
+                        borderColor: 'rgb(30, 102, 245)', // Catppuccin blue
+                        backgroundColor: 'rgba(30, 102, 245, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    },
+                    {
+                        label: 'Total Upload (Mbps)',
+                        data: uploadData,
+                        borderColor: 'rgb(136, 57, 239)', // Catppuccin mauve
+                        backgroundColor: 'rgba(136, 57, 239, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            title: function(context) {
+                                const timestamp = context[0].label;
+                                const date = new Date(timestamp);
+                                return interval === 'day'
+                                    ? date.toLocaleDateString()
+                                    : date.toLocaleString();
+                            },
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.parsed.y.toFixed(2)} Mbps`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: interval === 'day' ? 'day' : 'hour',
+                            displayFormats: {
+                                hour: 'MMM d, HH:mm',
+                                day: 'MMM d'
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Network Bandwidth (Mbps)'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Update network bandwidth interval (called from button onclick)
+    function updateNetworkBandwidthInterval(interval) {
+        currentNetworkInterval = interval;
+
+        // Update button states
+        document.querySelectorAll('.interval-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.dataset.interval === interval) {
+                btn.classList.add('active');
+            }
+        });
+
+        // Reload chart with new interval
+        loadNetworkBandwidthChart(interval);
+    }
+
     // Update all data
     function updateAll() {
         updateDashboardStats();
         updateCollectionStatus();
+        loadNetworkBandwidthChart(currentNetworkInterval);
     }
 
     // Initial load

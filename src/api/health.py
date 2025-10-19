@@ -494,3 +494,54 @@ async def get_device_bandwidth_history(
     except Exception as e:
         logger.error(f"Failed to get bandwidth history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/network/bandwidth-history")
+async def get_network_bandwidth_history(hours: int = 24) -> Dict[str, Any]:
+    """Get cumulative network-wide bandwidth usage history.
+
+    Args:
+        hours: Number of hours of history to return (default: 24)
+    """
+    try:
+        from datetime import timedelta
+        from sqlalchemy import func
+
+        with get_db_context() as db:
+            from src.models.database import DeviceConnection
+
+            # Calculate time range
+            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+
+            # Get all connections in time range, aggregated by timestamp
+            # Group by timestamp and sum bandwidth across all devices
+            connections = (
+                db.query(
+                    DeviceConnection.timestamp,
+                    func.sum(DeviceConnection.bandwidth_down_mbps).label('total_download'),
+                    func.sum(DeviceConnection.bandwidth_up_mbps).label('total_upload'),
+                )
+                .filter(DeviceConnection.timestamp >= cutoff_time)
+                .group_by(DeviceConnection.timestamp)
+                .order_by(DeviceConnection.timestamp.asc())
+                .all()
+            )
+
+            # Format data for graphing
+            history = []
+            for conn in connections:
+                history.append({
+                    "timestamp": conn.timestamp.isoformat(),
+                    "download_mbps": float(conn.total_download) if conn.total_download else 0,
+                    "upload_mbps": float(conn.total_upload) if conn.total_upload else 0,
+                })
+
+            return {
+                "hours": hours,
+                "data_points": len(history),
+                "history": history,
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to get network bandwidth history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
