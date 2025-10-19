@@ -1,0 +1,5 @@
+theme: jekyll-theme-minimal
+title: eeroVista
+description: Read-only monitoring for Eero mesh networks
+show_downloads: true
+logo: /eerovista.png
