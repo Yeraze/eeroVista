@@ -69,8 +69,9 @@ jobs:
       matrix:
         platform:
           - linux/amd64
-          - linux/arm64
-          - linux/arm/v7
+          # ARM builds are validated on release, not in PRs (too slow)
+          # - linux/arm64
+          # - linux/arm/v7
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -135,6 +136,12 @@ jobs:
     steps:
       - name: Check results
         run: |
+          echo "Validation Results:"
+          echo "  Lint: ${{ needs.lint.result }}"
+          echo "  Test: ${{ needs.test.result }}"
+          echo "  Docker Build: ${{ needs.docker-build-validation.result }}"
+          echo "  Docker Compose: ${{ needs.docker-compose-test.result }}"
+
           if [[ "${{ needs.lint.result }}" == "failure" ]] || \
              [[ "${{ needs.test.result }}" == "failure" ]] || \
              [[ "${{ needs.docker-build-validation.result }}" == "failure" ]] || \
@@ -142,4 +149,4 @@ jobs:
             echo "::error::One or more validation steps failed"
             exit 1
           fi
-          echo "::notice::All validation checks passed!"
+          echo "::notice::✅ All validation checks passed! ARM builds will be validated on release."
