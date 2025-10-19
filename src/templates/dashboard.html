@@ -160,16 +160,44 @@
 
             if (!data.history || data.history.length === 0) {
                 console.log('No network bandwidth history available');
+                showNetworkNoDataMessage();
+                return;
+            }
+
+            // Filter out entries with null/zero bandwidth values
+            const validData = data.history.filter(point =>
+                (point.download_mbps !== null && point.download_mbps > 0) ||
+                (point.upload_mbps !== null && point.upload_mbps > 0)
+            );
+
+            if (validData.length === 0) {
+                console.log('No valid network bandwidth data available');
+                showNetworkNoDataMessage();
                 return;
             }
 
             // Aggregate data by interval
-            const aggregatedData = aggregateNetworkByInterval(data.history, interval);
+            const aggregatedData = aggregateNetworkByInterval(validData, interval);
 
             // Render chart
             renderNetworkBandwidthChart(aggregatedData, interval);
         } catch (error) {
             console.error('Failed to load network bandwidth chart:', error);
+            showNetworkNoDataMessage();
+        }
+    }
+
+    function showNetworkNoDataMessage() {
+        const ctx = document.getElementById('network-bandwidth-chart');
+        if (ctx) {
+            // Destroy existing chart if present
+            if (networkBandwidthChart) {
+                networkBandwidthChart.destroy();
+                networkBandwidthChart = null;
+            }
+            // Replace canvas with message
+            const container = ctx.parentElement;
+            container.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--subtext0); font-size: 1rem;">No bandwidth data available from Eero API</div>';
         }
     }
 

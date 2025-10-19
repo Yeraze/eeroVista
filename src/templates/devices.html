@@ -416,12 +416,12 @@
                 ? '<span class="status-badge status-online">Online</span>'
                 : '<span class="status-badge status-offline">Offline</span>';
 
-            const downloadBw = device.bandwidth_down_mbps != null
+            const downloadBw = device.bandwidth_down_mbps != null && device.bandwidth_down_mbps > 0
                 ? `${device.bandwidth_down_mbps.toFixed(1)} Mbps`
-                : 'N/A';
-            const uploadBw = device.bandwidth_up_mbps != null
+                : '<span style="color: var(--subtext0);">N/A</span>';
+            const uploadBw = device.bandwidth_up_mbps != null && device.bandwidth_up_mbps > 0
                 ? `${device.bandwidth_up_mbps.toFixed(1)} Mbps`
-                : 'N/A';
+                : '<span style="color: var(--subtext0);">N/A</span>';
 
             return `
                 <tr class="device-row ${rowClass}" onclick="showDeviceDetails(${index})">
@@ -622,16 +622,36 @@
 
             if (!data.history || data.history.length === 0) {
                 console.log('No bandwidth history available');
+                showNoDataMessage();
+                return;
+            }
+
+            // Filter out entries with null bandwidth values
+            const validData = data.history.filter(point =>
+                point.download_mbps !== null || point.upload_mbps !== null
+            );
+
+            if (validData.length === 0) {
+                console.log('No valid bandwidth data available');
+                showNoDataMessage();
                 return;
             }
 
             // Aggregate data by interval
-            const aggregatedData = aggregateByInterval(data.history, interval);
+            const aggregatedData = aggregateByInterval(validData, interval);
 
             // Render chart
             renderBandwidthChart(aggregatedData, interval);
         } catch (error) {
             console.error('Failed to load bandwidth chart:', error);
+            showNoDataMessage();
+        }
+    }
+
+    function showNoDataMessage() {
+        const chartContainer = document.querySelector('.bandwidth-section .chart-container');
+        if (chartContainer) {
+            chartContainer.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--subtext0);">No bandwidth data available from Eero API</div>';
         }
     }
 
