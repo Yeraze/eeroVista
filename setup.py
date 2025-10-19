@@ -18,7 +18,7 @@ def read_requirements():
 
 setup(
     name="eerovista",
-    version="0.2.1",
+    version="0.2.2",
     description="Read-only monitoring for Eero mesh networks",
     author="eeroVista Contributors",
     packages=find_packages(),
