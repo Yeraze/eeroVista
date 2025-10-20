@@ -9,6 +9,11 @@
   - Consider caching or lazy loading
 
 ## Completed
+- [x] v0.7.0 Release - Dashboard enhancements, timezone fixes, and performance improvements (PR #19)
+  - Dashboard enhancements: incomplete data indicator, top 5 bandwidth consumers, hourly charts
+  - Timezone fixes: data collection/API alignment, JavaScript date parsing
+  - Performance: anti-flicker optimization for chart updates
+  - Code quality: SQLAlchemy fixes, error handling improvements, test coverage
 - [x] Reduce graph flicker on 30-second auto-refresh (using Chart.js update() instead of destroy/recreate)
 - [x] Update 7/30 day bandwidth graphs to include today (with visual indicator for incomplete data)
 - [x] Add top 5 bandwidth consumers stacked graph with "Other" category
