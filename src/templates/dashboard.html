@@ -289,13 +289,16 @@
             networkBandwidthChart.destroy();
         }
 
-        let labels, downloadData, uploadData, xAxisTitle, tooltipTitleFormatter, tickFormatter;
+        let labels, downloadData, uploadData, downloadColors, uploadColors, xAxisTitle, tooltipTitleFormatter, tickFormatter;
+        let hasIncompleteData = false;
 
         if (mode === 'hourly') {
             // Hourly mode
             labels = data.map(d => d.hour_label);
             downloadData = data.map(d => d.download_mb);
             uploadData = data.map(d => d.upload_mb);
+            downloadColors = data.map(() => 'rgba(30, 102, 245, 0.8)');
+            uploadColors = data.map(() => 'rgba(136, 57, 239, 0.8)');
             xAxisTitle = 'Hour';
 
             tooltipTitleFormatter = function(context) {
@@ -306,19 +309,32 @@
                 return this.getLabelForValue(value);
             };
         } else {
-            // Daily mode
+            // Daily mode - check for incomplete data
             labels = data.map(d => d.date);
             downloadData = data.map(d => d.download_mb);
             uploadData = data.map(d => d.upload_mb);
+
+            // Use lighter colors for incomplete (today's) data
+            downloadColors = data.map(d =>
+                d.is_incomplete ? 'rgba(30, 102, 245, 0.4)' : 'rgba(30, 102, 245, 0.8)'
+            );
+            uploadColors = data.map(d =>
+                d.is_incomplete ? 'rgba(136, 57, 239, 0.4)' : 'rgba(136, 57, 239, 0.8)'
+            );
+
+            hasIncompleteData = data.some(d => d.is_incomplete);
             xAxisTitle = 'Date';
 
             tooltipTitleFormatter = function(context) {
                 const date = new Date(context[0].label);
-                return date.toLocaleDateString('en-US', {
+                const formatted = date.toLocaleDateString('en-US', {
                     weekday: 'short',
                     month: 'short',
                     day: 'numeric'
                 });
+                // Add note for incomplete data
+                const dataPoint = data[context[0].dataIndex];
+                return dataPoint.is_incomplete ? formatted + ' (incomplete)' : formatted;
             };
 
             tickFormatter = function(value, index) {
@@ -338,14 +354,14 @@
                     {
                         label: 'Download',
                         data: downloadData,
-                        backgroundColor: 'rgba(30, 102, 245, 0.8)', // Catppuccin blue
+                        backgroundColor: downloadColors,
                         borderColor: 'rgb(30, 102, 245)',
                         borderWidth: 1
                     },
                     {
                         label: 'Upload',
                         data: uploadData,
-                        backgroundColor: 'rgba(136, 57, 239, 0.8)', // Catppuccin mauve
+                        backgroundColor: uploadColors,
                         borderColor: 'rgb(136, 57, 239)',
                         borderWidth: 1
                     }
