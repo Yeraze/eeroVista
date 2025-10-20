@@ -824,7 +824,10 @@
                         intersect: false,
                         callbacks: {
                             title: function(context) {
-                                const date = new Date(context[0].label);
+                                // Parse as local date to avoid timezone shift
+                                const dateStr = context[0].label;
+                                const [year, month, day] = dateStr.split('-').map(Number);
+                                const date = new Date(year, month - 1, day);
                                 return date.toLocaleDateString('en-US', {
                                     weekday: 'short',
                                     month: 'short',
@@ -846,7 +849,10 @@
                         },
                         ticks: {
                             callback: function(value, index) {
-                                const date = new Date(this.getLabelForValue(value));
+                                // Parse as local date to avoid timezone shift
+                                const dateStr = this.getLabelForValue(value);
+                                const [year, month, day] = dateStr.split('-').map(Number);
+                                const date = new Date(year, month - 1, day);
                                 return date.toLocaleDateString('en-US', {
                                     month: 'short',
                                     day: 'numeric'
