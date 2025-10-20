@@ -295,11 +295,6 @@
         const ctx = document.getElementById('network-bandwidth-chart');
         if (!ctx) return;
 
-        // Destroy existing chart
-        if (networkBandwidthChart) {
-            networkBandwidthChart.destroy();
-        }
-
         let labels, downloadData, uploadData, downloadColors, uploadColors, xAxisTitle, tooltipTitleFormatter, tickFormatter;
         let hasIncompleteData = false;
 
@@ -363,6 +358,20 @@
             };
         }
 
+        // Update existing chart if it exists, otherwise create new one
+        if (networkBandwidthChart) {
+            // Update data without destroying chart (reduces flicker)
+            networkBandwidthChart.data.labels = labels;
+            networkBandwidthChart.data.datasets[0].data = downloadData;
+            networkBandwidthChart.data.datasets[0].backgroundColor = downloadColors;
+            networkBandwidthChart.data.datasets[1].data = uploadData;
+            networkBandwidthChart.data.datasets[1].backgroundColor = uploadColors;
+            networkBandwidthChart.options.scales.x.title.text = xAxisTitle;
+            networkBandwidthChart.update('none'); // 'none' disables animations for smoother update
+            return;
+        }
+
+        // Create new chart (first time only)
         networkBandwidthChart = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -488,11 +497,6 @@
         const ctx = document.getElementById('top-devices-chart');
         if (!ctx) return;
 
-        // Destroy existing chart
-        if (topDevicesChart) {
-            topDevicesChart.destroy();
-        }
-
         // Define color palette for devices (Catppuccin Latte colors)
         const colorPalette = [
             'rgba(30, 102, 245, 0.8)',   // Blue
@@ -545,6 +549,21 @@
             });
         });
 
+        // Update existing chart if it exists and dataset count matches
+        if (topDevicesChart && topDevicesChart.data.datasets.length === datasets.length) {
+            // Update data without destroying chart (reduces flicker)
+            topDevicesChart.data.labels = labels;
+            topDevicesChart.data.datasets = datasets;
+            topDevicesChart.update('none'); // 'none' disables animations for smoother update
+            return;
+        }
+
+        // Destroy and recreate if dataset count changed or first time
+        if (topDevicesChart) {
+            topDevicesChart.destroy();
+        }
+
+        // Create new chart
         topDevicesChart = new Chart(ctx, {
             type: 'bar',
             data: {
