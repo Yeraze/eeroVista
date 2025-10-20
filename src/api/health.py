@@ -760,7 +760,7 @@ async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
             daily_records = (
                 db.query(DailyBandwidth)
                 .filter(
-                    DailyBandwidth.device_id == None,
+                    DailyBandwidth.device_id.is_(None),
                     DailyBandwidth.date >= since_date
                 )
                 .order_by(DailyBandwidth.date)
@@ -972,7 +972,7 @@ async def get_network_bandwidth_top_devices(days: int = 7, limit: int = 5) -> Di
 
     except Exception as e:
         logger.error(f"Failed to get top bandwidth devices: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve bandwidth data")
 
 
 @router.get("/network/bandwidth-hourly")

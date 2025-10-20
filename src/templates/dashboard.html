@@ -507,6 +507,18 @@
             'rgba(220, 138, 120, 0.8)'   // Rosewater (for "Other")
         ];
 
+        // Handle empty data case
+        if (!data.devices || data.devices.length === 0) {
+            // Destroy existing chart if present
+            if (topDevicesChart) {
+                topDevicesChart.destroy();
+                topDevicesChart = null;
+            }
+            // Display message in the chart area
+            ctx.parentElement.innerHTML = '<p style="text-align: center; padding: 2rem; color: var(--subtext0);">No bandwidth data available for the selected period.</p>';
+            return;
+        }
+
         // Create datasets for each device (stacked)
         const datasets = [];
 
