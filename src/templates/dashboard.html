@@ -63,6 +63,7 @@
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2 class="card-title" style="margin: 0;">Bandwidth Usage</h2>
         <div style="display: flex; gap: 0.5rem;">
+            <button class="interval-btn" data-mode="hourly" onclick="updateNetworkBandwidthMode('hourly')">Hourly</button>
             <button class="interval-btn active" data-days="7" onclick="updateNetworkBandwidthDays(7)">7 Days</button>
             <button class="interval-btn" data-days="30" onclick="updateNetworkBandwidthDays(30)">30 Days</button>
         </div>
@@ -186,6 +187,7 @@
     // Network bandwidth chart variables
     let networkBandwidthChart = null;
     let currentDays = 7;
+    let currentMode = 'daily';  // 'hourly' or 'daily'
 
     // Format bytes to human readable format
     function formatBytes(mb) {
@@ -208,28 +210,59 @@
             }
 
             // Update summary stats
-            updateBandwidthSummary(data, days);
+            updateBandwidthSummary(data, days, 'daily');
 
             // Render bar chart
-            renderNetworkBandwidthChart(data.daily_breakdown);
+            renderNetworkBandwidthChart(data.daily_breakdown, 'daily');
         } catch (error) {
             console.error('Failed to load network bandwidth chart:', error);
             showNetworkNoDataMessage();
         }
     }
 
-    function updateBandwidthSummary(data, days) {
-        // Get today's data (last entry in breakdown)
-        const todayData = data.daily_breakdown[data.daily_breakdown.length - 1];
+    // Load and render hourly bandwidth chart
+    async function loadNetworkBandwidthHourlyChart() {
+        try {
+            const response = await fetch('/api/network/bandwidth-hourly');
+            const data = await response.json();
 
-        if (todayData) {
-            document.getElementById('today-download').textContent = formatBytes(todayData.download_mb);
-            document.getElementById('today-upload').textContent = formatBytes(todayData.upload_mb);
+            if (!data.hourly_breakdown || data.hourly_breakdown.length === 0) {
+                console.log('No hourly bandwidth data available');
+                showNetworkNoDataMessage();
+                return;
+            }
+
+            // Update summary stats
+            updateBandwidthSummary(data, null, 'hourly');
+
+            // Render bar chart
+            renderNetworkBandwidthChart(data.hourly_breakdown, 'hourly');
+        } catch (error) {
+            console.error('Failed to load hourly bandwidth chart:', error);
+            showNetworkNoDataMessage();
         }
+    }
 
-        // Show period total
-        document.getElementById('period-total').textContent = formatBytes(data.totals.total_mb);
-        document.getElementById('period-label').textContent = days === 7 ? '7 Day Total' : '30 Day Total';
+    function updateBandwidthSummary(data, days, mode) {
+        if (mode === 'hourly') {
+            // For hourly view, show today's totals
+            document.getElementById('today-download').textContent = formatBytes(data.totals.download_mb);
+            document.getElementById('today-upload').textContent = formatBytes(data.totals.upload_mb);
+            document.getElementById('period-total').textContent = formatBytes(data.totals.total_mb);
+            document.getElementById('period-label').textContent = 'Today Total';
+        } else {
+            // Get today's data (last entry in breakdown)
+            const todayData = data.daily_breakdown[data.daily_breakdown.length - 1];
+
+            if (todayData) {
+                document.getElementById('today-download').textContent = formatBytes(todayData.download_mb);
+                document.getElementById('today-upload').textContent = formatBytes(todayData.upload_mb);
+            }
+
+            // Show period total
+            document.getElementById('period-total').textContent = formatBytes(data.totals.total_mb);
+            document.getElementById('period-label').textContent = days === 7 ? '7 Day Total' : '30 Day Total';
+        }
     }
 
     function showNetworkNoDataMessage() {
@@ -247,7 +280,7 @@
     }
 
     // Render network bandwidth bar chart
-    function renderNetworkBandwidthChart(dailyData) {
+    function renderNetworkBandwidthChart(data, mode) {
         const ctx = document.getElementById('network-bandwidth-chart');
         if (!ctx) return;
 
@@ -256,9 +289,46 @@
             networkBandwidthChart.destroy();
         }
 
-        const labels = dailyData.map(d => d.date);
-        const downloadData = dailyData.map(d => d.download_mb);
-        const uploadData = dailyData.map(d => d.upload_mb);
+        let labels, downloadData, uploadData, xAxisTitle, tooltipTitleFormatter, tickFormatter;
+
+        if (mode === 'hourly') {
+            // Hourly mode
+            labels = data.map(d => d.hour_label);
+            downloadData = data.map(d => d.download_mb);
+            uploadData = data.map(d => d.upload_mb);
+            xAxisTitle = 'Hour';
+
+            tooltipTitleFormatter = function(context) {
+                return context[0].label;
+            };
+
+            tickFormatter = function(value, index) {
+                return this.getLabelForValue(value);
+            };
+        } else {
+            // Daily mode
+            labels = data.map(d => d.date);
+            downloadData = data.map(d => d.download_mb);
+            uploadData = data.map(d => d.upload_mb);
+            xAxisTitle = 'Date';
+
+            tooltipTitleFormatter = function(context) {
+                const date = new Date(context[0].label);
+                return date.toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric'
+                });
+            };
+
+            tickFormatter = function(value, index) {
+                const date = new Date(this.getLabelForValue(value));
+                return date.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric'
+                });
+            };
+        }
 
         networkBandwidthChart = new Chart(ctx, {
             type: 'bar',
@@ -293,14 +363,7 @@
                         mode: 'index',
                         intersect: false,
                         callbacks: {
-                            title: function(context) {
-                                const date = new Date(context[0].label);
-                                return date.toLocaleDateString('en-US', {
-                                    weekday: 'short',
-                                    month: 'short',
-                                    day: 'numeric'
-                                });
-                            },
+                            title: tooltipTitleFormatter,
                             label: function(context) {
                                 return `${context.dataset.label}: ${formatBytes(context.parsed.y)}`;
                             }
@@ -312,16 +375,10 @@
                         stacked: false,
                         title: {
                             display: true,
-                            text: 'Date'
+                            text: xAxisTitle
                         },
                         ticks: {
-                            callback: function(value, index) {
-                                const date = new Date(this.getLabelForValue(value));
-                                return date.toLocaleDateString('en-US', {
-                                    month: 'short',
-                                    day: 'numeric'
-                                });
-                            }
+                            callback: tickFormatter
                         }
                     },
                     y: {
@@ -345,9 +402,26 @@
         });
     }
 
+    // Update network bandwidth mode (hourly or daily)
+    function updateNetworkBandwidthMode(mode) {
+        currentMode = mode;
+
+        // Update button states
+        document.querySelectorAll('.interval-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.dataset.mode === mode) {
+                btn.classList.add('active');
+            }
+        });
+
+        // Load hourly chart
+        loadNetworkBandwidthHourlyChart();
+    }
+
     // Update network bandwidth days (called from button onclick)
     function updateNetworkBandwidthDays(days) {
         currentDays = days;
+        currentMode = 'daily';
 
         // Update button states
         document.querySelectorAll('.interval-btn').forEach(btn => {
@@ -365,7 +439,13 @@
     function updateAll() {
         updateDashboardStats();
         updateCollectionStatus();
-        loadNetworkBandwidthChart(currentDays);
+
+        // Load appropriate chart based on current mode
+        if (currentMode === 'hourly') {
+            loadNetworkBandwidthHourlyChart();
+        } else {
+            loadNetworkBandwidthChart(currentDays);
+        }
     }
 
     // Initial load
