@@ -821,7 +821,14 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
             today_end_local = today_start_local + timedelta(days=1)
             today_end_utc = today_end_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
 
+            # Calculate conversion factor for rate to bytes
+            # Mbps * seconds / 8 bits per byte = MB
+            interval_seconds = settings.collection_interval_devices
+            rate_to_mb = interval_seconds / 8.0
+
             # Query device connections for today
+            # Note: We still need to fetch all connections to convert timestamps to local timezone
+            # SQLite doesn't have native timezone support, so we do timezone conversion in Python
             connections = (
                 db.query(DeviceConnection)
                 .filter(
@@ -848,11 +855,9 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
 
                 # Accumulate bandwidth
                 if conn.bandwidth_down_mbps is not None:
-                    # Convert rate to MB based on collection interval (assuming 30s default)
-                    # Mbps * seconds / 8 bits per byte = MB
-                    hourly_data[hour_key]["download_mb"] += (conn.bandwidth_down_mbps * 30) / 8.0
+                    hourly_data[hour_key]["download_mb"] += conn.bandwidth_down_mbps * rate_to_mb
                 if conn.bandwidth_up_mbps is not None:
-                    hourly_data[hour_key]["upload_mb"] += (conn.bandwidth_up_mbps * 30) / 8.0
+                    hourly_data[hour_key]["upload_mb"] += conn.bandwidth_up_mbps * rate_to_mb
                 hourly_data[hour_key]["count"] += 1
 
             # Format hourly breakdown (0-23 hours)

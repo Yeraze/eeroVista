@@ -403,7 +403,12 @@ class DeviceCollector(BaseCollector):
 
         # Convert UTC timestamp to local timezone to determine which "day" this data belongs to
         # This ensures data collected at 11 PM local time goes to today's date, not tomorrow's
-        timestamp_local = timestamp.replace(tzinfo=None).replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
+        # Ensure timestamp is timezone-aware (UTC)
+        if timestamp.tzinfo is None:
+            timestamp_utc = timestamp.replace(tzinfo=ZoneInfo("UTC"))
+        else:
+            timestamp_utc = timestamp.astimezone(ZoneInfo("UTC"))
+        timestamp_local = timestamp_utc.astimezone(tz)
         today = timestamp_local.date()
 
         # Get or create daily bandwidth record

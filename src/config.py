@@ -1,11 +1,14 @@
 """Configuration management for eeroVista."""
 
+import logging
 import os
 from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -47,8 +50,12 @@ class Settings(BaseSettings):
         """Get the configured timezone as a ZoneInfo object."""
         try:
             return ZoneInfo(self.timezone)
-        except Exception:
+        except Exception as e:
             # Fallback to UTC if timezone is invalid
+            logger.warning(
+                f"Invalid timezone '{self.timezone}': {e}. Falling back to UTC. "
+                f"Use IANA timezone names (e.g., 'America/New_York', 'Europe/London')"
+            )
             return ZoneInfo("UTC")
 
     class Config:
