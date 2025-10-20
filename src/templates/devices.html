@@ -614,6 +614,7 @@
                 <div class="bandwidth-header">
                     <div class="bandwidth-title">Bandwidth Usage</div>
                     <div class="interval-selector">
+                        <button class="interval-btn" data-mode="hourly" onclick="updateBandwidthMode('${device.mac_address}', 'hourly')">Hourly</button>
                         <button class="interval-btn active" data-days="7" onclick="updateBandwidthDays('${device.mac_address}', 7)">7 Days</button>
                         <button class="interval-btn" data-days="30" onclick="updateBandwidthDays('${device.mac_address}', 30)">30 Days</button>
                     </div>
@@ -734,6 +735,7 @@
     // Bandwidth chart variables
     let bandwidthChart = null;
     let currentDays = 7;
+    let currentMode = 'daily';  // 'hourly' or 'daily'
 
     // Format bytes to human readable format
     function formatBytes(mb) {
@@ -876,6 +878,7 @@
     // Update bandwidth days (called from button onclick)
     function updateBandwidthDays(macAddress, days) {
         currentDays = days;
+        currentMode = 'daily';
 
         // Update button states
         document.querySelectorAll('.interval-btn').forEach(btn => {
@@ -887,6 +890,157 @@
 
         // Reload chart with new days
         loadBandwidthChart(macAddress, days);
+    }
+
+    // Update bandwidth mode (called from button onclick)
+    function updateBandwidthMode(macAddress, mode) {
+        currentMode = mode;
+
+        // Update button states
+        document.querySelectorAll('.interval-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.dataset.mode === mode) {
+                btn.classList.add('active');
+            }
+        });
+
+        // Load hourly chart
+        loadBandwidthHourlyChart(macAddress);
+    }
+
+    // Load and render hourly bandwidth chart for device
+    async function loadBandwidthHourlyChart(macAddress) {
+        try {
+            const response = await fetch(`/api/devices/${encodeURIComponent(macAddress)}/bandwidth-history?hours=24`);
+            const data = await response.json();
+
+            if (!data.history || data.history.length === 0) {
+                console.log('No bandwidth history available for device');
+                showNoDataMessage();
+                return;
+            }
+
+            // Aggregate data by hour
+            const hourlyData = Array(24).fill(null).map((_, hour) => ({
+                hour: hour,
+                hour_label: `${hour.toString().padStart(2, '0')}:00`,
+                download_mb: 0,
+                upload_mb: 0,
+                count: 0
+            }));
+
+            // Sum bandwidth rates for each hour (convert Mbps to MB by dividing by 8 and multiplying by collection interval)
+            // Approximate: Mbps * 60 seconds / 8 bits per byte ≈ MB per minute
+            const secondsPerDataPoint = 60; // Assume 1-minute collection intervals
+            data.history.forEach(point => {
+                const timestamp = new Date(point.timestamp);
+                const hour = timestamp.getHours();
+                if (point.download_mbps !== null && point.upload_mbps !== null) {
+                    hourlyData[hour].download_mb += (point.download_mbps * secondsPerDataPoint) / 8;
+                    hourlyData[hour].upload_mb += (point.upload_mbps * secondsPerDataPoint) / 8;
+                    hourlyData[hour].count++;
+                }
+            });
+
+            // Calculate totals
+            const totalDownload = hourlyData.reduce((sum, h) => sum + h.download_mb, 0);
+            const totalUpload = hourlyData.reduce((sum, h) => sum + h.upload_mb, 0);
+
+            // Update summary
+            document.getElementById('device-period-download').textContent = formatBytes(totalDownload);
+            document.getElementById('device-period-upload').textContent = formatBytes(totalUpload);
+
+            // Render bar chart with hourly data
+            renderBandwidthChartHourly(hourlyData);
+        } catch (error) {
+            console.error('Failed to load hourly bandwidth chart:', error);
+            showNoDataMessage();
+        }
+    }
+
+    // Render bandwidth bar chart for hourly data
+    function renderBandwidthChartHourly(hourlyData) {
+        const ctx = document.getElementById('bandwidth-chart');
+        if (!ctx) return;
+
+        // Destroy existing chart
+        if (bandwidthChart) {
+            bandwidthChart.destroy();
+        }
+
+        const labels = hourlyData.map(h => h.hour_label);
+        const downloadData = hourlyData.map(h => h.download_mb);
+        const uploadData = hourlyData.map(h => h.upload_mb);
+
+        bandwidthChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Download',
+                        data: downloadData,
+                        backgroundColor: 'rgba(30, 102, 245, 0.8)', // Catppuccin blue
+                        borderColor: 'rgb(30, 102, 245)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Upload',
+                        data: uploadData,
+                        backgroundColor: 'rgba(136, 57, 239, 0.8)', // Catppuccin mauve
+                        borderColor: 'rgb(136, 57, 239)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            title: function(context) {
+                                return context[0].label;
+                            },
+                            label: function(context) {
+                                return `${context.dataset.label}: ${formatBytes(context.parsed.y)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: false,
+                        title: {
+                            display: true,
+                            text: 'Hour'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        stacked: false,
+                        title: {
+                            display: true,
+                            text: 'Data Usage (MB)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                if (value >= 1000) {
+                                    return (value / 1000).toFixed(1) + ' GB';
+                                }
+                                return value.toFixed(0) + ' MB';
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 
     // Modal event listeners
