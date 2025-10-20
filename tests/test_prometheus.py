@@ -304,3 +304,25 @@ class TestPrometheusMetricsValues:
         update_metrics()
 
         # Node with update_available=True should have value 1.0
+
+    @patch("src.api.prometheus.get_db_context")
+    def test_device_without_connections(self, mock_db_context, db_session):
+        """Test that update_metrics handles devices without connection records."""
+        # Create a device without any connection records
+        device = Device(
+            mac_address="11:22:33:44:55:66",
+            hostname="Test-Device-No-Conn",
+            nickname="Disconnected Device",
+            device_type="laptop",
+        )
+        db_session.add(device)
+        db_session.commit()
+
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
+        # Should not raise AttributeError
+        try:
+            update_metrics()
+        except AttributeError as e:
+            pytest.fail(f"update_metrics() raised AttributeError for device without connections: {e}")
