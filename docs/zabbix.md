@@ -28,11 +28,34 @@ eeroVista provides Zabbix-compatible endpoints for:
 
 ## Zabbix Template
 
-### Import Template
+### Import Pre-Built Template (Recommended)
 
-(Template XML file coming soon: `zabbix_template_eerovista.xml`)
+A ready-to-use Zabbix template is available in the repository:
 
-**Manual Setup Steps** (until template is available):
+**File**: [`templates/zabbix_template_eerovista.xml`](https://github.com/Yeraze/eeroVista/blob/main/templates/zabbix_template_eerovista.xml)
+
+**Quick Import**:
+```bash
+# Download the template
+wget https://raw.githubusercontent.com/Yeraze/eeroVista/main/templates/zabbix_template_eerovista.xml
+
+# Then import via Zabbix web interface:
+# Configuration → Templates → Import
+```
+
+The template includes:
+- ✅ Network-wide metrics (devices, WAN status, speedtest)
+- ✅ Automatic device discovery with LLD
+- ✅ Automatic node discovery with LLD
+- ✅ Pre-configured triggers and alerts
+- ✅ Configurable thresholds via macros
+- ✅ JSON preprocessing already configured
+
+**See**: [`templates/README.md`](https://github.com/Yeraze/eeroVista/blob/main/templates/README.md) for detailed import instructions and configuration guide.
+
+### Manual Setup Steps
+
+If you prefer to configure everything manually instead of using the template:
 
 ### 1. Create Host
 
@@ -410,48 +433,21 @@ If eeroVista is being overloaded:
    - Batch discovery updates
    - Enable value caching in eeroVista (future feature)
 
-## Example Zabbix Configuration
+## Complete Zabbix Template
 
-Complete XML template (simplified):
+A complete, production-ready Zabbix template is available:
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<zabbix_export>
-  <version>6.0</version>
-  <templates>
-    <template>
-      <name>eeroVista Network Monitor</name>
-      <groups>
-        <group>
-          <name>Network Devices</name>
-        </group>
-      </groups>
-      <discovery_rules>
-        <discovery_rule>
-          <name>Device Discovery</name>
-          <type>HTTP_AGENT</type>
-          <key>eerovista.discovery.devices</key>
-          <delay>5m</delay>
-          <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/devices</url>
-          <item_prototypes>
-            <item_prototype>
-              <name>Device [{#HOSTNAME}]: Connected</name>
-              <type>HTTP_AGENT</type>
-              <key>device.connected[{#MAC}]</key>
-              <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.connected[{#MAC}]</url>
-              <preprocessing>
-                <step>
-                  <type>JSONPATH</type>
-                  <parameters>$.value</parameters>
-                </step>
-              </preprocessing>
-            </item_prototype>
-          </item_prototypes>
-        </discovery_rule>
-      </discovery_rules>
-    </template>
-  </templates>
-</zabbix_export>
-```
+**Download**: [`templates/zabbix_template_eerovista.xml`](https://github.com/Yeraze/eeroVista/blob/main/templates/zabbix_template_eerovista.xml)
 
-(Full template XML file coming soon)
+**Documentation**: [`templates/README.md`](https://github.com/Yeraze/eeroVista/blob/main/templates/README.md)
+
+The template includes:
+- All discovery rules (devices and nodes)
+- All item prototypes with proper preprocessing
+- Trigger prototypes for automated alerting
+- Configurable macros for threshold tuning
+- Proper value types and units
+- Optimized update intervals
+- 7-day history and 365-day trends
+
+Simply import the template and link it to your eeroVista host - no manual configuration needed!
