@@ -744,18 +744,23 @@ async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
 
     try:
         from datetime import timedelta, date
+        from src.config import get_settings
+        from zoneinfo import ZoneInfo
 
         with get_db_context() as db:
             from src.models.database import DailyBandwidth
 
             # Get daily bandwidth records for network-wide (device_id = NULL)
-            # Use UTC date to match UTC timestamps in database
-            today_utc = datetime.utcnow().date()
-            since_date = today_utc - timedelta(days=days - 1)
+            # Use local timezone to match how data collection stores dates
+            settings = get_settings()
+            tz = settings.get_timezone()
+            now_local = datetime.now(tz)
+            today_local = now_local.date()
+            since_date = today_local - timedelta(days=days - 1)
             daily_records = (
                 db.query(DailyBandwidth)
                 .filter(
-                    DailyBandwidth.device_id == None,
+                    DailyBandwidth.device_id.is_(None),
                     DailyBandwidth.date >= since_date
                 )
                 .order_by(DailyBandwidth.date)
@@ -769,17 +774,19 @@ async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
             # Format daily breakdown
             daily_breakdown = []
             for record in daily_records:
+                is_today = record.date == today_local
                 daily_breakdown.append({
                     "date": record.date.isoformat(),
                     "download_mb": round(record.download_mb, 2),
                     "upload_mb": round(record.upload_mb, 2),
+                    "is_incomplete": is_today,  # Today's data is still being collected
                 })
 
             return {
                 "period": {
                     "days": days,
                     "start_date": since_date.isoformat(),
-                    "end_date": today_utc.isoformat(),
+                    "end_date": today_local.isoformat(),
                 },
                 "totals": {
                     "download_mb": round(total_download, 2),
@@ -792,6 +799,180 @@ async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to get network bandwidth total: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/network/bandwidth-top-devices")
+async def get_network_bandwidth_top_devices(days: int = 7, limit: int = 5) -> Dict[str, Any]:
+    """Get top bandwidth consuming devices with daily breakdown for stacked graph.
+
+    Returns the top N devices by total bandwidth (download + upload) over the
+    specified period, plus an "Other" category for all remaining devices.
+
+    Args:
+        days: Number of days to include (default: 7, max: 90)
+        limit: Number of top devices to return (default: 5, max: 20)
+
+    Returns:
+        {
+            "period": {"days": 7, "start_date": "...", "end_date": "..."},
+            "dates": ["2025-10-14", "2025-10-15", ...],
+            "devices": [
+                {
+                    "name": "Device 1",
+                    "mac_address": "AA:BB:CC:DD:EE:FF",
+                    "type": "mobile",
+                    "total_mb": 1234.56,
+                    "daily_download": [100.5, 150.2, ...],
+                    "daily_upload": [50.1, 75.3, ...]
+                },
+                ...
+            ],
+            "other": {
+                "name": "Other Devices",
+                "device_count": 15,
+                "total_mb": 567.89,
+                "daily_download": [20.1, 30.2, ...],
+                "daily_upload": [10.5, 15.3, ...]
+            }
+        }
+    """
+    # Validate parameters
+    if days < 1 or days > 90:
+        raise HTTPException(
+            status_code=400,
+            detail="days parameter must be between 1 and 90"
+        )
+    if limit < 1 or limit > 20:
+        raise HTTPException(
+            status_code=400,
+            detail="limit parameter must be between 1 and 20"
+        )
+
+    try:
+        from datetime import timedelta
+        from sqlalchemy import func
+        from src.config import get_settings
+        from zoneinfo import ZoneInfo
+
+        with get_db_context() as db:
+            from src.models.database import DailyBandwidth, Device
+
+            # Use local timezone
+            settings = get_settings()
+            tz = settings.get_timezone()
+            now_local = datetime.now(tz)
+            today_local = now_local.date()
+            since_date = today_local - timedelta(days=days - 1)
+
+            # Generate complete date range
+            all_dates = [since_date + timedelta(days=i) for i in range(days)]
+            date_strings = [d.isoformat() for d in all_dates]
+
+            # Get top N devices by total bandwidth
+            top_devices_query = (
+                db.query(
+                    Device,
+                    func.sum(DailyBandwidth.download_mb + DailyBandwidth.upload_mb).label('total_mb')
+                )
+                .join(DailyBandwidth, Device.id == DailyBandwidth.device_id)
+                .filter(DailyBandwidth.date >= since_date)
+                .group_by(Device.id)
+                .order_by(func.sum(DailyBandwidth.download_mb + DailyBandwidth.upload_mb).desc())
+                .limit(limit)
+                .all()
+            )
+
+            top_device_ids = [device.id for device, _ in top_devices_query]
+
+            # Get daily breakdown for top devices
+            daily_data = (
+                db.query(DailyBandwidth)
+                .filter(
+                    DailyBandwidth.device_id.in_(top_device_ids),
+                    DailyBandwidth.date >= since_date
+                )
+                .all()
+            )
+
+            # Organize data by device
+            device_data_map = {}
+            for device, total_mb in top_devices_query:
+                device_name = device.nickname or device.hostname or device.mac_address
+                device_data_map[device.id] = {
+                    "name": device_name,
+                    "mac_address": device.mac_address,
+                    "type": device.device_type or "unknown",
+                    "total_mb": round(total_mb, 2),
+                    "daily_download": [0.0] * days,
+                    "daily_upload": [0.0] * days,
+                }
+
+            # Fill in daily values
+            for record in daily_data:
+                if record.device_id in device_data_map:
+                    date_index = (record.date - since_date).days
+                    if 0 <= date_index < days:
+                        device_data_map[record.device_id]["daily_download"][date_index] = round(record.download_mb, 2)
+                        device_data_map[record.device_id]["daily_upload"][date_index] = round(record.upload_mb, 2)
+
+            # Get "Other" devices data
+            other_daily_data = (
+                db.query(
+                    DailyBandwidth.date,
+                    func.sum(DailyBandwidth.download_mb).label('download'),
+                    func.sum(DailyBandwidth.upload_mb).label('upload')
+                )
+                .filter(
+                    DailyBandwidth.device_id.notin_(top_device_ids) if top_device_ids else True,
+                    DailyBandwidth.device_id.isnot(None),  # Exclude network-wide totals
+                    DailyBandwidth.date >= since_date
+                )
+                .group_by(DailyBandwidth.date)
+                .all()
+            )
+
+            other_download = [0.0] * days
+            other_upload = [0.0] * days
+            other_total = 0.0
+
+            for record_date, download, upload in other_daily_data:
+                date_index = (record_date - since_date).days
+                if 0 <= date_index < days:
+                    other_download[date_index] = round(download, 2)
+                    other_upload[date_index] = round(upload, 2)
+                    other_total += download + upload
+
+            # Count other devices
+            other_device_count = (
+                db.query(func.count(func.distinct(DailyBandwidth.device_id)))
+                .filter(
+                    DailyBandwidth.device_id.notin_(top_device_ids) if top_device_ids else True,
+                    DailyBandwidth.device_id.isnot(None),
+                    DailyBandwidth.date >= since_date
+                )
+                .scalar() or 0
+            )
+
+            return {
+                "period": {
+                    "days": days,
+                    "start_date": since_date.isoformat(),
+                    "end_date": today_local.isoformat(),
+                },
+                "dates": date_strings,
+                "devices": list(device_data_map.values()),
+                "other": {
+                    "name": "Other Devices",
+                    "device_count": other_device_count,
+                    "total_mb": round(other_total, 2),
+                    "daily_download": other_download,
+                    "daily_upload": other_upload,
+                }
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to get top bandwidth devices: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve bandwidth data")
 
 
 @router.get("/network/bandwidth-hourly")

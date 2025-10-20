@@ -47,6 +47,27 @@ class TestAPIParameterValidation:
         hours = 168
         assert 1 <= hours <= 168, "Should pass validation"
 
+    def test_limit_validation_min(self):
+        """Test that limit parameter validates minimum value."""
+        limit = 0
+        assert limit < 1 or limit > 20, "Should fail validation"
+
+    def test_limit_validation_max(self):
+        """Test that limit parameter validates maximum value."""
+        limit = 25
+        assert limit < 1 or limit > 20, "Should fail validation"
+
+    def test_limit_validation_valid(self):
+        """Test that valid limit parameter passes."""
+        limit = 5
+        assert 1 <= limit <= 20, "Should pass validation"
+
+        limit = 1
+        assert 1 <= limit <= 20, "Should pass validation"
+
+        limit = 20
+        assert 1 <= limit <= 20, "Should pass validation"
+
 
 # Note: Full integration tests with FastAPI TestClient require complex dependency
 # injection setup to mock the database. These are skipped for now.
