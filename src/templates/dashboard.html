@@ -87,6 +87,14 @@
     </div>
 </div>
 
+<!-- Top Bandwidth Consumers Section -->
+<div class="card">
+    <h2 style="margin-bottom: 1rem; color: var(--text);">Top Bandwidth Consumers</h2>
+    <div style="height: 350px; position: relative;">
+        <canvas id="top-devices-chart"></canvas>
+    </div>
+</div>
+
 <style>
     .interval-btn {
         padding: 0.25rem 0.75rem;
@@ -188,6 +196,9 @@
     let networkBandwidthChart = null;
     let currentDays = 7;
     let currentMode = 'daily';  // 'hourly' or 'daily'
+
+    // Top devices chart variable
+    let topDevicesChart = null;
 
     // Format bytes to human readable format
     function formatBytes(mb) {
@@ -447,8 +458,158 @@
             }
         });
 
-        // Reload chart with new days
+        // Reload charts with new days
         loadNetworkBandwidthChart(days);
+        loadTopDevicesChart();
+    }
+
+    // Load top bandwidth consuming devices
+    async function loadTopDevicesChart() {
+        try {
+            const response = await fetch(`/api/network/bandwidth-top-devices?days=${currentDays}&limit=5`);
+            const data = await response.json();
+
+            if (data && data.devices && data.devices.length > 0) {
+                renderTopDevicesChart(data);
+            }
+        } catch (error) {
+            console.error('Failed to load top devices bandwidth:', error);
+        }
+    }
+
+    // Render stacked bar chart for top devices
+    function renderTopDevicesChart(data) {
+        const ctx = document.getElementById('top-devices-chart');
+        if (!ctx) return;
+
+        // Destroy existing chart
+        if (topDevicesChart) {
+            topDevicesChart.destroy();
+        }
+
+        // Define color palette for devices (Catppuccin Latte colors)
+        const colorPalette = [
+            'rgba(30, 102, 245, 0.8)',   // Blue
+            'rgba(136, 57, 239, 0.8)',   // Mauve
+            'rgba(23, 146, 153, 0.8)',   // Teal
+            'rgba(64, 160, 43, 0.8)',    // Green
+            'rgba(223, 142, 29, 0.8)',   // Yellow
+            'rgba(220, 138, 120, 0.8)'   // Rosewater (for "Other")
+        ];
+
+        // Create datasets for each device (stacked)
+        const datasets = [];
+
+        // Add each device as a separate dataset
+        data.devices.forEach((device, index) => {
+            const totalData = device.daily_download.map((download, i) =>
+                download + device.daily_upload[i]
+            );
+            datasets.push({
+                label: device.name,
+                data: totalData,
+                backgroundColor: colorPalette[index % colorPalette.length],
+                borderColor: colorPalette[index % colorPalette.length].replace('0.8', '1'),
+                borderWidth: 1
+            });
+        });
+
+        // Add "Other" category
+        if (data.other && data.other.total_mb > 0) {
+            const otherTotal = data.other.daily_download.map((download, i) =>
+                download + data.other.daily_upload[i]
+            );
+            const otherLabel = `Other (${data.other.device_count} devices)`;
+            datasets.push({
+                label: otherLabel,
+                data: otherTotal,
+                backgroundColor: colorPalette[colorPalette.length - 1],
+                borderColor: colorPalette[colorPalette.length - 1].replace('0.8', '1'),
+                borderWidth: 1
+            });
+        }
+
+        // Format labels
+        const labels = data.dates.map(dateStr => {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric'
+            });
+        });
+
+        topDevicesChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 10
+                        }
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            title: function(context) {
+                                const date = new Date(data.dates[context[0].dataIndex]);
+                                return date.toLocaleDateString('en-US', {
+                                    weekday: 'short',
+                                    month: 'short',
+                                    day: 'numeric'
+                                });
+                            },
+                            label: function(context) {
+                                const value = context.parsed.y;
+                                return `${context.dataset.label}: ${formatBytes(value)}`;
+                            },
+                            footer: function(context) {
+                                const total = context.reduce((sum, item) => sum + item.parsed.y, 0);
+                                return `Total: ${formatBytes(total)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        }
+                    },
+                    y: {
+                        stacked: true,
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Total Usage (MB)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                if (value >= 1000) {
+                                    return (value / 1000).toFixed(1) + ' GB';
+                                }
+                                return value.toFixed(0) + ' MB';
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 
     // Update all data
@@ -462,6 +623,9 @@
         } else {
             loadNetworkBandwidthChart(currentDays);
         }
+
+        // Load top devices chart
+        loadTopDevicesChart();
     }
 
     // Initial load
