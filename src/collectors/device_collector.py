@@ -174,8 +174,17 @@ class DeviceCollector(BaseCollector):
                             reboot_str = last_reboot.replace('Z', '+00:00')
                             # Use Python 3.7+ built-in fromisoformat
                             reboot_time = datetime.fromisoformat(reboot_str)
-                            current_time = datetime.now(reboot_time.tzinfo) if reboot_time.tzinfo else datetime.utcnow()
-                            uptime_seconds = int((current_time - reboot_time).total_seconds())
+                            # Always use UTC for consistency with database timestamps
+                            if reboot_time.tzinfo:
+                                # Convert to UTC if timezone-aware
+                                from datetime import timezone
+                                current_time = datetime.now(timezone.utc)
+                                reboot_time_utc = reboot_time.astimezone(timezone.utc)
+                                uptime_seconds = int((current_time - reboot_time_utc).total_seconds())
+                            else:
+                                # If no timezone, assume UTC
+                                current_time = datetime.utcnow()
+                                uptime_seconds = int((current_time - reboot_time).total_seconds())
                     except Exception as e:
                         logger.debug(f"Could not parse last_reboot time: {e}")
 
@@ -371,7 +380,8 @@ class DeviceCollector(BaseCollector):
         if bandwidth_down_mbps is None or bandwidth_up_mbps is None:
             return
 
-        today = date.today()
+        # Use UTC date to match UTC timestamps stored in database
+        today = datetime.utcnow().date()
 
         # Get or create daily bandwidth record
         bandwidth_record = (

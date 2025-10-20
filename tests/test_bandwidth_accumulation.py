@@ -49,7 +49,8 @@ class TestBandwidthAccumulation:
 
     def test_skip_accumulation_when_bandwidth_is_none(self, device_collector, db_session):
         """Test that accumulation is skipped when bandwidth values are None."""
-        today = date.today()
+        # Use UTC date to match production code
+        today = datetime.utcnow().date()
         timestamp = datetime.utcnow()
 
         # Call with None values
@@ -85,7 +86,8 @@ class TestBandwidthAccumulation:
 
     def test_handle_zero_bandwidth(self, device_collector, db_session):
         """Test that zero bandwidth values are handled correctly."""
-        today = date.today()
+        # Use UTC date to match production code
+        today = datetime.utcnow().date()
         timestamp1 = datetime.utcnow()
 
         # First collection with zero bandwidth
@@ -124,7 +126,8 @@ class TestBandwidthAccumulation:
     def test_daily_rollover(self, device_collector, db_session):
         """Test that new records are created for new days."""
         # Create record for today
-        today = date.today()
+        # Use UTC date to match production code
+        today = datetime.utcnow().date()
         timestamp_today = datetime.combine(today, datetime.min.time())
 
         device_collector._update_bandwidth_accumulation(
@@ -165,7 +168,8 @@ class TestBandwidthAccumulation:
         db_session.add(device)
         db_session.commit()
 
-        today = date.today()
+        # Use UTC date to match production code
+        today = datetime.utcnow().date()
         timestamp1 = datetime.utcnow()
 
         # Track device bandwidth
@@ -204,7 +208,8 @@ class TestBandwidthAccumulation:
 
     def test_multiple_accumulations_same_day(self, device_collector, db_session):
         """Test that multiple accumulations on the same day are added together."""
-        today = date.today()
+        # Use UTC date to match production code
+        today = datetime.utcnow().date()
         base_time = datetime.utcnow()
 
         # First accumulation
