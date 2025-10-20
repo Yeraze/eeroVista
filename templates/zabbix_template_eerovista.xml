@@ -49,11 +49,12 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <trends>365d</trends>
                     <value_type>FLOAT</value_type>
                     <description>Total number of devices known to the network</description>
-                    <applications>
-                        <application>
-                            <name>Network</name>
-                        </application>
-                    </applications>
+                    <tags>
+                        <tag>
+                            <tag>component</tag>
+                            <value>network</value>
+                        </tag>
+                    </tags>
                     <preprocessing>
                         <step>
                             <type>JSONPATH</type>
@@ -74,11 +75,12 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <trends>365d</trends>
                     <value_type>FLOAT</value_type>
                     <description>Number of currently connected/online devices</description>
-                    <applications>
-                        <application>
-                            <name>Network</name>
-                        </application>
-                    </applications>
+                    <tags>
+                        <tag>
+                            <tag>component</tag>
+                            <value>network</value>
+                        </tag>
+                    </tags>
                     <preprocessing>
                         <step>
                             <type>JSONPATH</type>
@@ -99,11 +101,12 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <trends>365d</trends>
                     <value_type>FLOAT</value_type>
                     <description>WAN/Internet connection status (1=online, 0=offline)</description>
-                    <applications>
-                        <application>
-                            <name>Network</name>
-                        </application>
-                    </applications>
+                    <tags>
+                        <tag>
+                            <tag>component</tag>
+                            <value>network</value>
+                        </tag>
+                    </tags>
                     <preprocessing>
                         <step>
                             <type>JSONPATH</type>
@@ -134,11 +137,12 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <value_type>FLOAT</value_type>
                     <units>Mbps</units>
                     <description>Latest speedtest download speed in Mbps</description>
-                    <applications>
-                        <application>
-                            <name>Speedtest</name>
-                        </application>
-                    </applications>
+                    <tags>
+                        <tag>
+                            <tag>component</tag>
+                            <value>speedtest</value>
+                        </tag>
+                    </tags>
                     <preprocessing>
                         <step>
                             <type>JSONPATH</type>
@@ -169,11 +173,12 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <value_type>FLOAT</value_type>
                     <units>Mbps</units>
                     <description>Latest speedtest upload speed in Mbps</description>
-                    <applications>
-                        <application>
-                            <name>Speedtest</name>
-                        </application>
-                    </applications>
+                    <tags>
+                        <tag>
+                            <tag>component</tag>
+                            <value>speedtest</value>
+                        </tag>
+                    </tags>
                     <preprocessing>
                         <step>
                             <type>JSONPATH</type>
@@ -195,11 +200,12 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <value_type>FLOAT</value_type>
                     <units>ms</units>
                     <description>Latest speedtest latency/ping in milliseconds</description>
-                    <applications>
-                        <application>
-                            <name>Speedtest</name>
-                        </application>
-                    </applications>
+                    <tags>
+                        <tag>
+                            <tag>component</tag>
+                            <value>speedtest</value>
+                        </tag>
+                    </tags>
                     <preprocessing>
                         <step>
                             <type>JSONPATH</type>
@@ -240,11 +246,12 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <trends>365d</trends>
                             <value_type>FLOAT</value_type>
                             <description>Connection status for device {#HOSTNAME} (1=online, 0=offline)</description>
-                            <applications>
-                                <application>
-                                    <name>Devices</name>
-                                </application>
-                            </applications>
+                            <tags>
+                                <tag>
+                                    <tag>component</tag>
+                                    <value>device</value>
+                                </tag>
+                            </tags>
                             <preprocessing>
                                 <step>
                                     <type>JSONPATH</type>
@@ -266,11 +273,12 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <value_type>FLOAT</value_type>
                             <units>dBm</units>
                             <description>WiFi signal strength for device {#HOSTNAME} in dBm</description>
-                            <applications>
-                                <application>
-                                    <name>Devices</name>
-                                </application>
-                            </applications>
+                            <tags>
+                                <tag>
+                                    <tag>component</tag>
+                                    <value>device</value>
+                                </tag>
+                            </tags>
                             <preprocessing>
                                 <step>
                                     <type>JSONPATH</type>
@@ -292,11 +300,12 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <value_type>FLOAT</value_type>
                             <units>Mbps</units>
                             <description>Current download bandwidth for device {#HOSTNAME}</description>
-                            <applications>
-                                <application>
-                                    <name>Devices</name>
-                                </application>
-                            </applications>
+                            <tags>
+                                <tag>
+                                    <tag>component</tag>
+                                    <value>device</value>
+                                </tag>
+                            </tags>
                             <preprocessing>
                                 <step>
                                     <type>JSONPATH</type>
@@ -318,11 +327,12 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <value_type>FLOAT</value_type>
                             <units>Mbps</units>
                             <description>Current upload bandwidth for device {#HOSTNAME}</description>
-                            <applications>
-                                <application>
-                                    <name>Devices</name>
-                                </application>
-                            </applications>
+                            <tags>
+                                <tag>
+                                    <tag>component</tag>
+                                    <value>device</value>
+                                </tag>
+                            </tags>
                             <preprocessing>
                                 <step>
                                     <type>JSONPATH</type>
@@ -378,11 +388,12 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <trends>365d</trends>
                             <value_type>FLOAT</value_type>
                             <description>Status for Eero node {#NODE_NAME} (1=online, 0=offline)</description>
-                            <applications>
-                                <application>
-                                    <name>Nodes</name>
-                                </application>
-                            </applications>
+                            <tags>
+                                <tag>
+                                    <tag>component</tag>
+                                    <value>node</value>
+                                </tag>
+                            </tags>
                             <preprocessing>
                                 <step>
                                     <type>JSONPATH</type>
@@ -403,11 +414,12 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <trends>365d</trends>
                             <value_type>FLOAT</value_type>
                             <description>Number of devices connected to node {#NODE_NAME}</description>
-                            <applications>
-                                <application>
-                                    <name>Nodes</name>
-                                </application>
-                            </applications>
+                            <tags>
+                                <tag>
+                                    <tag>component</tag>
+                                    <value>node</value>
+                                </tag>
+                            </tags>
                             <preprocessing>
                                 <step>
                                     <type>JSONPATH</type>
@@ -428,11 +440,12 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <trends>365d</trends>
                             <value_type>FLOAT</value_type>
                             <description>Mesh quality for node {#NODE_NAME} (1-5 bars)</description>
-                            <applications>
-                                <application>
-                                    <name>Nodes</name>
-                                </application>
-                            </applications>
+                            <tags>
+                                <tag>
+                                    <tag>component</tag>
+                                    <value>node</value>
+                                </tag>
+                            </tags>
                             <preprocessing>
                                 <step>
                                     <type>JSONPATH</type>
