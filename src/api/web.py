@@ -44,6 +44,10 @@ async def dashboard(
     networks = client.get_networks()
     network_name = networks[0].name if networks else "Unknown"
 
+    # Get collection intervals from settings
+    from src.config import get_settings
+    settings = get_settings()
+
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -51,6 +55,8 @@ async def dashboard(
             "network_name": network_name,
             "authenticated": True,
             "version": __version__,
+            "collection_interval_devices": settings.collection_interval_devices,
+            "collection_interval_network": settings.collection_interval_network,
         },
     )
 
@@ -93,17 +99,17 @@ async def network_page(
     )
 
 
-@router.get("/speedtest", response_class=HTMLResponse)
-async def speedtest_page(
+@router.get("/nodes", response_class=HTMLResponse)
+async def nodes_page(
     request: Request,
     client: EeroClientWrapper = Depends(get_eero_client),
 ):
-    """Speedtest history page."""
+    """Eero nodes page."""
     if not client.is_authenticated():
         return RedirectResponse(url="/setup", status_code=302)
 
     return templates.TemplateResponse(
-        "speedtest.html",
+        "nodes.html",
         {
             "request": request,
             "authenticated": True,

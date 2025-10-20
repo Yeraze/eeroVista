@@ -41,14 +41,18 @@ class NetworkCollector(BaseCollector):
                 logger.warning(f"Network client for '{network.name}' not found")
                 return {"items_collected": 0, "errors": 1}
 
-            # Get full network details
+            # Get full network details (returns a dict)
             network_details = network_client.networks
 
             # Check guest network status
-            guest_enabled = network_details.guest_network.enabled if hasattr(network_details, 'guest_network') else False
+            guest_network = network_details.get('guest_network', {})
+            guest_enabled = guest_network.get('enabled', False) if isinstance(guest_network, dict) else False
 
-            # WAN status
-            wan_status = network_details.status if hasattr(network_details, 'status') else "unknown"
+            # WAN status - access from dict
+            raw_status = network_details.get('status', 'unknown')
+
+            wan_status = self._map_wan_status(raw_status)
+            logger.info(f"WAN status: {raw_status} -> {wan_status}")
 
             # Create network metric record
             metric = NetworkMetric(
@@ -71,3 +75,13 @@ class NetworkCollector(BaseCollector):
         except Exception as e:
             self.db.rollback()
             raise
+
+    def _map_wan_status(self, status: str) -> str:
+        """Map eero API WAN status to our status format."""
+        status_lower = status.lower()
+        if status_lower == "connected":
+            return "online"
+        elif status_lower == "disconnected":
+            return "offline"
+        else:
+            return "unknown"

@@ -127,6 +127,9 @@ async def dashboard_stats() -> Dict[str, Any]:
             # Count eero nodes
             eero_count = db.query(EeroNode).count()
 
+            # Check if any node has updates available
+            updates_available = db.query(EeroNode).filter(EeroNode.update_available == True).count() > 0
+
             if latest_metric:
                 return {
                     "devices_online": latest_metric.total_devices_online or 0,
@@ -134,6 +137,7 @@ async def dashboard_stats() -> Dict[str, Any]:
                     "eero_nodes": eero_count,
                     "wan_status": latest_metric.wan_status or "unknown",
                     "guest_network_enabled": latest_metric.guest_network_enabled or False,
+                    "updates_available": updates_available,
                     "last_update": latest_metric.timestamp.isoformat(),
                 }
             else:
@@ -144,6 +148,7 @@ async def dashboard_stats() -> Dict[str, Any]:
                     "eero_nodes": eero_count,
                     "wan_status": "unknown",
                     "guest_network_enabled": False,
+                    "updates_available": updates_available,
                     "last_update": None,
                 }
 
@@ -352,6 +357,63 @@ async def get_devices() -> Dict[str, Any]:
         logger.error(f"Failed to get devices: {e}")
         return {
             "devices": [],
+            "total": 0,
+            "error": str(e),
+        }
+
+
+@router.get("/nodes")
+async def get_nodes() -> Dict[str, Any]:
+    """Get list of all eero nodes (mesh network devices)."""
+    try:
+        with get_db_context() as db:
+            from src.models.database import EeroNode, EeroNodeMetric
+
+            nodes_list = []
+            nodes = db.query(EeroNode).all()
+
+            for node in nodes:
+                # Get most recent metrics
+                latest_metric = (
+                    db.query(EeroNodeMetric)
+                    .filter(EeroNodeMetric.eero_node_id == node.id)
+                    .order_by(EeroNodeMetric.timestamp.desc())
+                    .first()
+                )
+
+                status = "unknown"
+                connected_devices = 0
+                uptime = None
+
+                if latest_metric:
+                    status = latest_metric.status or "unknown"
+                    connected_devices = latest_metric.connected_device_count or 0
+                    uptime = latest_metric.uptime_seconds
+
+                nodes_list.append({
+                    "eero_id": node.eero_id,
+                    "location": node.location,
+                    "model": node.model,
+                    "os_version": node.os_version,
+                    "update_available": node.update_available or False,
+                    "mac_address": node.mac_address,
+                    "is_gateway": node.is_gateway or False,
+                    "status": status,
+                    "connected_devices": connected_devices,
+                    "uptime": uptime,
+                    "last_seen": node.last_seen.isoformat() if node.last_seen else None,
+                    "created_at": node.created_at.isoformat() if node.created_at else None,
+                })
+
+            return {
+                "nodes": nodes_list,
+                "total": len(nodes_list),
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to get nodes: {e}")
+        return {
+            "nodes": [],
             "total": 0,
             "error": str(e),
         }
