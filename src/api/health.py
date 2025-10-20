@@ -661,7 +661,9 @@ async def get_device_bandwidth_total(
                 raise HTTPException(status_code=404, detail="Device not found")
 
             # Get daily bandwidth records
-            since_date = date.today() - timedelta(days=days - 1)
+            # Use UTC date to match UTC timestamps in database
+            today_utc = datetime.utcnow().date()
+            since_date = today_utc - timedelta(days=days - 1)
             daily_records = (
                 db.query(DailyBandwidth)
                 .filter(
@@ -693,7 +695,7 @@ async def get_device_bandwidth_total(
                 "period": {
                     "days": days,
                     "start_date": since_date.isoformat(),
-                    "end_date": date.today().isoformat(),
+                    "end_date": today_utc.isoformat(),
                 },
                 "totals": {
                     "download_mb": round(total_download, 2),
@@ -734,7 +736,9 @@ async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
             from src.models.database import DailyBandwidth
 
             # Get daily bandwidth records for network-wide (device_id = NULL)
-            since_date = date.today() - timedelta(days=days - 1)
+            # Use UTC date to match UTC timestamps in database
+            today_utc = datetime.utcnow().date()
+            since_date = today_utc - timedelta(days=days - 1)
             daily_records = (
                 db.query(DailyBandwidth)
                 .filter(
@@ -762,7 +766,7 @@ async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
                 "period": {
                     "days": days,
                     "start_date": since_date.isoformat(),
-                    "end_date": date.today().isoformat(),
+                    "end_date": today_utc.isoformat(),
                 },
                 "totals": {
                     "download_mb": round(total_download, 2),

@@ -49,7 +49,8 @@ class TestBandwidthAccumulation:
 
     def test_skip_accumulation_when_bandwidth_is_none(self, device_collector, db_session):
         """Test that accumulation is skipped when bandwidth values are None."""
-        today = date.today()
+        # Use UTC date to match production code
+        today = datetime.utcnow().date()
         timestamp = datetime.utcnow()
 
         # Call with None values
@@ -85,7 +86,8 @@ class TestBandwidthAccumulation:
 
     def test_handle_zero_bandwidth(self, device_collector, db_session):
         """Test that zero bandwidth values are handled correctly."""
-        today = date.today()
+        # Use UTC date to match production code
+        today = datetime.utcnow().date()
         timestamp1 = datetime.utcnow()
 
         # First collection with zero bandwidth
@@ -124,8 +126,10 @@ class TestBandwidthAccumulation:
     def test_daily_rollover(self, device_collector, db_session):
         """Test that new records are created for new days."""
         # Create record for today
-        today = date.today()
-        timestamp_today = datetime.combine(today, datetime.min.time())
+        # Use UTC date to match production code
+        base_time = datetime.utcnow()
+        today = base_time.date()
+        timestamp_today = base_time
 
         device_collector._update_bandwidth_accumulation(
             device_id=None,
@@ -134,23 +138,43 @@ class TestBandwidthAccumulation:
             timestamp=timestamp_today,
         )
 
-        # Simulate next day
+        # Simulate next day - we need to mock datetime.utcnow() to return tomorrow
         tomorrow = today + timedelta(days=1)
-        with patch("src.collectors.device_collector.date") as mock_date:
-            mock_date.today.return_value = tomorrow
-            timestamp_tomorrow = datetime.combine(tomorrow, datetime.min.time())
+        tomorrow_time = base_time + timedelta(days=1)
 
+        # Create a mock datetime class that returns tomorrow for utcnow()
+        class MockDatetime:
+            @staticmethod
+            def utcnow():
+                return tomorrow_time
+
+            @staticmethod
+            def combine(*args, **kwargs):
+                return datetime.combine(*args, **kwargs)
+
+            @staticmethod
+            def fromisoformat(*args, **kwargs):
+                return datetime.fromisoformat(*args, **kwargs)
+
+            @staticmethod
+            def now(*args, **kwargs):
+                return datetime.now(*args, **kwargs)
+
+            min = datetime.min
+            max = datetime.max
+
+        with patch("src.collectors.device_collector.datetime", MockDatetime):
             device_collector._update_bandwidth_accumulation(
                 device_id=None,
                 bandwidth_down_mbps=10.0,
                 bandwidth_up_mbps=5.0,
-                timestamp=timestamp_tomorrow,
+                timestamp=tomorrow_time,
             )
 
         # Should have two separate records
         records = db_session.query(DailyBandwidth).filter(
             DailyBandwidth.device_id == None
-        ).all()
+        ).order_by(DailyBandwidth.date).all()
         assert len(records) == 2
         assert records[0].date == today
         assert records[1].date == tomorrow
@@ -165,7 +189,8 @@ class TestBandwidthAccumulation:
         db_session.add(device)
         db_session.commit()
 
-        today = date.today()
+        # Use UTC date to match production code
+        today = datetime.utcnow().date()
         timestamp1 = datetime.utcnow()
 
         # Track device bandwidth
@@ -204,7 +229,8 @@ class TestBandwidthAccumulation:
 
     def test_multiple_accumulations_same_day(self, device_collector, db_session):
         """Test that multiple accumulations on the same day are added together."""
-        today = date.today()
+        # Use UTC date to match production code
+        today = datetime.utcnow().date()
         base_time = datetime.utcnow()
 
         # First accumulation
