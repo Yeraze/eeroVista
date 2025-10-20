@@ -12,7 +12,7 @@ from src import __version__
 # IMPORTANT: Apply eero-client patch before any imports that use eero
 from src.utils.eero_patch import patch_eero_client  # noqa: F401
 
-from src.api import health, setup, web
+from src.api import health, prometheus, setup, web, zabbix
 from src.config import ensure_data_directory, get_settings
 from src.scheduler.jobs import get_scheduler
 from src.utils.database import init_database
@@ -67,11 +67,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(web.router)
 app.include_router(setup.router)
 app.include_router(health.router)
-
-# TODO: Include additional routers
-# app.include_router(prometheus.router)
-# app.include_router(zabbix.router)
-# app.include_router(devices_api.router)
+app.include_router(prometheus.router)
+app.include_router(zabbix.router)
 
 
 @app.get("/favicon.ico")

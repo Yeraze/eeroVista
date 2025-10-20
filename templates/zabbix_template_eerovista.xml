@@ -1,0 +1,495 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<zabbix_export>
+    <version>6.0</version>
+    <date>2025-10-20T12:00:00Z</date>
+    <groups>
+        <group>
+            <uuid>7df96b18c230490a9a0a9e2307226338</uuid>
+            <name>Templates/Network devices</name>
+        </group>
+    </groups>
+    <templates>
+        <template>
+            <uuid>d5e52d5d3f3f4f8a8e5e4c3b2a1f0e9d</uuid>
+            <template>eeroVista Network Monitor</template>
+            <name>eeroVista Network Monitor</name>
+            <description>Template for monitoring Eero mesh networks via eeroVista API.
+
+Features:
+- Network-wide metrics (total/online devices, WAN status)
+- Per-device monitoring with Low-Level Discovery
+- Per-node monitoring with Low-Level Discovery
+- Speedtest metrics
+- Automatic trigger generation for offline devices and weak signals
+
+Requirements:
+- eeroVista instance running and accessible
+- HTTP agent connectivity from Zabbix server to eeroVista
+
+Configuration:
+1. Create a host for your eeroVista instance
+2. Set interface to HTTP agent
+3. Set {$EEROVISTA_PORT} macro (default: 8080)
+4. Link this template to the host
+
+Documentation: https://github.com/Yeraze/eeroVista</description>
+            <groups>
+                <group>
+                    <name>Templates/Network devices</name>
+                </group>
+            </groups>
+            <items>
+                <item>
+                    <uuid>a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6</uuid>
+                    <name>Network: Total Devices</name>
+                    <type>HTTP_AGENT</type>
+                    <key>network.devices.total</key>
+                    <delay>1m</delay>
+                    <history>7d</history>
+                    <trends>365d</trends>
+                    <value_type>FLOAT</value_type>
+                    <description>Total number of devices known to the network</description>
+                    <applications>
+                        <application>
+                            <name>Network</name>
+                        </application>
+                    </applications>
+                    <preprocessing>
+                        <step>
+                            <type>JSONPATH</type>
+                            <parameters>
+                                <parameter>$.value</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=network.devices.total</url>
+                </item>
+                <item>
+                    <uuid>b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7</uuid>
+                    <name>Network: Online Devices</name>
+                    <type>HTTP_AGENT</type>
+                    <key>network.devices.online</key>
+                    <delay>1m</delay>
+                    <history>7d</history>
+                    <trends>365d</trends>
+                    <value_type>FLOAT</value_type>
+                    <description>Number of currently connected/online devices</description>
+                    <applications>
+                        <application>
+                            <name>Network</name>
+                        </application>
+                    </applications>
+                    <preprocessing>
+                        <step>
+                            <type>JSONPATH</type>
+                            <parameters>
+                                <parameter>$.value</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=network.devices.online</url>
+                </item>
+                <item>
+                    <uuid>c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8</uuid>
+                    <name>Network: WAN Status</name>
+                    <type>HTTP_AGENT</type>
+                    <key>network.status</key>
+                    <delay>1m</delay>
+                    <history>7d</history>
+                    <trends>365d</trends>
+                    <value_type>FLOAT</value_type>
+                    <description>WAN/Internet connection status (1=online, 0=offline)</description>
+                    <applications>
+                        <application>
+                            <name>Network</name>
+                        </application>
+                    </applications>
+                    <preprocessing>
+                        <step>
+                            <type>JSONPATH</type>
+                            <parameters>
+                                <parameter>$.value</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=network.status</url>
+                    <triggers>
+                        <trigger>
+                            <uuid>t1r2i3g4g5e6r7w8a9n0s1t2a3t4u5s6</uuid>
+                            <expression>last(/eeroVista Network Monitor/network.status)=0</expression>
+                            <name>Network WAN is offline</name>
+                            <priority>DISASTER</priority>
+                            <description>The WAN/Internet connection is offline</description>
+                        </trigger>
+                    </triggers>
+                </item>
+                <item>
+                    <uuid>d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9</uuid>
+                    <name>Speedtest: Download Speed</name>
+                    <type>HTTP_AGENT</type>
+                    <key>speedtest.download</key>
+                    <delay>5m</delay>
+                    <history>30d</history>
+                    <trends>365d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>Mbps</units>
+                    <description>Latest speedtest download speed in Mbps</description>
+                    <applications>
+                        <application>
+                            <name>Speedtest</name>
+                        </application>
+                    </applications>
+                    <preprocessing>
+                        <step>
+                            <type>JSONPATH</type>
+                            <parameters>
+                                <parameter>$.value</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=speedtest.download</url>
+                    <triggers>
+                        <trigger>
+                            <uuid>t2r3i4g5g6e7r8s9p0e1e2d3d4o5w6n7</uuid>
+                            <expression>last(/eeroVista Network Monitor/speedtest.download)&lt;{$SPEED_WARN}</expression>
+                            <name>Internet speed is slow (download &lt; {$SPEED_WARN} Mbps)</name>
+                            <priority>WARNING</priority>
+                            <description>Download speed has dropped below warning threshold</description>
+                        </trigger>
+                    </triggers>
+                </item>
+                <item>
+                    <uuid>e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0</uuid>
+                    <name>Speedtest: Upload Speed</name>
+                    <type>HTTP_AGENT</type>
+                    <key>speedtest.upload</key>
+                    <delay>5m</delay>
+                    <history>30d</history>
+                    <trends>365d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>Mbps</units>
+                    <description>Latest speedtest upload speed in Mbps</description>
+                    <applications>
+                        <application>
+                            <name>Speedtest</name>
+                        </application>
+                    </applications>
+                    <preprocessing>
+                        <step>
+                            <type>JSONPATH</type>
+                            <parameters>
+                                <parameter>$.value</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=speedtest.upload</url>
+                </item>
+                <item>
+                    <uuid>f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1</uuid>
+                    <name>Speedtest: Latency</name>
+                    <type>HTTP_AGENT</type>
+                    <key>speedtest.latency</key>
+                    <delay>5m</delay>
+                    <history>30d</history>
+                    <trends>365d</trends>
+                    <value_type>FLOAT</value_type>
+                    <units>ms</units>
+                    <description>Latest speedtest latency/ping in milliseconds</description>
+                    <applications>
+                        <application>
+                            <name>Speedtest</name>
+                        </application>
+                    </applications>
+                    <preprocessing>
+                        <step>
+                            <type>JSONPATH</type>
+                            <parameters>
+                                <parameter>$.value</parameter>
+                            </parameters>
+                        </step>
+                    </preprocessing>
+                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=speedtest.latency</url>
+                    <triggers>
+                        <trigger>
+                            <uuid>t3r4i5g6g7e8r9l0a1t2e3n4c5y6h7i8</uuid>
+                            <expression>last(/eeroVista Network Monitor/speedtest.latency)&gt;{$LATENCY_WARN}</expression>
+                            <name>Internet latency is high (&gt; {$LATENCY_WARN} ms)</name>
+                            <priority>WARNING</priority>
+                            <description>Network latency has exceeded warning threshold</description>
+                        </trigger>
+                    </triggers>
+                </item>
+            </items>
+            <discovery_rules>
+                <discovery_rule>
+                    <uuid>dr1d2i3s4c5o6v7e8r9y0d1e2v3i4c5e</uuid>
+                    <name>Device Discovery</name>
+                    <type>HTTP_AGENT</type>
+                    <key>eerovista.discovery.devices</key>
+                    <delay>5m</delay>
+                    <lifetime>7d</lifetime>
+                    <description>Discovers all devices on the Eero network</description>
+                    <item_prototypes>
+                        <item_prototype>
+                            <uuid>ip1d2e3v4i5c6e7c8o9n0n1e2c3t4e5d</uuid>
+                            <name>Device [{#HOSTNAME}]: Connected</name>
+                            <type>HTTP_AGENT</type>
+                            <key>device.connected[{#MAC}]</key>
+                            <delay>1m</delay>
+                            <history>7d</history>
+                            <trends>365d</trends>
+                            <value_type>FLOAT</value_type>
+                            <description>Connection status for device {#HOSTNAME} (1=online, 0=offline)</description>
+                            <applications>
+                                <application>
+                                    <name>Devices</name>
+                                </application>
+                            </applications>
+                            <preprocessing>
+                                <step>
+                                    <type>JSONPATH</type>
+                                    <parameters>
+                                        <parameter>$.value</parameter>
+                                    </parameters>
+                                </step>
+                            </preprocessing>
+                            <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.connected[{#MAC}]</url>
+                        </item_prototype>
+                        <item_prototype>
+                            <uuid>ip2d3e4v5i6c7e8s9i0g1n2a3l4s5t6r</uuid>
+                            <name>Device [{#HOSTNAME}]: Signal Strength</name>
+                            <type>HTTP_AGENT</type>
+                            <key>device.signal[{#MAC}]</key>
+                            <delay>2m</delay>
+                            <history>7d</history>
+                            <trends>365d</trends>
+                            <value_type>FLOAT</value_type>
+                            <units>dBm</units>
+                            <description>WiFi signal strength for device {#HOSTNAME} in dBm</description>
+                            <applications>
+                                <application>
+                                    <name>Devices</name>
+                                </application>
+                            </applications>
+                            <preprocessing>
+                                <step>
+                                    <type>JSONPATH</type>
+                                    <parameters>
+                                        <parameter>$.value</parameter>
+                                    </parameters>
+                                </step>
+                            </preprocessing>
+                            <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.signal[{#MAC}]</url>
+                        </item_prototype>
+                        <item_prototype>
+                            <uuid>ip3d4e5v6i7c8e9b0w1d2o3w4n5l6o7a</uuid>
+                            <name>Device [{#HOSTNAME}]: Bandwidth Download</name>
+                            <type>HTTP_AGENT</type>
+                            <key>device.bandwidth.down[{#MAC}]</key>
+                            <delay>2m</delay>
+                            <history>7d</history>
+                            <trends>365d</trends>
+                            <value_type>FLOAT</value_type>
+                            <units>Mbps</units>
+                            <description>Current download bandwidth for device {#HOSTNAME}</description>
+                            <applications>
+                                <application>
+                                    <name>Devices</name>
+                                </application>
+                            </applications>
+                            <preprocessing>
+                                <step>
+                                    <type>JSONPATH</type>
+                                    <parameters>
+                                        <parameter>$.value</parameter>
+                                    </parameters>
+                                </step>
+                            </preprocessing>
+                            <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.bandwidth.down[{#MAC}]</url>
+                        </item_prototype>
+                        <item_prototype>
+                            <uuid>ip4d5e6v7i8c9e0b1w2u3p4l5o6a7d8s</uuid>
+                            <name>Device [{#HOSTNAME}]: Bandwidth Upload</name>
+                            <type>HTTP_AGENT</type>
+                            <key>device.bandwidth.up[{#MAC}]</key>
+                            <delay>2m</delay>
+                            <history>7d</history>
+                            <trends>365d</trends>
+                            <value_type>FLOAT</value_type>
+                            <units>Mbps</units>
+                            <description>Current upload bandwidth for device {#HOSTNAME}</description>
+                            <applications>
+                                <application>
+                                    <name>Devices</name>
+                                </application>
+                            </applications>
+                            <preprocessing>
+                                <step>
+                                    <type>JSONPATH</type>
+                                    <parameters>
+                                        <parameter>$.value</parameter>
+                                    </parameters>
+                                </step>
+                            </preprocessing>
+                            <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.bandwidth.up[{#MAC}]</url>
+                        </item_prototype>
+                    </item_prototypes>
+                    <trigger_prototypes>
+                        <trigger_prototype>
+                            <uuid>tp1d2e3v4o5f6f7l8i9n0e1t2r3i4g5g</uuid>
+                            <expression>last(/eeroVista Network Monitor/device.connected[{#MAC}])=0</expression>
+                            <name>Device {#HOSTNAME} is offline</name>
+                            <priority>WARNING</priority>
+                            <description>Device {#HOSTNAME} ({#NICKNAME}) has disconnected from the network</description>
+                        </trigger_prototype>
+                        <trigger_prototype>
+                            <uuid>tp2d3e4v5w6e7a8k9s0i1g2n3a4l5t6r</uuid>
+                            <expression>last(/eeroVista Network Monitor/device.signal[{#MAC}])&lt;{$SIGNAL_WARN}</expression>
+                            <name>Device {#HOSTNAME} has weak signal (&lt; {$SIGNAL_WARN} dBm)</name>
+                            <priority>WARNING</priority>
+                            <description>WiFi signal strength for {#HOSTNAME} is below warning threshold</description>
+                        </trigger_prototype>
+                        <trigger_prototype>
+                            <uuid>tp3d4e5v6w7e8a9k0s1i2g3n4a5l6c7r</uuid>
+                            <expression>last(/eeroVista Network Monitor/device.signal[{#MAC}])&lt;{$SIGNAL_CRIT}</expression>
+                            <name>Device {#HOSTNAME} has critical signal (&lt; {$SIGNAL_CRIT} dBm)</name>
+                            <priority>HIGH</priority>
+                            <description>WiFi signal strength for {#HOSTNAME} is critically low</description>
+                        </trigger_prototype>
+                    </trigger_prototypes>
+                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/devices</url>
+                </discovery_rule>
+                <discovery_rule>
+                    <uuid>dr2d3i4s5c6o7v8e9r0y1n2o3d4e5s6t</uuid>
+                    <name>Node Discovery</name>
+                    <type>HTTP_AGENT</type>
+                    <key>eerovista.discovery.nodes</key>
+                    <delay>10m</delay>
+                    <lifetime>30d</lifetime>
+                    <description>Discovers all Eero mesh nodes</description>
+                    <item_prototypes>
+                        <item_prototype>
+                            <uuid>ip5n6o7d8e9s0t1a2t3u4s5p6r7o8t9o</uuid>
+                            <name>Node [{#NODE_NAME}]: Status</name>
+                            <type>HTTP_AGENT</type>
+                            <key>node.status[{#NODE_ID}]</key>
+                            <delay>2m</delay>
+                            <history>7d</history>
+                            <trends>365d</trends>
+                            <value_type>FLOAT</value_type>
+                            <description>Status for Eero node {#NODE_NAME} (1=online, 0=offline)</description>
+                            <applications>
+                                <application>
+                                    <name>Nodes</name>
+                                </application>
+                            </applications>
+                            <preprocessing>
+                                <step>
+                                    <type>JSONPATH</type>
+                                    <parameters>
+                                        <parameter>$.value</parameter>
+                                    </parameters>
+                                </step>
+                            </preprocessing>
+                            <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.status[{#NODE_ID}]</url>
+                        </item_prototype>
+                        <item_prototype>
+                            <uuid>ip6n7o8d9e0d1e2v3i4c5e6s7p8r9o0t</uuid>
+                            <name>Node [{#NODE_NAME}]: Connected Devices</name>
+                            <type>HTTP_AGENT</type>
+                            <key>node.devices[{#NODE_ID}]</key>
+                            <delay>2m</delay>
+                            <history>7d</history>
+                            <trends>365d</trends>
+                            <value_type>FLOAT</value_type>
+                            <description>Number of devices connected to node {#NODE_NAME}</description>
+                            <applications>
+                                <application>
+                                    <name>Nodes</name>
+                                </application>
+                            </applications>
+                            <preprocessing>
+                                <step>
+                                    <type>JSONPATH</type>
+                                    <parameters>
+                                        <parameter>$.value</parameter>
+                                    </parameters>
+                                </step>
+                            </preprocessing>
+                            <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.devices[{#NODE_ID}]</url>
+                        </item_prototype>
+                        <item_prototype>
+                            <uuid>ip7n8o9d0e1m2e3s4h5q6u7a8l9i0t1y</uuid>
+                            <name>Node [{#NODE_NAME}]: Mesh Quality</name>
+                            <type>HTTP_AGENT</type>
+                            <key>node.mesh_quality[{#NODE_ID}]</key>
+                            <delay>5m</delay>
+                            <history>7d</history>
+                            <trends>365d</trends>
+                            <value_type>FLOAT</value_type>
+                            <description>Mesh quality for node {#NODE_NAME} (1-5 bars)</description>
+                            <applications>
+                                <application>
+                                    <name>Nodes</name>
+                                </application>
+                            </applications>
+                            <preprocessing>
+                                <step>
+                                    <type>JSONPATH</type>
+                                    <parameters>
+                                        <parameter>$.value</parameter>
+                                    </parameters>
+                                </step>
+                            </preprocessing>
+                            <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.mesh_quality[{#NODE_ID}]</url>
+                        </item_prototype>
+                    </item_prototypes>
+                    <trigger_prototypes>
+                        <trigger_prototype>
+                            <uuid>tp4n5o6d7e8o9f0f1l2i3n4e5t6r7i8g</uuid>
+                            <expression>last(/eeroVista Network Monitor/node.status[{#NODE_ID}])=0</expression>
+                            <name>Eero node {#NODE_NAME} is offline</name>
+                            <priority>HIGH</priority>
+                            <description>Eero mesh node {#NODE_NAME} ({#NODE_MODEL}) has gone offline</description>
+                        </trigger_prototype>
+                        <trigger_prototype>
+                            <uuid>tp5n6o7d8e9p0o1o2r3m4e5s6h7q8u9a</uuid>
+                            <expression>last(/eeroVista Network Monitor/node.mesh_quality[{#NODE_ID}])&lt;3</expression>
+                            <name>Eero node {#NODE_NAME} has poor mesh quality</name>
+                            <priority>WARNING</priority>
+                            <description>Mesh quality for node {#NODE_NAME} is below 3 bars</description>
+                        </trigger_prototype>
+                    </trigger_prototypes>
+                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/nodes</url>
+                </discovery_rule>
+            </discovery_rules>
+            <macros>
+                <macro>
+                    <macro>{$EEROVISTA_PORT}</macro>
+                    <value>8080</value>
+                    <description>HTTP port for eeroVista instance</description>
+                </macro>
+                <macro>
+                    <macro>{$SIGNAL_WARN}</macro>
+                    <value>-70</value>
+                    <description>WiFi signal strength warning threshold in dBm</description>
+                </macro>
+                <macro>
+                    <macro>{$SIGNAL_CRIT}</macro>
+                    <value>-80</value>
+                    <description>WiFi signal strength critical threshold in dBm</description>
+                </macro>
+                <macro>
+                    <macro>{$SPEED_WARN}</macro>
+                    <value>100</value>
+                    <description>Download speed warning threshold in Mbps</description>
+                </macro>
+                <macro>
+                    <macro>{$LATENCY_WARN}</macro>
+                    <value>50</value>
+                    <description>Latency warning threshold in milliseconds</description>
+                </macro>
+            </macros>
+        </template>
+    </templates>
+</zabbix_export>
