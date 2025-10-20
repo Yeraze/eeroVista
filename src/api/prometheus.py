@@ -5,7 +5,6 @@ from typing import Any
 
 from fastapi import APIRouter, Response
 from prometheus_client import CollectorRegistry, Gauge, generate_latest
-from prometheus_client.core import REGISTRY
 
 from src.utils.database import get_db_context
 
@@ -153,7 +152,8 @@ def update_metrics() -> None:
     """Update all Prometheus metrics from database."""
     try:
         with get_db_context() as db:
-            from datetime import datetime
+            from datetime import datetime, timezone
+            from sqlalchemy import func
             from src.models.database import (
                 DailyBandwidth,
                 Device,
@@ -191,182 +191,222 @@ def update_metrics() -> None:
                 if latest_speedtest.latency_ms is not None:
                     speedtest_latency_ms.set(latest_speedtest.latency_ms)
 
-            # Get all devices with their latest connections
+            # Pre-fetch all nodes to avoid N+1 queries
+            all_nodes = db.query(EeroNode).all()
+            nodes_by_id = {node.id: node for node in all_nodes}
+
+            # Get all devices
             devices = db.query(Device).all()
 
-            for device in devices:
-                # Get most recent connection
-                latest_conn = (
-                    db.query(DeviceConnection)
-                    .filter(DeviceConnection.device_id == device.id)
-                    .order_by(DeviceConnection.timestamp.desc())
-                    .first()
+            # Skip device processing if no devices exist
+            if devices:
+                # Pre-fetch latest connections for all devices (avoid N+1)
+                device_ids = [d.id for d in devices]
+                latest_conn_subquery = (
+                    db.query(
+                        DeviceConnection.device_id,
+                        func.max(DeviceConnection.timestamp).label('max_timestamp')
+                    )
+                    .filter(DeviceConnection.device_id.in_(device_ids))
+                    .group_by(DeviceConnection.device_id)
+                    .subquery()
                 )
 
-                if latest_conn:
-                    # Get node name if connected to one
-                    node_name = "N/A"
-                    if latest_conn.eero_node_id:
-                        node = db.query(EeroNode).filter(EeroNode.id == latest_conn.eero_node_id).first()
-                        if node:
-                            node_name = node.location or f"Node {node.eero_id}"
+                latest_connections = (
+                    db.query(DeviceConnection)
+                    .join(
+                        latest_conn_subquery,
+                        (DeviceConnection.device_id == latest_conn_subquery.c.device_id) &
+                        (DeviceConnection.timestamp == latest_conn_subquery.c.max_timestamp)
+                    )
+                    .all()
+                )
+                connections_by_device = {conn.device_id: conn for conn in latest_connections}
 
-                    # Device labels
-                    hostname = device.hostname or "Unknown"
-                    nickname = device.nickname or hostname
-                    device_type = device.device_type or "unknown"
-                    mac = device.mac_address
-
-                    # Connection status
-                    is_connected = 1 if latest_conn.is_connected else 0
-                    device_connected.labels(
-                        mac=mac,
-                        hostname=hostname,
-                        nickname=nickname,
-                        type=device_type,
-                        node=node_name
-                    ).set(is_connected)
-
-                    # Signal strength (only for wireless devices)
-                    if latest_conn.signal_strength is not None:
-                        device_signal_strength_dbm.labels(
-                            mac=mac,
-                            hostname=hostname,
-                            nickname=nickname,
-                            type=device_type,
-                            node=node_name
-                        ).set(latest_conn.signal_strength)
-
-                    # Current bandwidth
-                    if latest_conn.bandwidth_down_mbps is not None:
-                        device_bandwidth_down_mbps.labels(
-                            mac=mac,
-                            hostname=hostname,
-                            nickname=nickname,
-                            type=device_type,
-                            node=node_name
-                        ).set(latest_conn.bandwidth_down_mbps)
-
-                    if latest_conn.bandwidth_up_mbps is not None:
-                        device_bandwidth_up_mbps.labels(
-                            mac=mac,
-                            hostname=hostname,
-                            nickname=nickname,
-                            type=device_type,
-                            node=node_name
-                        ).set(latest_conn.bandwidth_up_mbps)
-
-                # Get daily bandwidth totals for today
-                today = datetime.utcnow().date()
-                daily_bw = (
+                # Pre-fetch today's bandwidth data for all devices (avoid N+1)
+                today = datetime.now(timezone.utc).date()
+                daily_bandwidths = (
                     db.query(DailyBandwidth)
                     .filter(
-                        DailyBandwidth.device_id == device.id,
+                        DailyBandwidth.device_id.in_(device_ids),
                         DailyBandwidth.date == today
                     )
-                    .first()
+                    .all()
                 )
+                bandwidth_by_device = {bw.device_id: bw for bw in daily_bandwidths}
 
-                if daily_bw:
+                # Process all devices
+                for device in devices:
+                    # Calculate device labels once
                     hostname = device.hostname or "Unknown"
                     nickname = device.nickname or hostname
                     device_type = device.device_type or "unknown"
                     mac = device.mac_address
 
-                    device_daily_download_mb.labels(
-                        mac=mac,
-                        hostname=hostname,
-                        nickname=nickname,
-                        type=device_type
-                    ).set(daily_bw.download_mb)
+                    latest_conn = connections_by_device.get(device.id)
 
-                    device_daily_upload_mb.labels(
-                        mac=mac,
-                        hostname=hostname,
-                        nickname=nickname,
-                        type=device_type
-                    ).set(daily_bw.upload_mb)
+                    if latest_conn:
+                        # Get node name using pre-fetched nodes dict
+                        node_name = "N/A"
+                        if latest_conn.eero_node_id:
+                            node = nodes_by_id.get(latest_conn.eero_node_id)
+                            if node:
+                                node_name = node.location or f"Node {node.eero_id}"
 
-            # Get all eero nodes with their latest metrics
-            nodes = db.query(EeroNode).all()
+                        # Connection status
+                        is_connected = 1 if latest_conn.is_connected else 0
+                        device_connected.labels(
+                            mac=mac,
+                            hostname=hostname,
+                            nickname=nickname,
+                            type=device_type,
+                            node=node_name
+                        ).set(is_connected)
 
-            for node in nodes:
-                # Get most recent node metrics
-                latest_metric = (
-                    db.query(EeroNodeMetric)
-                    .filter(EeroNodeMetric.eero_node_id == node.id)
-                    .order_by(EeroNodeMetric.timestamp.desc())
-                    .first()
+                        # Signal strength (only for wireless devices)
+                        if latest_conn.signal_strength is not None:
+                            device_signal_strength_dbm.labels(
+                                mac=mac,
+                                hostname=hostname,
+                                nickname=nickname,
+                                type=device_type,
+                                node=node_name
+                            ).set(latest_conn.signal_strength)
+
+                        # Current bandwidth
+                        if latest_conn.bandwidth_down_mbps is not None:
+                            device_bandwidth_down_mbps.labels(
+                                mac=mac,
+                                hostname=hostname,
+                                nickname=nickname,
+                                type=device_type,
+                                node=node_name
+                            ).set(latest_conn.bandwidth_down_mbps)
+
+                        if latest_conn.bandwidth_up_mbps is not None:
+                            device_bandwidth_up_mbps.labels(
+                                mac=mac,
+                                hostname=hostname,
+                                nickname=nickname,
+                                type=device_type,
+                                node=node_name
+                            ).set(latest_conn.bandwidth_up_mbps)
+
+                    # Get daily bandwidth using pre-fetched data
+                    daily_bw = bandwidth_by_device.get(device.id)
+                    if daily_bw:
+                        device_daily_download_mb.labels(
+                            mac=mac,
+                            hostname=hostname,
+                            nickname=nickname,
+                            type=device_type
+                        ).set(daily_bw.download_mb)
+
+                        device_daily_upload_mb.labels(
+                            mac=mac,
+                            hostname=hostname,
+                            nickname=nickname,
+                            type=device_type
+                        ).set(daily_bw.upload_mb)
+
+            # Skip node processing if no nodes exist
+            if all_nodes:
+                # Pre-fetch latest metrics for all nodes (avoid N+1)
+                node_ids = [n.id for n in all_nodes]
+                latest_metric_subquery = (
+                    db.query(
+                        EeroNodeMetric.eero_node_id,
+                        func.max(EeroNodeMetric.timestamp).label('max_timestamp')
+                    )
+                    .filter(EeroNodeMetric.eero_node_id.in_(node_ids))
+                    .group_by(EeroNodeMetric.eero_node_id)
+                    .subquery()
                 )
 
-                # Node labels
-                node_id = node.eero_id
-                location = node.location or f"Node {node_id}"
-                model = node.model or "Unknown"
-                is_gateway = "1" if node.is_gateway else "0"
+                latest_node_metrics = (
+                    db.query(EeroNodeMetric)
+                    .join(
+                        latest_metric_subquery,
+                        (EeroNodeMetric.eero_node_id == latest_metric_subquery.c.eero_node_id) &
+                        (EeroNodeMetric.timestamp == latest_metric_subquery.c.max_timestamp)
+                    )
+                    .all()
+                )
+                metrics_by_node = {metric.eero_node_id: metric for metric in latest_node_metrics}
 
-                if latest_metric:
-                    # Node status
-                    status_val = 1 if latest_metric.status == "online" else 0
-                    node_status.labels(
+                # Process all eero nodes
+                for node in all_nodes:
+                    # Get most recent node metrics using pre-fetched data
+                    latest_metric = metrics_by_node.get(node.id)
+
+                    # Node labels
+                    node_id = node.eero_id
+                    location = node.location or f"Node {node_id}"
+                    model = node.model or "Unknown"
+                    is_gateway = "1" if node.is_gateway else "0"
+
+                    if latest_metric:
+                        # Node status
+                        status_val = 1 if latest_metric.status == "online" else 0
+                        node_status.labels(
+                            node_id=node_id,
+                            location=location,
+                            model=model,
+                            is_gateway=is_gateway
+                        ).set(status_val)
+
+                        # Connected devices
+                        if latest_metric.connected_device_count is not None:
+                            node_connected_devices.labels(
+                                node_id=node_id,
+                                location=location,
+                                model=model,
+                                is_gateway=is_gateway
+                            ).set(latest_metric.connected_device_count)
+
+                        # Wired/Wireless breakdown
+                        if latest_metric.connected_wired_count is not None:
+                            node_connected_wired.labels(
+                                node_id=node_id,
+                                location=location,
+                                model=model,
+                                is_gateway=is_gateway
+                            ).set(latest_metric.connected_wired_count)
+
+                        if latest_metric.connected_wireless_count is not None:
+                            node_connected_wireless.labels(
+                                node_id=node_id,
+                                location=location,
+                                model=model,
+                                is_gateway=is_gateway
+                            ).set(latest_metric.connected_wireless_count)
+
+                        # Mesh quality
+                        if latest_metric.mesh_quality_bars is not None:
+                            node_mesh_quality.labels(
+                                node_id=node_id,
+                                location=location,
+                                model=model,
+                                is_gateway=is_gateway
+                            ).set(latest_metric.mesh_quality_bars)
+
+                        # Uptime
+                        if latest_metric.uptime_seconds is not None:
+                            node_uptime_seconds.labels(
+                                node_id=node_id,
+                                location=location,
+                                model=model,
+                                is_gateway=is_gateway
+                            ).set(latest_metric.uptime_seconds)
+
+                    # Update available
+                    update_val = 1 if node.update_available else 0
+                    node_update_available.labels(
                         node_id=node_id,
                         location=location,
                         model=model,
                         is_gateway=is_gateway
-                    ).set(status_val)
-
-                    # Connected devices
-                    if latest_metric.connected_device_count is not None:
-                        node_connected_devices.labels(
-                            node_id=node_id,
-                            location=location,
-                            model=model,
-                            is_gateway=is_gateway
-                        ).set(latest_metric.connected_device_count)
-
-                    # Wired/Wireless breakdown
-                    if latest_metric.connected_wired_count is not None:
-                        node_connected_wired.labels(
-                            node_id=node_id,
-                            location=location,
-                            model=model,
-                            is_gateway=is_gateway
-                        ).set(latest_metric.connected_wired_count)
-
-                    if latest_metric.connected_wireless_count is not None:
-                        node_connected_wireless.labels(
-                            node_id=node_id,
-                            location=location,
-                            model=model,
-                            is_gateway=is_gateway
-                        ).set(latest_metric.connected_wireless_count)
-
-                    # Mesh quality
-                    if latest_metric.mesh_quality_bars is not None:
-                        node_mesh_quality.labels(
-                            node_id=node_id,
-                            location=location,
-                            model=model,
-                            is_gateway=is_gateway
-                        ).set(latest_metric.mesh_quality_bars)
-
-                    # Uptime
-                    if latest_metric.uptime_seconds is not None:
-                        node_uptime_seconds.labels(
-                            node_id=node_id,
-                            location=location,
-                            model=model,
-                            is_gateway=is_gateway
-                        ).set(latest_metric.uptime_seconds)
-
-                # Update available
-                update_val = 1 if node.update_available else 0
-                node_update_available.labels(
-                    node_id=node_id,
-                    location=location,
-                    model=model,
-                    is_gateway=is_gateway
-                ).set(update_val)
+                    ).set(update_val)
 
     except Exception as e:
         logger.error(f"Failed to update Prometheus metrics: {e}", exc_info=True)

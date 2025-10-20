@@ -1,6 +1,6 @@
 """Tests for Prometheus metrics endpoint."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -36,7 +36,7 @@ def sample_network_data(db_session):
     """Create sample network data for testing."""
     # Create network metric
     network_metric = NetworkMetric(
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         total_devices=10,
         total_devices_online=7,
         wan_status="online",
@@ -45,7 +45,7 @@ def sample_network_data(db_session):
 
     # Create speedtest
     speedtest = Speedtest(
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         download_mbps=150.5,
         upload_mbps=50.2,
         latency_ms=12.3,
@@ -64,7 +64,7 @@ def sample_network_data(db_session):
 
     # Create node metric
     node_metric = EeroNodeMetric(
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         eero_node_id=node.id,
         status="online",
         connected_device_count=5,
@@ -87,7 +87,7 @@ def sample_network_data(db_session):
 
     # Create device connection
     connection = DeviceConnection(
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         device_id=device.id,
         is_connected=True,
         connection_type="wireless",
@@ -254,7 +254,7 @@ class TestPrometheusMetricsValues:
         """Test that WAN status is correctly mapped to 1/0."""
         # Create online metric
         metric = NetworkMetric(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             total_devices=10,
             total_devices_online=7,
             wan_status="online",
@@ -304,3 +304,25 @@ class TestPrometheusMetricsValues:
         update_metrics()
 
         # Node with update_available=True should have value 1.0
+
+    @patch("src.api.prometheus.get_db_context")
+    def test_device_without_connections(self, mock_db_context, db_session):
+        """Test that update_metrics handles devices without connection records."""
+        # Create a device without any connection records
+        device = Device(
+            mac_address="11:22:33:44:55:66",
+            hostname="Test-Device-No-Conn",
+            nickname="Disconnected Device",
+            device_type="laptop",
+        )
+        db_session.add(device)
+        db_session.commit()
+
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
+        # Should not raise AttributeError
+        try:
+            update_metrics()
+        except AttributeError as e:
+            pytest.fail(f"update_metrics() raised AttributeError for device without connections: {e}")
