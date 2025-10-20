@@ -326,7 +326,7 @@
         const barsHTML = [];
         for (let i = 1; i <= 5; i++) {
             if (i <= bars) {
-                const colorIndex = bars - 1; // Convert 1-5 to 0-4 index
+                const colorIndex = i - 1; // Use current bar index for progressive colors
                 barsHTML.push(`<div class="mesh-bar filled" style="background-color: ${colors[colorIndex]};"></div>`);
             } else {
                 barsHTML.push(`<div class="mesh-bar empty"></div>`);

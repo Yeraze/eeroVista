@@ -161,6 +161,12 @@ class DeviceCollector(BaseCollector):
                     mesh_quality_bars = eero_data.mesh_quality_bars if hasattr(eero_data, 'mesh_quality_bars') else None
                     last_reboot = eero_data.last_reboot if hasattr(eero_data, 'last_reboot') else None
 
+                # Validate mesh_quality_bars is in valid range (1-5) or None
+                if mesh_quality_bars is not None:
+                    if not isinstance(mesh_quality_bars, int) or mesh_quality_bars < 1 or mesh_quality_bars > 5:
+                        logger.warning(f"Invalid mesh_quality_bars value {mesh_quality_bars} for node {eero_url}, setting to None")
+                        mesh_quality_bars = None
+
                 if not eero_url:
                     continue
 

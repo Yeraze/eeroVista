@@ -98,20 +98,24 @@ def _run_migrations(engine) -> None:
     # Migration: Add mesh quality and client count breakdown columns to eero_node_metrics table
     if "eero_node_metrics" in inspector.get_table_names():
         columns = [col["name"] for col in inspector.get_columns("eero_node_metrics")]
-        with engine.connect() as conn:
-            if "mesh_quality_bars" not in columns:
-                logger.info("Running migration: Adding 'mesh_quality_bars' column to eero_node_metrics table")
+
+        if "mesh_quality_bars" not in columns:
+            logger.info("Running migration: Adding 'mesh_quality_bars' column to eero_node_metrics table")
+            with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE eero_node_metrics ADD COLUMN mesh_quality_bars INTEGER"))
-                logger.info("Migration complete: 'mesh_quality_bars' column added")
+                conn.commit()
+            logger.info("Migration complete: 'mesh_quality_bars' column added")
 
-            if "connected_wired_count" not in columns:
-                logger.info("Running migration: Adding 'connected_wired_count' column to eero_node_metrics table")
+        if "connected_wired_count" not in columns:
+            logger.info("Running migration: Adding 'connected_wired_count' column to eero_node_metrics table")
+            with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE eero_node_metrics ADD COLUMN connected_wired_count INTEGER"))
-                logger.info("Migration complete: 'connected_wired_count' column added")
+                conn.commit()
+            logger.info("Migration complete: 'connected_wired_count' column added")
 
-            if "connected_wireless_count" not in columns:
-                logger.info("Running migration: Adding 'connected_wireless_count' column to eero_node_metrics table")
+        if "connected_wireless_count" not in columns:
+            logger.info("Running migration: Adding 'connected_wireless_count' column to eero_node_metrics table")
+            with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE eero_node_metrics ADD COLUMN connected_wireless_count INTEGER"))
-                logger.info("Migration complete: 'connected_wireless_count' column added")
-
-            conn.commit()
+                conn.commit()
+            logger.info("Migration complete: 'connected_wireless_count' column added")
