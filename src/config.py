@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from pydantic_settings import BaseSettings
 
@@ -12,11 +13,17 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "eeroVista"
-    version: str = "0.5.0"
+    version: str = "0.6.0"
     debug: bool = False
 
     # Database
     database_path: str = "/data/eerovista.db"
+
+    # Timezone for date/time display and daily bandwidth aggregation
+    # Use IANA timezone names (e.g., "America/Los_Angeles", "America/New_York", "Europe/London")
+    # Supports both TZ (standard) and TIMEZONE environment variables, with TZ taking precedence
+    # Defaults to UTC if not specified
+    timezone: str = os.getenv("TZ", "UTC")
 
     # Collection intervals (seconds)
     collection_interval_devices: int = 30
@@ -35,6 +42,14 @@ class Settings(BaseSettings):
 
     # Encryption key for storing sensitive data (auto-generated if not provided)
     encryption_key: Optional[str] = None
+
+    def get_timezone(self) -> ZoneInfo:
+        """Get the configured timezone as a ZoneInfo object."""
+        try:
+            return ZoneInfo(self.timezone)
+        except Exception:
+            # Fallback to UTC if timezone is invalid
+            return ZoneInfo("UTC")
 
     class Config:
         """Pydantic config."""

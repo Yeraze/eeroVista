@@ -792,3 +792,109 @@ async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to get network bandwidth total: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/network/bandwidth-hourly")
+async def get_network_bandwidth_hourly() -> Dict[str, Any]:
+    """Get network-wide bandwidth usage aggregated by hour for the current day (in local timezone).
+
+    Returns hourly bandwidth totals for today based on the configured timezone.
+    """
+    try:
+        from datetime import timedelta
+        from sqlalchemy import func, extract
+        from src.config import get_settings
+        from zoneinfo import ZoneInfo
+
+        settings = get_settings()
+        tz = settings.get_timezone()
+
+        with get_db_context() as db:
+            from src.models.database import DeviceConnection
+
+            # Get start of today in local timezone, convert to UTC for database query
+            now_local = datetime.now(tz)
+            today_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            today_start_utc = today_start_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+
+            # Get end of today in local timezone, convert to UTC
+            today_end_local = today_start_local + timedelta(days=1)
+            today_end_utc = today_end_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+
+            # Query device connections for today
+            connections = (
+                db.query(DeviceConnection)
+                .filter(
+                    DeviceConnection.timestamp >= today_start_utc,
+                    DeviceConnection.timestamp < today_end_utc
+                )
+                .all()
+            )
+
+            # Aggregate by hour in local timezone
+            hourly_data = {}
+            for conn in connections:
+                # Convert UTC timestamp to local timezone
+                timestamp_utc = conn.timestamp.replace(tzinfo=ZoneInfo("UTC"))
+                timestamp_local = timestamp_utc.astimezone(tz)
+                hour_key = timestamp_local.hour
+
+                if hour_key not in hourly_data:
+                    hourly_data[hour_key] = {
+                        "download_mb": 0.0,
+                        "upload_mb": 0.0,
+                        "count": 0
+                    }
+
+                # Accumulate bandwidth
+                if conn.bandwidth_down_mbps is not None:
+                    # Convert rate to MB based on collection interval (assuming 30s default)
+                    # Mbps * seconds / 8 bits per byte = MB
+                    hourly_data[hour_key]["download_mb"] += (conn.bandwidth_down_mbps * 30) / 8.0
+                if conn.bandwidth_up_mbps is not None:
+                    hourly_data[hour_key]["upload_mb"] += (conn.bandwidth_up_mbps * 30) / 8.0
+                hourly_data[hour_key]["count"] += 1
+
+            # Format hourly breakdown (0-23 hours)
+            hourly_breakdown = []
+            for hour in range(24):
+                if hour in hourly_data:
+                    hourly_breakdown.append({
+                        "hour": hour,
+                        "hour_label": f"{hour:02d}:00",
+                        "download_mb": round(hourly_data[hour]["download_mb"], 2),
+                        "upload_mb": round(hourly_data[hour]["upload_mb"], 2),
+                        "data_points": hourly_data[hour]["count"]
+                    })
+                else:
+                    # No data for this hour
+                    hourly_breakdown.append({
+                        "hour": hour,
+                        "hour_label": f"{hour:02d}:00",
+                        "download_mb": 0.0,
+                        "upload_mb": 0.0,
+                        "data_points": 0
+                    })
+
+            # Calculate totals
+            total_download = sum(h["download_mb"] for h in hourly_breakdown)
+            total_upload = sum(h["upload_mb"] for h in hourly_breakdown)
+
+            return {
+                "period": {
+                    "date": now_local.date().isoformat(),
+                    "timezone": str(tz),
+                    "start_time": today_start_local.isoformat(),
+                    "end_time": today_end_local.isoformat(),
+                },
+                "totals": {
+                    "download_mb": round(total_download, 2),
+                    "upload_mb": round(total_upload, 2),
+                    "total_mb": round(total_download + total_upload, 2),
+                },
+                "hourly_breakdown": hourly_breakdown,
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to get hourly network bandwidth: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
