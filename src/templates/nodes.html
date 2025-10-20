@@ -142,6 +142,28 @@
         font-weight: 600;
         text-transform: uppercase;
     }
+
+    .mesh-quality {
+        display: inline-flex;
+        gap: 3px;
+        align-items: center;
+    }
+
+    .mesh-bar {
+        width: 8px;
+        height: 16px;
+        border-radius: 2px;
+        transition: background-color 0.3s;
+    }
+
+    .mesh-bar.filled {
+        opacity: 1;
+    }
+
+    .mesh-bar.empty {
+        opacity: 0.2;
+        background: var(--surface2);
+    }
 </style>
 
 <script>
@@ -222,8 +244,14 @@
                         </div>
                         <div class="node-detail">
                             <span class="node-detail-label">Connected Devices</span>
-                            <span class="node-detail-value">${node.connected_devices || 0}</span>
+                            <span class="node-detail-value">${node.connected_devices || 0} (${node.connected_wired || 0} wired, ${node.connected_wireless || 0} wireless)</span>
                         </div>
+                        ${node.mesh_quality_bars !== null && node.mesh_quality_bars !== undefined ? `
+                        <div class="node-detail">
+                            <span class="node-detail-label">Mesh Quality</span>
+                            <span class="node-detail-value">${renderMeshQuality(node.mesh_quality_bars)}</span>
+                        </div>
+                        ` : ''}
                         ${node.uptime ? `
                         <div class="node-detail">
                             <span class="node-detail-label">Uptime</span>
@@ -282,6 +310,30 @@
         } else {
             return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
         }
+    }
+
+    function renderMeshQuality(bars) {
+        // Interpolate color from red (1) to green (5)
+        // Using Catppuccin Latte colors
+        const colors = [
+            '#d20f39', // red (1 bar)
+            '#fe640b', // peach (2 bars)
+            '#df8e1d', // yellow (3 bars)
+            '#8c9440', // olive (4 bars)
+            '#40a02b'  // green (5 bars)
+        ];
+
+        const barsHTML = [];
+        for (let i = 1; i <= 5; i++) {
+            if (i <= bars) {
+                const colorIndex = i - 1; // Use current bar index for progressive colors
+                barsHTML.push(`<div class="mesh-bar filled" style="background-color: ${colors[colorIndex]};"></div>`);
+            } else {
+                barsHTML.push(`<div class="mesh-bar empty"></div>`);
+            }
+        }
+
+        return `<div class="mesh-quality">${barsHTML.join('')}</div>`;
     }
 
     // Initial load

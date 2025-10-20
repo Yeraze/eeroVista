@@ -383,12 +383,22 @@ async def get_nodes() -> Dict[str, Any]:
 
                 status = "unknown"
                 connected_devices = 0
+                connected_wired = 0
+                connected_wireless = 0
                 uptime = None
+                mesh_quality = None
 
                 if latest_metric:
                     status = latest_metric.status or "unknown"
-                    connected_devices = latest_metric.connected_device_count or 0
+                    # Use wired + wireless for total, fallback to connected_device_count
+                    connected_wired = latest_metric.connected_wired_count or 0
+                    connected_wireless = latest_metric.connected_wireless_count or 0
+                    connected_devices = connected_wired + connected_wireless
+                    # Fallback to total count if breakdown not available
+                    if connected_devices == 0:
+                        connected_devices = latest_metric.connected_device_count or 0
                     uptime = latest_metric.uptime_seconds
+                    mesh_quality = latest_metric.mesh_quality_bars
 
                 nodes_list.append({
                     "eero_id": node.eero_id,
@@ -400,6 +410,9 @@ async def get_nodes() -> Dict[str, Any]:
                     "is_gateway": node.is_gateway or False,
                     "status": status,
                     "connected_devices": connected_devices,
+                    "connected_wired": connected_wired,
+                    "connected_wireless": connected_wireless,
+                    "mesh_quality_bars": mesh_quality,
                     "uptime": uptime,
                     "last_seen": node.last_seen.isoformat() if node.last_seen else None,
                     "created_at": node.created_at.isoformat() if node.created_at else None,

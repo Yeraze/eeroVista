@@ -144,7 +144,10 @@ class EeroNodeMetric(Base):
     )
     status: Mapped[Optional[str]] = mapped_column(String)  # online/offline
     connected_device_count: Mapped[Optional[int]] = mapped_column(Integer)
+    connected_wired_count: Mapped[Optional[int]] = mapped_column(Integer)
+    connected_wireless_count: Mapped[Optional[int]] = mapped_column(Integer)
     uptime_seconds: Mapped[Optional[int]] = mapped_column(Integer)
+    mesh_quality_bars: Mapped[Optional[int]] = mapped_column(Integer)  # 1-5 bars
 
     # Relationships
     eero_node: Mapped["EeroNode"] = relationship(back_populates="metrics")
