@@ -253,44 +253,44 @@ def update_metrics() -> None:
                             if node:
                                 node_name = node.location or f"Node {node.eero_id}"
 
-                    # Connection status
-                    is_connected = 1 if latest_conn.is_connected else 0
-                    device_connected.labels(
-                        mac=mac,
-                        hostname=hostname,
-                        nickname=nickname,
-                        type=device_type,
-                        node=node_name
-                    ).set(is_connected)
-
-                    # Signal strength (only for wireless devices)
-                    if latest_conn.signal_strength is not None:
-                        device_signal_strength_dbm.labels(
+                        # Connection status
+                        is_connected = 1 if latest_conn.is_connected else 0
+                        device_connected.labels(
                             mac=mac,
                             hostname=hostname,
                             nickname=nickname,
                             type=device_type,
                             node=node_name
-                        ).set(latest_conn.signal_strength)
+                        ).set(is_connected)
 
-                    # Current bandwidth
-                    if latest_conn.bandwidth_down_mbps is not None:
-                        device_bandwidth_down_mbps.labels(
-                            mac=mac,
-                            hostname=hostname,
-                            nickname=nickname,
-                            type=device_type,
-                            node=node_name
-                        ).set(latest_conn.bandwidth_down_mbps)
+                        # Signal strength (only for wireless devices)
+                        if latest_conn.signal_strength is not None:
+                            device_signal_strength_dbm.labels(
+                                mac=mac,
+                                hostname=hostname,
+                                nickname=nickname,
+                                type=device_type,
+                                node=node_name
+                            ).set(latest_conn.signal_strength)
 
-                    if latest_conn.bandwidth_up_mbps is not None:
-                        device_bandwidth_up_mbps.labels(
-                            mac=mac,
-                            hostname=hostname,
-                            nickname=nickname,
-                            type=device_type,
-                            node=node_name
-                        ).set(latest_conn.bandwidth_up_mbps)
+                        # Current bandwidth
+                        if latest_conn.bandwidth_down_mbps is not None:
+                            device_bandwidth_down_mbps.labels(
+                                mac=mac,
+                                hostname=hostname,
+                                nickname=nickname,
+                                type=device_type,
+                                node=node_name
+                            ).set(latest_conn.bandwidth_down_mbps)
+
+                        if latest_conn.bandwidth_up_mbps is not None:
+                            device_bandwidth_up_mbps.labels(
+                                mac=mac,
+                                hostname=hostname,
+                                nickname=nickname,
+                                type=device_type,
+                                node=node_name
+                            ).set(latest_conn.bandwidth_up_mbps)
 
                     # Get daily bandwidth using pre-fetched data
                     daily_bw = bandwidth_by_device.get(device.id)
