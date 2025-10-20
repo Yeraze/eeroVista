@@ -3,15 +3,13 @@
 ## Pending Features
 
 ### Dashboard Performance
-- [ ] Reduce graph flicker on 30-second auto-refresh
-  - Investigate Chart.js update() vs. destroy/recreate
-  - Consider caching chart instance and updating data only
 - [ ] Speed up hourly graph loading (currently ~5s to switch to/from)
   - Profile API endpoint response time
   - Optimize client-side rendering
   - Consider caching or lazy loading
 
 ## Completed
+- [x] Reduce graph flicker on 30-second auto-refresh (using Chart.js update() instead of destroy/recreate)
 - [x] Update 7/30 day bandwidth graphs to include today (with visual indicator for incomplete data)
 - [x] Add top 5 bandwidth consumers stacked graph with "Other" category
 - [x] Add hourly graph option to device info popup
