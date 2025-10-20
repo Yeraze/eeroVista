@@ -514,9 +514,25 @@
                 topDevicesChart.destroy();
                 topDevicesChart = null;
             }
-            // Display message in the chart area
-            ctx.parentElement.innerHTML = '<p style="text-align: center; padding: 2rem; color: var(--subtext0);">No bandwidth data available for the selected period.</p>';
+            // Hide canvas and show message (preserve canvas for future re-renders)
+            ctx.style.display = 'none';
+            let msgContainer = ctx.parentElement.querySelector('.no-data-message');
+            if (!msgContainer) {
+                msgContainer = document.createElement('p');
+                msgContainer.className = 'no-data-message';
+                msgContainer.style.cssText = 'text-align: center; padding: 2rem; color: var(--subtext0);';
+                msgContainer.textContent = 'No bandwidth data available for the selected period.';
+                ctx.parentElement.appendChild(msgContainer);
+            }
+            msgContainer.style.display = 'block';
             return;
+        }
+
+        // Hide message and show canvas when we have data
+        ctx.style.display = 'block';
+        const msgContainer = ctx.parentElement.querySelector('.no-data-message');
+        if (msgContainer) {
+            msgContainer.style.display = 'none';
         }
 
         // Create datasets for each device (stacked)
