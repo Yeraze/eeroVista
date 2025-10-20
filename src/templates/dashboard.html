@@ -337,7 +337,10 @@
             xAxisTitle = 'Date';
 
             tooltipTitleFormatter = function(context) {
-                const date = new Date(context[0].label);
+                // Parse ISO date as local date to avoid timezone shift
+                const dateStr = context[0].label;
+                const [year, month, day] = dateStr.split('-').map(Number);
+                const date = new Date(year, month - 1, day);
                 const formatted = date.toLocaleDateString('en-US', {
                     weekday: 'short',
                     month: 'short',
@@ -349,7 +352,10 @@
             };
 
             tickFormatter = function(value, index) {
-                const date = new Date(this.getLabelForValue(value));
+                // Parse ISO date as local date to avoid timezone shift
+                const dateStr = this.getLabelForValue(value);
+                const [year, month, day] = dateStr.split('-').map(Number);
+                const date = new Date(year, month - 1, day);
                 return date.toLocaleDateString('en-US', {
                     month: 'short',
                     day: 'numeric'
@@ -529,9 +535,10 @@
             });
         }
 
-        // Format labels
+        // Format labels - parse as local dates to avoid timezone shift
         const labels = data.dates.map(dateStr => {
-            const date = new Date(dateStr);
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const date = new Date(year, month - 1, day);
             return date.toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric'
@@ -565,7 +572,10 @@
                         intersect: false,
                         callbacks: {
                             title: function(context) {
-                                const date = new Date(data.dates[context[0].dataIndex]);
+                                // Parse as local date to avoid timezone shift
+                                const dateStr = data.dates[context[0].dataIndex];
+                                const [year, month, day] = dateStr.split('-').map(Number);
+                                const date = new Date(year, month - 1, day);
                                 return date.toLocaleDateString('en-US', {
                                     weekday: 'short',
                                     month: 'short',
