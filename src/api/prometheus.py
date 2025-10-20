@@ -5,7 +5,6 @@ from typing import Any
 
 from fastapi import APIRouter, Response
 from prometheus_client import CollectorRegistry, Gauge, generate_latest
-from prometheus_client.core import REGISTRY
 
 from src.utils.database import get_db_context
 
@@ -153,7 +152,7 @@ def update_metrics() -> None:
     """Update all Prometheus metrics from database."""
     try:
         with get_db_context() as db:
-            from datetime import datetime
+            from datetime import datetime, timezone
             from src.models.database import (
                 DailyBandwidth,
                 Device,
@@ -191,23 +190,58 @@ def update_metrics() -> None:
                 if latest_speedtest.latency_ms is not None:
                     speedtest_latency_ms.set(latest_speedtest.latency_ms)
 
-            # Get all devices with their latest connections
+            # Pre-fetch all nodes to avoid N+1 queries
+            all_nodes = db.query(EeroNode).all()
+            nodes_by_id = {node.id: node for node in all_nodes}
+
+            # Get all devices
             devices = db.query(Device).all()
 
-            for device in devices:
-                # Get most recent connection
-                latest_conn = (
-                    db.query(DeviceConnection)
-                    .filter(DeviceConnection.device_id == device.id)
-                    .order_by(DeviceConnection.timestamp.desc())
-                    .first()
+            # Pre-fetch latest connections for all devices (avoid N+1)
+            device_ids = [d.id for d in devices]
+            from sqlalchemy import func
+            latest_conn_subquery = (
+                db.query(
+                    DeviceConnection.device_id,
+                    func.max(DeviceConnection.timestamp).label('max_timestamp')
                 )
+                .filter(DeviceConnection.device_id.in_(device_ids))
+                .group_by(DeviceConnection.device_id)
+                .subquery()
+            )
+
+            latest_connections = (
+                db.query(DeviceConnection)
+                .join(
+                    latest_conn_subquery,
+                    (DeviceConnection.device_id == latest_conn_subquery.c.device_id) &
+                    (DeviceConnection.timestamp == latest_conn_subquery.c.max_timestamp)
+                )
+                .all()
+            )
+            connections_by_device = {conn.device_id: conn for conn in latest_connections}
+
+            # Pre-fetch today's bandwidth data for all devices (avoid N+1)
+            today = datetime.now(timezone.utc).date()
+            daily_bandwidths = (
+                db.query(DailyBandwidth)
+                .filter(
+                    DailyBandwidth.device_id.in_(device_ids),
+                    DailyBandwidth.date == today
+                )
+                .all()
+            )
+            bandwidth_by_device = {bw.device_id: bw for bw in daily_bandwidths}
+
+            # Process all devices
+            for device in devices:
+                latest_conn = connections_by_device.get(device.id)
 
                 if latest_conn:
-                    # Get node name if connected to one
+                    # Get node name using pre-fetched nodes dict
                     node_name = "N/A"
                     if latest_conn.eero_node_id:
-                        node = db.query(EeroNode).filter(EeroNode.id == latest_conn.eero_node_id).first()
+                        node = nodes_by_id.get(latest_conn.eero_node_id)
                         if node:
                             node_name = node.location or f"Node {node.eero_id}"
 
@@ -256,17 +290,8 @@ def update_metrics() -> None:
                             node=node_name
                         ).set(latest_conn.bandwidth_up_mbps)
 
-                # Get daily bandwidth totals for today
-                today = datetime.utcnow().date()
-                daily_bw = (
-                    db.query(DailyBandwidth)
-                    .filter(
-                        DailyBandwidth.device_id == device.id,
-                        DailyBandwidth.date == today
-                    )
-                    .first()
-                )
-
+                # Get daily bandwidth using pre-fetched data
+                daily_bw = bandwidth_by_device.get(device.id)
                 if daily_bw:
                     hostname = device.hostname or "Unknown"
                     nickname = device.nickname or hostname
@@ -287,17 +312,33 @@ def update_metrics() -> None:
                         type=device_type
                     ).set(daily_bw.upload_mb)
 
-            # Get all eero nodes with their latest metrics
-            nodes = db.query(EeroNode).all()
-
-            for node in nodes:
-                # Get most recent node metrics
-                latest_metric = (
-                    db.query(EeroNodeMetric)
-                    .filter(EeroNodeMetric.eero_node_id == node.id)
-                    .order_by(EeroNodeMetric.timestamp.desc())
-                    .first()
+            # Pre-fetch latest metrics for all nodes (avoid N+1)
+            node_ids = [n.id for n in all_nodes]
+            latest_metric_subquery = (
+                db.query(
+                    EeroNodeMetric.eero_node_id,
+                    func.max(EeroNodeMetric.timestamp).label('max_timestamp')
                 )
+                .filter(EeroNodeMetric.eero_node_id.in_(node_ids))
+                .group_by(EeroNodeMetric.eero_node_id)
+                .subquery()
+            )
+
+            latest_node_metrics = (
+                db.query(EeroNodeMetric)
+                .join(
+                    latest_metric_subquery,
+                    (EeroNodeMetric.eero_node_id == latest_metric_subquery.c.eero_node_id) &
+                    (EeroNodeMetric.timestamp == latest_metric_subquery.c.max_timestamp)
+                )
+                .all()
+            )
+            metrics_by_node = {metric.eero_node_id: metric for metric in latest_node_metrics}
+
+            # Process all eero nodes
+            for node in all_nodes:
+                # Get most recent node metrics using pre-fetched data
+                latest_metric = metrics_by_node.get(node.id)
 
                 # Node labels
                 node_id = node.eero_id
