@@ -141,6 +141,9 @@ class DeviceCollector(BaseCollector):
                     update_available = eero_data.get("update_available", False)
                     state = eero_data.get("state", "UNKNOWN")
                     connected_clients_count = eero_data.get("connected_clients_count", 0)
+                    connected_wired_count = eero_data.get("connected_wired_clients_count", 0)
+                    connected_wireless_count = eero_data.get("connected_wireless_clients_count", 0)
+                    mesh_quality_bars = eero_data.get("mesh_quality_bars")
                     last_reboot = eero_data.get("last_reboot")
                 else:
                     # Pydantic model - use attribute access
@@ -153,6 +156,9 @@ class DeviceCollector(BaseCollector):
                     update_available = eero_data.update_available if hasattr(eero_data, 'update_available') else False
                     state = eero_data.state if hasattr(eero_data, 'state') else "UNKNOWN"
                     connected_clients_count = eero_data.connected_clients_count if hasattr(eero_data, 'connected_clients_count') else 0
+                    connected_wired_count = eero_data.connected_wired_clients_count if hasattr(eero_data, 'connected_wired_clients_count') else 0
+                    connected_wireless_count = eero_data.connected_wireless_clients_count if hasattr(eero_data, 'connected_wireless_clients_count') else 0
+                    mesh_quality_bars = eero_data.mesh_quality_bars if hasattr(eero_data, 'mesh_quality_bars') else None
                     last_reboot = eero_data.last_reboot if hasattr(eero_data, 'last_reboot') else None
 
                 if not eero_url:
@@ -224,7 +230,10 @@ class DeviceCollector(BaseCollector):
                     timestamp=timestamp,
                     status=status,
                     connected_device_count=connected_clients_count,
+                    connected_wired_count=connected_wired_count,
+                    connected_wireless_count=connected_wireless_count,
                     uptime_seconds=uptime_seconds,
+                    mesh_quality_bars=mesh_quality_bars,
                 )
                 self.db.add(metric)
 
