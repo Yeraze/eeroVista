@@ -355,6 +355,47 @@
     let filterText = '';
     let showOffline = true;
 
+    // Format device type with emoji and proper capitalization
+    function formatDeviceType(type) {
+        const typeMap = {
+            'air_conditioner': '❄️ Air Conditioner',
+            'car': '🚗 Car',
+            'desktop_computer': '🖥️ Desktop Computer',
+            'digital_assistant': '🔊 Digital Assistant',
+            'door_bell': '🔔 Door Bell',
+            'e_reader': '📖 E-Reader',
+            'game_console': '🎮 Game Console',
+            'garage_door': '🚪 Garage Door',
+            'generic': '📱 Generic Device',
+            'hard_drive': '💾 Hard Drive',
+            'hub': '🔌 Hub',
+            'laptop_computer': '💻 Laptop Computer',
+            'light': '💡 Light',
+            'media_streamer': '📺 Media Streamer',
+            'network_equipment': '🌐 Network Equipment',
+            'phone': '📱 Phone',
+            'plug': '🔌 Plug',
+            'printer': '🖨️ Printer',
+            'security_camera': '📷 Security Camera',
+            'tablet': '📱 Tablet',
+            'television': '📺 Television',
+            'thermostat': '🌡️ Thermostat',
+            'unknown_computer': '💻 Unknown Computer',
+            'vacuum': '🧹 Vacuum',
+            'watch': '⌚ Watch'
+        };
+
+        // Return mapped value or formatted fallback
+        if (typeMap[type]) {
+            return typeMap[type];
+        }
+
+        // Fallback: convert snake_case to Title Case
+        return '📱 ' + type.split('_')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+    }
+
     // Fetch devices from API
     async function loadDevices() {
         try {
@@ -499,7 +540,7 @@
             return `
                 <tr class="device-row ${rowClass}" onclick="showDeviceDetails(${originalIndex})">
                     <td>${device.name}</td>
-                    <td>${device.type}</td>
+                    <td>${formatDeviceType(device.type)}</td>
                     <td>${device.ip_address}</td>
                     <td>${statusBadge}</td>
                     <td>${device.connection_type}</td>
@@ -523,7 +564,7 @@
         let detailsHtml = `
             <div class="info-row">
                 <div class="info-label">Type:</div>
-                <div class="info-value">${device.type}</div>
+                <div class="info-value">${formatDeviceType(device.type)}</div>
             </div>
             <div class="info-row">
                 <div class="info-label">Status:</div>
