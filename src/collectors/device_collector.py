@@ -5,7 +5,7 @@ from datetime import datetime, date
 from typing import Dict, Optional
 
 from src.collectors.base import BaseCollector
-from src.models.database import Device, DeviceConnection, DailyBandwidth, EeroNode
+from src.models.database import Device, DeviceConnection, DailyBandwidth, EeroNode, EeroNodeMetric
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +121,7 @@ class DeviceCollector(BaseCollector):
             Dict mapping eero API URL to database ID
         """
         eero_node_map = {}
+        timestamp = datetime.utcnow()
 
         for eero_data in eeros_data:
             try:
@@ -136,6 +137,11 @@ class DeviceCollector(BaseCollector):
                     model = eero_data.get("model")
                     mac_address = eero_data.get("mac_address")
                     is_gateway = eero_data.get("gateway", False)
+                    os_version = eero_data.get("os_version")
+                    update_available = eero_data.get("update_available", False)
+                    state = eero_data.get("state", "UNKNOWN")
+                    connected_clients_count = eero_data.get("connected_clients_count", 0)
+                    last_reboot = eero_data.get("last_reboot")
                 else:
                     # Pydantic model - use attribute access
                     eero_url = eero_data.url
@@ -143,12 +149,35 @@ class DeviceCollector(BaseCollector):
                     model = eero_data.model
                     mac_address = eero_data.mac_address
                     is_gateway = eero_data.gateway if hasattr(eero_data, 'gateway') else False
+                    os_version = eero_data.os_version if hasattr(eero_data, 'os_version') else None
+                    update_available = eero_data.update_available if hasattr(eero_data, 'update_available') else False
+                    state = eero_data.state if hasattr(eero_data, 'state') else "UNKNOWN"
+                    connected_clients_count = eero_data.connected_clients_count if hasattr(eero_data, 'connected_clients_count') else 0
+                    last_reboot = eero_data.last_reboot if hasattr(eero_data, 'last_reboot') else None
 
                 if not eero_url:
                     continue
 
                 # Extract eero_id from URL (last part)
                 eero_id = eero_url.split("/")[-1]
+
+                # Map eero API state to our status format
+                status = self._map_eero_state_to_status(state)
+
+                # Calculate uptime from last_reboot
+                uptime_seconds = None
+                if last_reboot:
+                    try:
+                        # Parse ISO format timestamp
+                        if isinstance(last_reboot, str):
+                            # Handle both with and without timezone (Z suffix)
+                            reboot_str = last_reboot.replace('Z', '+00:00')
+                            # Use Python 3.7+ built-in fromisoformat
+                            reboot_time = datetime.fromisoformat(reboot_str)
+                            current_time = datetime.now(reboot_time.tzinfo) if reboot_time.tzinfo else datetime.utcnow()
+                            uptime_seconds = int((current_time - reboot_time).total_seconds())
+                    except Exception as e:
+                        logger.debug(f"Could not parse last_reboot time: {e}")
 
                 # Check if node exists
                 node = (
@@ -165,6 +194,8 @@ class DeviceCollector(BaseCollector):
                         model=model,
                         mac_address=mac_address,
                         is_gateway=is_gateway,
+                        os_version=os_version,
+                        update_available=update_available,
                     )
                     self.db.add(node)
                     self.db.flush()  # Get the ID
@@ -174,7 +205,19 @@ class DeviceCollector(BaseCollector):
                     node.model = model
                     node.mac_address = mac_address
                     node.is_gateway = is_gateway
-                    node.last_seen = datetime.utcnow()
+                    node.os_version = os_version
+                    node.update_available = update_available
+                    node.last_seen = timestamp
+
+                # Create node metric record
+                metric = EeroNodeMetric(
+                    eero_node_id=node.id,
+                    timestamp=timestamp,
+                    status=status,
+                    connected_device_count=connected_clients_count,
+                    uptime_seconds=uptime_seconds,
+                )
+                self.db.add(metric)
 
                 eero_node_map[eero_url] = node.id
 
@@ -182,6 +225,16 @@ class DeviceCollector(BaseCollector):
                 logger.error(f"Error processing eero node: {e}")
 
         return eero_node_map
+
+    def _map_eero_state_to_status(self, state: str) -> str:
+        """Map eero API state to our status format."""
+        state_upper = state.upper()
+        if state_upper == "ONLINE":
+            return "online"
+        elif state_upper == "OFFLINE":
+            return "offline"
+        else:
+            return "unknown"
 
     def _process_device(self, device_data: dict, eero_node_map: Dict[str, int]) -> None:
         """Process a single device and create connection record."""

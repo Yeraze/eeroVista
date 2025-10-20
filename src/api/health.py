@@ -127,6 +127,9 @@ async def dashboard_stats() -> Dict[str, Any]:
             # Count eero nodes
             eero_count = db.query(EeroNode).count()
 
+            # Check if any node has updates available
+            updates_available = db.query(EeroNode).filter(EeroNode.update_available == True).count() > 0
+
             if latest_metric:
                 return {
                     "devices_online": latest_metric.total_devices_online or 0,
@@ -134,6 +137,7 @@ async def dashboard_stats() -> Dict[str, Any]:
                     "eero_nodes": eero_count,
                     "wan_status": latest_metric.wan_status or "unknown",
                     "guest_network_enabled": latest_metric.guest_network_enabled or False,
+                    "updates_available": updates_available,
                     "last_update": latest_metric.timestamp.isoformat(),
                 }
             else:
@@ -144,6 +148,7 @@ async def dashboard_stats() -> Dict[str, Any]:
                     "eero_nodes": eero_count,
                     "wan_status": "unknown",
                     "guest_network_enabled": False,
+                    "updates_available": updates_available,
                     "last_update": None,
                 }
 
@@ -389,6 +394,8 @@ async def get_nodes() -> Dict[str, Any]:
                     "eero_id": node.eero_id,
                     "location": node.location,
                     "model": node.model,
+                    "os_version": node.os_version,
+                    "update_available": node.update_available or False,
                     "mac_address": node.mac_address,
                     "is_gateway": node.is_gateway or False,
                     "status": status,

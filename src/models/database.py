@@ -35,6 +35,8 @@ class EeroNode(Base):
     model: Mapped[Optional[str]] = mapped_column(String)
     mac_address: Mapped[Optional[str]] = mapped_column(String)
     is_gateway: Mapped[Optional[bool]] = mapped_column(Boolean)
+    os_version: Mapped[Optional[str]] = mapped_column(String)
+    update_available: Mapped[Optional[bool]] = mapped_column(Boolean)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime)
 

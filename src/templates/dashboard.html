@@ -10,6 +10,14 @@
 {% block content %}
 <h1 class="mt-4 mb-4">Network Dashboard</h1>
 
+<div id="update-banner" style="display: none; background: var(--peach); color: var(--base); padding: 1rem 1.5rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 1rem;">
+    <div style="font-size: 1.5rem;">⚠️</div>
+    <div style="flex: 1;">
+        <div style="font-weight: 600; font-size: 1rem;">Firmware Update Available</div>
+        <div style="font-size: 0.875rem; margin-top: 0.25rem;">One or more eero nodes have firmware updates available. Visit the <a href="/nodes" style="color: var(--base); text-decoration: underline;">Nodes page</a> for details.</div>
+    </div>
+</div>
+
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-value" id="devices-online">--</div>
@@ -118,6 +126,14 @@
                                data.wan_status === 'offline' ? 'badge-danger' : 'badge-warning';
             const statusText = data.wan_status || 'Unknown';
             statusElement.innerHTML = `<span class="badge ${statusClass}">${statusText}</span>`;
+
+            // Show/hide update banner
+            const updateBanner = document.getElementById('update-banner');
+            if (data.updates_available) {
+                updateBanner.style.display = 'flex';
+            } else {
+                updateBanner.style.display = 'none';
+            }
 
         } catch (error) {
             console.error('Failed to fetch dashboard stats:', error);

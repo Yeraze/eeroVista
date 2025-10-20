@@ -131,6 +131,17 @@
     .gateway-badge::before {
         content: "⭐";
     }
+
+    .update-badge {
+        display: inline-block;
+        background: var(--peach);
+        color: var(--base);
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
 </style>
 
 <script>
@@ -188,7 +199,10 @@
                 <div class="node-card ${cardClass}">
                     <div class="node-header">
                         <div class="node-name">${escapeHtml(node.location || 'Unknown Location')}</div>
-                        <div class="node-status ${statusClass}">${node.status || 'unknown'}</div>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <div class="node-status ${statusClass}">${node.status || 'unknown'}</div>
+                            ${node.update_available ? '<div class="update-badge">Update Available</div>' : ''}
+                        </div>
                     </div>
 
                     ${node.is_gateway ? '<div class="gateway-badge">Gateway Node</div>' : ''}
@@ -197,6 +211,10 @@
                         <div class="node-detail">
                             <span class="node-detail-label">Model</span>
                             <span class="node-detail-value">${escapeHtml(node.model || 'Unknown')}</span>
+                        </div>
+                        <div class="node-detail">
+                            <span class="node-detail-label">Software Version</span>
+                            <span class="node-detail-value">${escapeHtml(node.os_version || 'N/A')}</span>
                         </div>
                         <div class="node-detail">
                             <span class="node-detail-label">MAC Address</span>
