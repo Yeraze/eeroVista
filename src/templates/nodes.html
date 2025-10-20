@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+
+{% block title %}Eero Nodes - eeroVista{% endblock %}
+
+{% block content %}
+<h1 class="mt-4 mb-4">Eero Nodes</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value" id="total-nodes">--</div>
+        <div class="stat-label">Total Nodes</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="online-nodes" style="color: var(--green);">--</div>
+        <div class="stat-label">Online</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="gateway-node" style="color: var(--blue);">--</div>
+        <div class="stat-label">Gateway</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="connected-devices">--</div>
+        <div class="stat-label">Total Connected Devices</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">Eero Mesh Nodes</div>
+    <p class="text-muted">Physical eero devices in your mesh network</p>
+
+    <div id="nodes-container" style="margin-top: 1.5rem;">
+        <div style="text-align: center; padding: 2rem; color: var(--subtext0);">
+            Loading nodes...
+        </div>
+    </div>
+</div>
+
+<style>
+    .node-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 1.5rem;
+        margin-top: 1rem;
+    }
+
+    .node-card {
+        background: var(--surface0);
+        border: 1px solid var(--surface1);
+        border-radius: 8px;
+        padding: 1.5rem;
+        transition: all 0.2s;
+    }
+
+    .node-card:hover {
+        background: var(--surface1);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .node-card.offline {
+        opacity: 0.6;
+    }
+
+    .node-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .node-name {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--text);
+    }
+
+    .node-status {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .node-status.online {
+        background: var(--green);
+        color: var(--base);
+    }
+
+    .node-status.offline {
+        background: var(--surface2);
+        color: var(--subtext0);
+    }
+
+    .node-detail {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--surface1);
+        font-size: 0.875rem;
+    }
+
+    .node-detail:last-child {
+        border-bottom: none;
+    }
+
+    .node-detail-label {
+        color: var(--subtext0);
+        font-weight: 500;
+    }
+
+    .node-detail-value {
+        color: var(--text);
+        font-weight: 600;
+    }
+
+    .gateway-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: var(--blue);
+        color: var(--base);
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        margin-top: 0.5rem;
+    }
+
+    .gateway-badge::before {
+        content: "⭐";
+    }
+</style>
+
+<script>
+    let nodesData = [];
+
+    // Fetch nodes data
+    async function loadNodes() {
+        try {
+            const response = await fetch('/api/nodes');
+            const data = await response.json();
+
+            nodesData = data.nodes || [];
+
+            // Update stats
+            document.getElementById('total-nodes').textContent = nodesData.length;
+
+            const onlineNodes = nodesData.filter(n => n.status === 'online').length;
+            document.getElementById('online-nodes').textContent = onlineNodes;
+
+            const gatewayNode = nodesData.find(n => n.is_gateway);
+            document.getElementById('gateway-node').textContent = gatewayNode ? gatewayNode.location : 'N/A';
+
+            const totalDevices = nodesData.reduce((sum, node) => sum + (node.connected_devices || 0), 0);
+            document.getElementById('connected-devices').textContent = totalDevices;
+
+            // Render nodes
+            renderNodes();
+        } catch (error) {
+            console.error('Failed to load nodes:', error);
+            document.getElementById('nodes-container').innerHTML =
+                '<div style="text-align: center; padding: 2rem; color: var(--red);">Failed to load nodes</div>';
+        }
+    }
+
+    function renderNodes() {
+        const container = document.getElementById('nodes-container');
+
+        if (nodesData.length === 0) {
+            container.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--subtext0);">No nodes found</div>';
+            return;
+        }
+
+        // Sort: gateway first, then by location
+        const sortedNodes = [...nodesData].sort((a, b) => {
+            if (a.is_gateway && !b.is_gateway) return -1;
+            if (!a.is_gateway && b.is_gateway) return 1;
+            return (a.location || '').localeCompare(b.location || '');
+        });
+
+        const nodesHTML = sortedNodes.map(node => {
+            const statusClass = node.status === 'online' ? 'online' : 'offline';
+            const cardClass = node.status === 'online' ? '' : 'offline';
+
+            return `
+                <div class="node-card ${cardClass}">
+                    <div class="node-header">
+                        <div class="node-name">${escapeHtml(node.location || 'Unknown Location')}</div>
+                        <div class="node-status ${statusClass}">${node.status || 'unknown'}</div>
+                    </div>
+
+                    ${node.is_gateway ? '<div class="gateway-badge">Gateway Node</div>' : ''}
+
+                    <div style="margin-top: 1rem;">
+                        <div class="node-detail">
+                            <span class="node-detail-label">Model</span>
+                            <span class="node-detail-value">${escapeHtml(node.model || 'Unknown')}</span>
+                        </div>
+                        <div class="node-detail">
+                            <span class="node-detail-label">MAC Address</span>
+                            <span class="node-detail-value">${escapeHtml(node.mac_address || 'N/A')}</span>
+                        </div>
+                        <div class="node-detail">
+                            <span class="node-detail-label">Connected Devices</span>
+                            <span class="node-detail-value">${node.connected_devices || 0}</span>
+                        </div>
+                        ${node.uptime ? `
+                        <div class="node-detail">
+                            <span class="node-detail-label">Uptime</span>
+                            <span class="node-detail-value">${formatUptime(node.uptime)}</span>
+                        </div>
+                        ` : ''}
+                        <div class="node-detail">
+                            <span class="node-detail-label">Last Seen</span>
+                            <span class="node-detail-value">${formatTimestamp(node.last_seen)}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = `<div class="node-grid">${nodesHTML}</div>`;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function formatUptime(seconds) {
+        if (!seconds) return 'N/A';
+
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+
+        if (days > 0) {
+            return `${days}d ${hours}h`;
+        } else if (hours > 0) {
+            return `${hours}h ${minutes}m`;
+        } else {
+            return `${minutes}m`;
+        }
+    }
+
+    function formatTimestamp(timestamp) {
+        if (!timestamp) return 'Never';
+
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffSeconds = Math.floor((now - date) / 1000);
+
+        if (diffSeconds < 60) {
+            return 'Just now';
+        } else if (diffSeconds < 3600) {
+            const minutes = Math.floor(diffSeconds / 60);
+            return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+        } else if (diffSeconds < 86400) {
+            const hours = Math.floor(diffSeconds / 3600);
+            return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+        } else {
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+        }
+    }
+
+    // Initial load
+    loadNodes();
+
+    // Refresh every 30 seconds
+    setInterval(loadNodes, 30000);
+</script>
+{% endblock %}

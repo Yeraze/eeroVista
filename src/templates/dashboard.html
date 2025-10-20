@@ -40,7 +40,13 @@
             <strong>Last Data Collection:</strong> <span id="last-collection-time">Checking...</span>
         </p>
         <p class="text-muted" style="font-size: 0.85rem;">
-            Data collectors run every 5 minutes
+            {% if collection_interval_devices < 60 %}
+                Device data collected every {{ collection_interval_devices }} seconds
+            {% elif collection_interval_devices == 60 %}
+                Device data collected every minute
+            {% else %}
+                Device data collected every {{ collection_interval_devices // 60 }} minutes
+            {% endif %}
         </p>
     </div>
 </div>
