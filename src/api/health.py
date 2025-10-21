@@ -763,6 +763,11 @@ async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
             now_local = datetime.now(tz)
             today_local = now_local.date()
             since_date = today_local - timedelta(days=days - 1)
+
+            # Generate complete date range
+            all_dates = [since_date + timedelta(days=i) for i in range(days)]
+
+            # Fetch records from database
             daily_records = (
                 db.query(DailyBandwidth)
                 .filter(
@@ -773,20 +778,33 @@ async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
                 .all()
             )
 
+            # Create a lookup map for existing records
+            records_by_date = {record.date: record for record in daily_records}
+
             # Calculate totals
             total_download = sum(record.download_mb for record in daily_records)
             total_upload = sum(record.upload_mb for record in daily_records)
 
-            # Format daily breakdown
+            # Format daily breakdown with complete date range (fill zeros for missing days)
             daily_breakdown = []
-            for record in daily_records:
-                is_today = record.date == today_local
-                daily_breakdown.append({
-                    "date": record.date.isoformat(),
-                    "download_mb": round(record.download_mb, 2),
-                    "upload_mb": round(record.upload_mb, 2),
-                    "is_incomplete": is_today,  # Today's data is still being collected
-                })
+            for date_obj in all_dates:
+                is_today = date_obj == today_local
+                if date_obj in records_by_date:
+                    record = records_by_date[date_obj]
+                    daily_breakdown.append({
+                        "date": date_obj.isoformat(),
+                        "download_mb": round(record.download_mb, 2),
+                        "upload_mb": round(record.upload_mb, 2),
+                        "is_incomplete": is_today,  # Today's data is still being collected
+                    })
+                else:
+                    # No data for this date - fill with zeros
+                    daily_breakdown.append({
+                        "date": date_obj.isoformat(),
+                        "download_mb": 0.0,
+                        "upload_mb": 0.0,
+                        "is_incomplete": False,
+                    })
 
             return {
                 "period": {

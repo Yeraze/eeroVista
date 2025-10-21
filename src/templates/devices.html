@@ -85,7 +85,7 @@
         border: 2px solid var(--surface0);
         border-radius: 12px;
         padding: 1.5rem;
-        max-width: 500px;
+        max-width: 1000px;
         width: 90%;
         max-height: 80vh;
         overflow-y: auto;
@@ -153,16 +153,11 @@
         word-break: break-word;
     }
 
-    .aliases-section {
-        margin-top: 1rem;
-        padding-top: 1rem;
-        border-top: 2px solid var(--surface0);
-    }
-
     .aliases-label {
         font-weight: 600;
         color: var(--subtext1);
         margin-bottom: 0.5rem;
+        display: block;
     }
 
     .aliases-textarea {
@@ -232,9 +227,8 @@
 
     /* Bandwidth graph styles */
     .bandwidth-section {
-        margin-top: 1.5rem;
-        padding-top: 1rem;
-        border-top: 2px solid var(--surface0);
+        margin-top: 1rem;
+        margin-bottom: 1.5rem;
     }
 
     .bandwidth-header {
@@ -279,6 +273,18 @@
         position: relative;
         height: 300px;
         margin-bottom: 1rem;
+    }
+
+    /* Two-column layout for device details and aliases */
+    .details-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+    }
+
+    .details-column {
+        min-width: 0; /* Prevents grid overflow */
     }
 </style>
 {% endblock %}
@@ -560,57 +566,9 @@
         // Set title
         modalTitle.textContent = device.name;
 
-        // Build the details HTML
+        // Build the details HTML - start with bandwidth graph at the top (full width)
         let detailsHtml = `
-            <div class="info-row">
-                <div class="info-label">Type:</div>
-                <div class="info-value">${formatDeviceType(device.type)}</div>
-            </div>
-            <div class="info-row">
-                <div class="info-label">Status:</div>
-                <div class="info-value">${device.is_online ? '<span style="color: var(--green);">● Online</span>' : '<span style="color: var(--subtext0);">● Offline</span>'}</div>
-            </div>
-            <div class="info-row">
-                <div class="info-label">IP Address:</div>
-                <div class="info-value">${device.ip_address}</div>
-            </div>
-            <div class="info-row">
-                <div class="info-label">MAC Address:</div>
-                <div class="info-value">${device.mac_address}</div>
-            </div>
-            <div class="info-row">
-                <div class="info-label">Connection:</div>
-                <div class="info-value">${device.connection_type}</div>
-            </div>
-            ${device.signal_strength !== null && device.signal_strength !== undefined ? `
-            <div class="info-row">
-                <div class="info-label">Signal Strength:</div>
-                <div class="info-value">${device.signal_strength} dBm</div>
-            </div>` : ''}
-            ${device.bandwidth_down_mbps !== null && device.bandwidth_down_mbps !== undefined ? `
-            <div class="info-row">
-                <div class="info-label">Current Download:</div>
-                <div class="info-value">${device.bandwidth_down_mbps.toFixed(1)} Mbps</div>
-            </div>` : ''}
-            ${device.bandwidth_up_mbps !== null && device.bandwidth_up_mbps !== undefined ? `
-            <div class="info-row">
-                <div class="info-label">Current Upload:</div>
-                <div class="info-value">${device.bandwidth_up_mbps.toFixed(1)} Mbps</div>
-            </div>` : ''}
-            <div class="info-row">
-                <div class="info-label">Connected To:</div>
-                <div class="info-value">${device.node}</div>
-            </div>
-            ${device.last_seen ? `
-            <div class="info-row">
-                <div class="info-label">Last Seen:</div>
-                <div class="info-value">${formatTimestamp(device.last_seen)}</div>
-            </div>` : ''}
-        `;
-
-        // Add bandwidth usage section
-        detailsHtml += `
-            <div class="bandwidth-section">
+            <div class="bandwidth-section" style="margin-top: 0; padding-top: 0; border-top: none;">
                 <div class="bandwidth-header">
                     <div class="bandwidth-title">Bandwidth Usage</div>
                     <div class="interval-selector">
@@ -635,15 +593,63 @@
             </div>
         `;
 
-        // Add aliases section
+        // Add two-column layout for device details and aliases
         const aliasesValue = device.aliases ? device.aliases.join('\n') : '';
         detailsHtml += `
-            <div class="aliases-section">
-                <div class="aliases-label">DNS Aliases</div>
-                <textarea id="aliases-textarea" class="aliases-textarea" placeholder="Enter DNS aliases, one per line">${aliasesValue}</textarea>
-                <div class="aliases-help">Each alias will be added as an alternate DNS name for this device</div>
-                <button id="save-aliases-btn" class="save-button">Save Aliases</button>
-                <div id="save-message" class="save-message"></div>
+            <div class="details-grid">
+                <div class="details-column">
+                    <div class="info-row">
+                        <div class="info-label">Type:</div>
+                        <div class="info-value">${formatDeviceType(device.type)}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Status:</div>
+                        <div class="info-value">${device.is_online ? '<span style="color: var(--green);">● Online</span>' : '<span style="color: var(--subtext0);">● Offline</span>'}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">IP Address:</div>
+                        <div class="info-value">${device.ip_address}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">MAC Address:</div>
+                        <div class="info-value">${device.mac_address}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Connection:</div>
+                        <div class="info-value">${device.connection_type}</div>
+                    </div>
+                    ${device.signal_strength !== null && device.signal_strength !== undefined ? `
+                    <div class="info-row">
+                        <div class="info-label">Signal Strength:</div>
+                        <div class="info-value">${device.signal_strength} dBm</div>
+                    </div>` : ''}
+                    ${device.bandwidth_down_mbps !== null && device.bandwidth_down_mbps !== undefined ? `
+                    <div class="info-row">
+                        <div class="info-label">Current Download:</div>
+                        <div class="info-value">${device.bandwidth_down_mbps.toFixed(1)} Mbps</div>
+                    </div>` : ''}
+                    ${device.bandwidth_up_mbps !== null && device.bandwidth_up_mbps !== undefined ? `
+                    <div class="info-row">
+                        <div class="info-label">Current Upload:</div>
+                        <div class="info-value">${device.bandwidth_up_mbps.toFixed(1)} Mbps</div>
+                    </div>` : ''}
+                    <div class="info-row">
+                        <div class="info-label">Connected To:</div>
+                        <div class="info-value">${device.node}</div>
+                    </div>
+                    ${device.last_seen ? `
+                    <div class="info-row">
+                        <div class="info-label">Last Seen:</div>
+                        <div class="info-value">${formatTimestamp(device.last_seen)}</div>
+                    </div>` : ''}
+                </div>
+                <div class="details-column">
+                    <div class="aliases-label">DNS Aliases</div>
+                    <textarea id="aliases-textarea" class="aliases-textarea" placeholder="Enter DNS aliases, one per line">${aliasesValue}</textarea>
+                    <div class="aliases-help">Each alias will be added as an alternate DNS name for this device</div>
+                    <button id="save-aliases-btn" class="save-button">Save Aliases</button>
+                    <div id="save-message" class="save-message"></div>
+                </div>
             </div>
         `;
 
