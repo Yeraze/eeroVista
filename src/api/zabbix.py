@@ -29,6 +29,8 @@ async def discover_devices() -> Dict[str, List[Dict[str, str]]]:
     - `{#HOSTNAME}` - Device hostname
     - `{#NICKNAME}` - Device nickname (or hostname if no nickname)
     - `{#TYPE}` - Device type (mobile, computer, iot, etc.)
+    - `{#IP}` - Last known IP address
+    - `{#CONNECTION_TYPE}` - Connection type (wireless/wired)
 
     **Example Response**:
     ```json
@@ -46,7 +48,7 @@ async def discover_devices() -> Dict[str, List[Dict[str, str]]]:
     """
     try:
         with get_db_context() as db:
-            from src.models.database import Device
+            from src.models.database import Device, DeviceConnection
 
             devices = db.query(Device).all()
 
@@ -56,11 +58,24 @@ async def discover_devices() -> Dict[str, List[Dict[str, str]]]:
                 nickname = device.nickname or hostname
                 device_type = device.device_type or "unknown"
 
+                # Get latest connection for IP and connection type
+                latest_conn = (
+                    db.query(DeviceConnection)
+                    .filter(DeviceConnection.device_id == device.id)
+                    .order_by(DeviceConnection.timestamp.desc())
+                    .first()
+                )
+
+                ip_address = latest_conn.ip_address if latest_conn and latest_conn.ip_address else "Unknown"
+                connection_type = latest_conn.connection_type if latest_conn and latest_conn.connection_type else "unknown"
+
                 discovery_data.append({
                     "{#MAC}": device.mac_address,
                     "{#HOSTNAME}": hostname,
                     "{#NICKNAME}": nickname,
                     "{#TYPE}": device_type,
+                    "{#IP}": ip_address,
+                    "{#CONNECTION_TYPE}": connection_type,
                 })
 
             return {"data": discovery_data}
@@ -85,6 +100,8 @@ async def discover_nodes() -> Dict[str, List[Dict[str, str]]]:
     - `{#NODE_NAME}` - Node location/name
     - `{#NODE_MODEL}` - Node model (e.g., "eero Pro 6E")
     - `{#IS_GATEWAY}` - Gateway flag ("1" or "0")
+    - `{#MAC}` - Node MAC address
+    - `{#FIRMWARE}` - Firmware/OS version
 
     **Example Response**:
     ```json
@@ -111,12 +128,16 @@ async def discover_nodes() -> Dict[str, List[Dict[str, str]]]:
                 location = node.location or f"Node {node.eero_id}"
                 model = node.model or "Unknown"
                 is_gateway = "1" if node.is_gateway else "0"
+                mac_address = node.mac_address or "Unknown"
+                firmware = node.os_version or "Unknown"
 
                 discovery_data.append({
                     "{#NODE_ID}": node.eero_id,
                     "{#NODE_NAME}": location,
                     "{#NODE_MODEL}": model,
                     "{#IS_GATEWAY}": is_gateway,
+                    "{#MAC}": mac_address,
+                    "{#FIRMWARE}": firmware,
                 })
 
             return {"data": discovery_data}

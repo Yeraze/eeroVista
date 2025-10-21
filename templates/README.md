@@ -1,287 +1,168 @@
-# eeroVista Monitoring Templates
+# eeroVista Zabbix Templates
 
-This directory contains pre-built monitoring templates for integrating eeroVista with external monitoring systems.
+This directory contains Zabbix templates for monitoring Eero mesh networks via eeroVista.
 
-## Zabbix Template
+## Available Templates
 
-### Quick Start
+### 1. Single-Host Monitoring (Recommended for Small Networks)
 
-**File**: `zabbix_template_eerovista.xml`
+**Template**: `zabbix_template_eerovista.xml`
 
-**Compatible with**: Zabbix 6.0 and later
+- **Best for**: Networks with <50 devices
+- **Creates**: One Zabbix host with many items
+- **Pros**: Simpler setup, less Zabbix overhead
+- **Cons**: All metrics under one host
 
-### Import Instructions
+**What you get**:
+- Network-wide metrics (total/online devices, WAN status)
+- Speedtest metrics (download, upload, latency)
+- Per-device items via Low-Level Discovery
+- Per-node items via Low-Level Discovery
+- Triggers for offline devices, weak signals, slow speeds
 
-1. **Download the template**:
-   ```bash
-   wget https://raw.githubusercontent.com/Yeraze/eeroVista/main/templates/zabbix_template_eerovista.xml
-   ```
+### 2. Auto-Discovery with Individual Hosts (Recommended for Large Networks)
 
-2. **Import to Zabbix**:
-   - Open Zabbix web interface
-   - Navigate to: **Configuration** → **Templates**
-   - Click **Import** button
-   - Click **Choose File** and select `zabbix_template_eerovista.xml`
-   - Review import options (defaults are usually fine)
-   - Click **Import**
+**Template**: `zabbix_template_eerovista_complete.xml`
 
-3. **Create a host for eeroVista**:
-   - Navigate to: **Configuration** → **Hosts**
-   - Click **Create host**
-   - Set **Host name**: `eeroVista` (or your preference)
-   - Set **Visible name**: `Eero Network`
-   - Add to **Groups**: `Network Devices` (or create new group)
-   - Under **Interfaces**, add:
-     - **Type**: HTTP agent
-     - **IP address**: Your eeroVista server IP
-     - **DNS name**: (optional) your eeroVista hostname
-     - **Connect to**: IP (or DNS)
-     - **Port**: 8080 (or custom port if changed)
+- **Best for**: Networks with 50+ devices, or when you want granular host-level management
+- **Creates**: Individual Zabbix hosts for each device and node
+- **Pros**: Better organization, individual host management, inventory support
+- **Cons**: More Zabbix resources, requires Zabbix 6.0+
 
-4. **Link the template**:
-   - In the host configuration, go to **Templates** tab
-   - Click **Select** next to "Link new templates"
-   - Search for `eeroVista Network Monitor`
-   - Click **Add**, then **Update**
+**What you get**:
+- Automatic host creation for each discovered device (`eeroVista-Device-{hostname}`)
+- Automatic host creation for each discovered node (`eeroVista-Node-{nodename}`)
+- Zabbix inventory mode enabled with MAC addresses, device types, models available via macros
+- Each host has its own set of items and triggers
+- Better for Maps, Mass Updates, and SLA reporting
+- Includes all three templates (Device, Node, and Auto-Discovery) in one file
 
-5. **Verify discovery is working**:
-   - Wait 5-10 minutes for initial discovery
-   - Navigate to: **Monitoring** → **Latest data**
-   - Filter by host: `eeroVista`
-   - You should see network metrics and discovered devices/nodes
+## Installation
 
-### What's Included
+### Single-Host Monitoring
 
-The template provides comprehensive monitoring with:
+1. Import `zabbix_template_eerovista.xml`
+2. Create a host for your eeroVista instance
+3. Configure macros:
+   - `{$EEROVISTA_SCHEME}` = `http` or `https`
+   - `{$EEROVISTA_PORT}` = `8080` (or your port)
+4. Link template to host
+5. Wait for discovery to populate items
 
-#### Network-Wide Metrics
-- Total devices count
-- Online devices count
-- WAN status (online/offline)
-- Speedtest results (download, upload, latency)
+### Auto-Discovery with Individual Hosts
 
-#### Automatic Device Discovery
-Discovers all devices on your Eero network with:
-- Connection status (online/offline)
-- WiFi signal strength (dBm)
-- Current bandwidth (download/upload in Mbps)
+**Prerequisites**:
+1. Create host groups in Zabbix before importing:
+   - `eeroVista/Devices`
+   - `eeroVista/Nodes`
 
-#### Automatic Node Discovery
-Discovers all Eero mesh nodes with:
-- Node status (online/offline)
-- Connected device count
-- Mesh quality (1-5 bars)
+**Setup Steps**:
+1. Import `zabbix_template_eerovista_complete.xml` into Zabbix
+2. Create a host for your eeroVista instance (e.g., "my-eerovista")
+3. Configure macros on the eeroVista host:
+   - `{$EEROVISTA_SCHEME}` = `http` or `https`
+   - `{$EEROVISTA_PORT}` = `8080` (or your port)
+   - `{$PARENT_HOST}` = hostname or IP of your eeroVista server (e.g., `192.168.1.100` or `eerovista.local`)
+4. Link the "eeroVista Auto-Discovery" template to the host
+5. Wait 10-30 minutes for discovery to run
+6. Check `eeroVista/Devices` and `eeroVista/Nodes` host groups for auto-created hosts
 
-#### Pre-configured Triggers
-- **DISASTER**: WAN is offline
-- **HIGH**: Eero node is offline
-- **WARNING**: Device is offline
-- **WARNING**: Weak WiFi signal
-- **WARNING**: Slow internet speed
-- **WARNING**: High latency
-- **WARNING**: Poor mesh quality
+**Important**: The `{$PARENT_HOST}` macro on your eeroVista host will be inherited by all discovered device and node hosts, allowing them to query the eeroVista API.
 
-#### Configurable Macros
+## Configuration
 
-You can customize thresholds by changing these macros (on the host or template level):
+### HTTPS Support
 
-| Macro | Default | Description |
-|-------|---------|-------------|
-| `{$EEROVISTA_PORT}` | `8080` | eeroVista HTTP port |
-| `{$SIGNAL_WARN}` | `-70` | Signal warning threshold (dBm) |
-| `{$SIGNAL_CRIT}` | `-80` | Signal critical threshold (dBm) |
-| `{$SPEED_WARN}` | `100` | Download speed warning (Mbps) |
-| `{$LATENCY_WARN}` | `50` | Latency warning (ms) |
+Both templates support HTTPS for reverse proxies:
 
-**To change macros**:
-1. Navigate to: **Configuration** → **Hosts**
-2. Click on your eeroVista host
-3. Go to **Macros** tab
-4. Click **Inherited and host macros**
-5. Override any macro value
-6. Click **Update**
+```
+{$EEROVISTA_SCHEME} = https
+{$EEROVISTA_PORT} = 443
+```
 
-### Update Intervals
+### Required Macros (Auto-Discovery)
 
-Default polling intervals (can be customized per item):
+For the auto-discovery template, set these macros on the eeroVista host:
 
-- **Network metrics**: 1 minute
-- **Device status**: 1 minute
-- **Device signal/bandwidth**: 2 minutes
-- **Speedtest metrics**: 5 minutes
-- **Node metrics**: 2-5 minutes
-- **Device discovery**: 5 minutes
-- **Node discovery**: 10 minutes
+```
+{$EEROVISTA_SCHEME} = http          # or https for reverse proxy
+{$EEROVISTA_PORT} = 8080            # your eeroVista port
+{$PARENT_HOST} = 192.168.1.100      # hostname or IP of eeroVista server
+```
 
-**To adjust intervals**:
-1. Navigate to: **Configuration** → **Hosts**
-2. Click on your eeroVista host
-3. Go to **Items** or **Discovery rules**
-4. Click on the item you want to modify
-5. Change the **Update interval**
-6. Click **Update**
+### Thresholds
 
-### Data Retention
+Customize alert thresholds with macros (apply to single-host or device/node templates):
 
-Default retention (can be customized):
+```
+{$SIGNAL_WARN} = -70    # WiFi signal warning (dBm)
+{$SIGNAL_CRIT} = -80    # WiFi signal critical (dBm)
+{$SPEED_WARN} = 100     # Download speed warning (Mbps)
+{$LATENCY_WARN} = 50    # Latency warning (ms)
+```
 
-- **History**: 7 days (raw data)
-- **Trends**: 365 days (hourly averages)
+## Inventory Fields (Auto-Discovery)
 
-**To adjust retention**:
-1. Navigate to: **Configuration** → **Hosts**
-2. Click on your eeroVista host
-3. Go to **Items**
-4. Click on the item you want to modify
-5. Change **History storage period** and/or **Trend storage period**
-6. Click **Update**
+The auto-discovery templates set `inventory_mode=AUTOMATIC` for all created hosts.
+While Zabbix 6.0 host prototypes don't support direct inventory population via XML,
+the following information is available via host macros:
 
-### Creating Dashboards
+**Device Hosts**:
+- `{$DEVICE_MAC}` - Device MAC address
+- `{$DEVICE_HOSTNAME}` - Device hostname
+- `{$DEVICE_NICKNAME}` - Device nickname/friendly name
+- `{$DEVICE_TYPE}` - Device type (laptop, phone, tablet, etc.)
+- `{$DEVICE_IP}` - Last known IP address
+- `{$DEVICE_CONNECTION_TYPE}` - Connection type (wireless/wired)
 
-Example widgets for a custom dashboard:
+**Node Hosts**:
+- `{$NODE_ID}` - Eero node ID
+- `{$NODE_NAME}` - Node location/name
+- `{$NODE_MODEL}` - Node hardware model
+- `{$NODE_IS_GATEWAY}` - Gateway flag (1=gateway, 0=leaf node)
+- `{$NODE_MAC}` - Node MAC address
+- `{$NODE_FIRMWARE}` - Firmware/OS version
 
-1. **Network Status Widget** (Plain text):
-   - Items: `network.devices.total`, `network.devices.online`, `network.status`
-   - Shows: "Online: 15/20 devices | WAN: Up"
+These macros can be used in:
+- Item names and descriptions
+- Trigger names and messages  
+- Manual inventory population
+- External scripts and integrations
 
-2. **Device Count Graph** (Graph):
-   - Items: `network.devices.online`
-   - Type: Line
-   - Time period: 24 hours
+## Compatibility
 
-3. **Speedtest Graph** (Graph):
-   - Items: `speedtest.download`, `speedtest.upload`
-   - Type: Stacked area
-   - Time period: 7 days
+- **Zabbix Version**: 6.0+ (for all templates)
+  - Auto-discovery requires 6.0+ for host prototypes
+- **eeroVista Version**: Any version with Zabbix API support
+- **Protocol**: HTTP or HTTPS
 
-4. **Active Problems** (Problems):
-   - Host group: Network Devices
-   - Severity: Warning and above
-   - Shows: Current alerts
+## Troubleshooting
 
-5. **Device Status Table** (Discovery rule widget):
-   - Discovery rule: Device Discovery
-   - Columns: Hostname, Connected, Signal, Bandwidth
+### Discovery not working
 
-### Troubleshooting
+- Verify eeroVista is accessible at the configured URL
+- Check macro values (scheme, port, host groups)
+- Review Zabbix server logs for HTTP agent errors
+- Ensure eeroVista Zabbix endpoints return valid JSON
 
-#### No data appearing
+### Hosts not auto-created
 
-1. **Check eeroVista is accessible**:
-   ```bash
-   curl http://your-eerovista-ip:8080/api/zabbix/discovery/devices
-   ```
-   Should return JSON with device list.
+- Verify you're using Zabbix 6.0 or later
+- Check that host groups `eeroVista/Devices` and `eeroVista/Nodes` exist before importing template
+- Review discovery rule logs in Zabbix UI (Latest data → Discovery rules)
+- Verify `{$PARENT_HOST}` macro is set correctly on the eeroVista host
+- Check that eeroVista API endpoints return data: `/api/zabbix/discovery/devices` and `/api/zabbix/discovery/nodes`
 
-2. **Check Zabbix server can reach eeroVista**:
-   - SSH to Zabbix server
-   - Test connectivity:
-     ```bash
-     curl http://your-eerovista-ip:8080/api/health
-     ```
+### Template import errors
 
-3. **Verify host interface configuration**:
-   - Configuration → Hosts → eeroVista
-   - Ensure HTTP agent interface has correct IP/DNS and port
+- Ensure you're using Zabbix 6.0 or later
+- Verify the "Templates/Network devices" group exists (standard Zabbix group)
+- All UUIDs are properly formatted UUIDv4 (generated with Python's uuid library)
+- Templates use `<tags>` instead of deprecated `<applications>`
 
-4. **Check Zabbix server logs**:
-   ```bash
-   tail -f /var/log/zabbix/zabbix_server.log | grep eerovista
-   ```
-
-#### Discovery not working
-
-1. **Test discovery URL manually**:
-   ```bash
-   curl http://your-eerovista-ip:8080/api/zabbix/discovery/devices
-   ```
-
-2. **Check discovery rule status**:
-   - Configuration → Hosts → eeroVista → Discovery rules
-   - Click on "Device Discovery" or "Node Discovery"
-   - Check **Status** is "Enabled"
-   - View **Latest data** to see last discovery execution
-
-3. **Force discovery update**:
-   - Configuration → Hosts → eeroVista → Discovery rules
-   - Click "Check now" button next to the discovery rule
-
-#### Items showing "Not supported"
-
-1. **Check preprocessing**:
-   - Each item should have JSONPath preprocessing: `$.value`
-   - Configuration → Hosts → Items → Click item → Preprocessing tab
-
-2. **Test item manually**:
-   - Configuration → Hosts → Items
-   - Click item name
-   - Click "Test" button
-   - Review error message
-
-3. **Verify API response format**:
-   ```bash
-   curl http://your-eerovista-ip:8080/api/zabbix/data?item=network.devices.total
-   ```
-   Should return: `{"value": 20, "timestamp": "2025-10-20T..."}`
-
-### Advanced Configuration
-
-#### Setting up email alerts
-
-1. **Configure media type**:
-   - Administration → Media types
-   - Select or create email media type
-   - Configure SMTP settings
-
-2. **Create user media**:
-   - Administration → Users
-   - Select your user → Media tab
-   - Add email address
-
-3. **Create action**:
-   - Configuration → Actions → Trigger actions
-   - Create action with conditions:
-     - Trigger severity ≥ Warning
-     - Host group = Network Devices
-   - Operations: Send message to Admin
-
-#### Integration with external services
-
-The template can be extended to integrate with:
-- **Slack**: Use webhook media type
-- **PagerDuty**: Use webhook media type
-- **Telegram**: Use Telegram media type
-- **Custom scripts**: Use script media type
-
-### Template Customization
-
-You can modify the template to fit your needs:
-
-1. **Export template** (after import):
-   - Configuration → Templates
-   - Select "eeroVista Network Monitor"
-   - Click Export
-   - Modify XML as needed
-   - Re-import
-
-2. **Clone template** (to preserve original):
-   - Configuration → Templates
-   - Click "eeroVista Network Monitor"
-   - Click "Full clone"
-   - Modify clone as needed
-
-### Support
+## Support
 
 For issues or questions:
-- **Documentation**: https://yeraze.github.io/eeroVista/zabbix.html
-- **GitHub Issues**: https://github.com/Yeraze/eeroVista/issues
-- **Discussions**: https://github.com/Yeraze/eeroVista/discussions
+- GitHub: https://github.com/Yeraze/eeroVista/issues
+- Documentation: https://github.com/Yeraze/eeroVista
 
-## Future Templates
-
-Planned templates for other monitoring systems:
-- Grafana dashboard (via Prometheus)
-- Nagios/Icinga checks
-- Datadog integration
-
-Contributions welcome!
