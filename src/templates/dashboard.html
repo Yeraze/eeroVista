@@ -358,17 +358,11 @@
             };
         }
 
-        // Update existing chart if it exists, otherwise create new one
+        // Destroy and recreate chart when switching modes or when data structure changes
+        // This ensures proper formatter updates and prevents "Invalid date" issues
         if (networkBandwidthChart) {
-            // Update data without destroying chart (reduces flicker)
-            networkBandwidthChart.data.labels = labels;
-            networkBandwidthChart.data.datasets[0].data = downloadData;
-            networkBandwidthChart.data.datasets[0].backgroundColor = downloadColors;
-            networkBandwidthChart.data.datasets[1].data = uploadData;
-            networkBandwidthChart.data.datasets[1].backgroundColor = uploadColors;
-            networkBandwidthChart.options.scales.x.title.text = xAxisTitle;
-            networkBandwidthChart.update('none'); // 'none' disables animations for smoother update
-            return;
+            networkBandwidthChart.destroy();
+            networkBandwidthChart = null;
         }
 
         // Create new chart (first time only)
@@ -414,6 +408,7 @@
                 },
                 scales: {
                     x: {
+                        type: 'category',  // Explicitly use category scale to prevent date parsing
                         stacked: false,
                         title: {
                             display: true,

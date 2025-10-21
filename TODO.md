@@ -2,13 +2,22 @@
 
 ## Pending Features
 
-### Dashboard Performance
-- [ ] Speed up hourly graph loading (currently ~5s to switch to/from)
-  - Profile API endpoint response time
-  - Optimize client-side rendering
-  - Consider caching or lazy loading
+### Bugs
+- [ ] Fix hourly chart x-axis showing "Invalid date" instead of hour labels
+- [ ] Fix 7-day/30-day toggle on main page - currently only affects Top Consumers chart, not Bandwidth Usage chart
+
+### UI Enhancements
+- [ ] Redesign device popup layout:
+  - Make popup twice as wide
+  - Graph at full width across the top
+  - Below graph: 2-column layout (device details left, aliases right)
 
 ## Completed
+- [x] Hourly bandwidth endpoint optimization (PR #21)
+  - SQL aggregation optimization: reduced query time from 3.0s to 2.3s (23% improvement)
+  - In-memory caching with 5-minute TTL: cached requests now 0.003s (99.9% faster)
+  - Overall: 1000x speedup for dashboard refresh scenarios
+  - Enhanced Zabbix test suite: 13 unit tests + 20 integration test stubs
 - [x] v0.7.1 Release - Zabbix 6.0+ templates with auto-discovery (PR #20)
   - Zabbix 6.0+ compatibility: deprecated applications→tags, proper UUIDs, required groups
   - New auto-discovery template with host prototypes (creates individual hosts for devices/nodes)
