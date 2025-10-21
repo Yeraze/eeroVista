@@ -6,7 +6,7 @@ Guide for integrating eeroVista with Zabbix for network monitoring and alerting.
 
 eeroVista provides Zabbix-compatible endpoints for:
 - Low-Level Discovery (LLD) of devices and nodes
-- Metric collection via HTTP agent
+- Metric collection via Zabbix Agent
 - Network topology monitoring
 
 ## Architecture
@@ -26,13 +26,23 @@ eeroVista provides Zabbix-compatible endpoints for:
 4. Configure discovery rules
 5. Set up triggers and alerts
 
-## Zabbix Template
+## Zabbix Templates
 
-### Import Pre-Built Template (Recommended)
+eeroVista provides two pre-built Zabbix templates to fit different network sizes and monitoring preferences.
 
-A ready-to-use Zabbix template is available in the repository:
+### Template Options
+
+#### 1. Single-Host Monitoring (Recommended for Small Networks)
 
 **File**: [`templates/zabbix_template_eerovista.xml`](https://github.com/Yeraze/eeroVista/blob/main/templates/zabbix_template_eerovista.xml)
+
+**Best for**: Networks with <50 devices
+
+**What it does**:
+- Creates one Zabbix host with many items
+- Network-wide metrics (total/online devices, WAN status, speedtest)
+- Per-device and per-node items via Low-Level Discovery
+- Simpler setup, less Zabbix overhead
 
 **Quick Import**:
 ```bash
@@ -43,13 +53,51 @@ wget https://raw.githubusercontent.com/Yeraze/eeroVista/main/templates/zabbix_te
 # Configuration → Templates → Import
 ```
 
-The template includes:
-- ✅ Network-wide metrics (devices, WAN status, speedtest)
-- ✅ Automatic device discovery with LLD
-- ✅ Automatic node discovery with LLD
+#### 2. Auto-Discovery with Individual Hosts (Recommended for Large Networks)
+
+**File**: [`templates/zabbix_template_eerovista_complete.xml`](https://github.com/Yeraze/eeroVista/blob/main/templates/zabbix_template_eerovista_complete.xml)
+
+**Best for**: Networks with 50+ devices, or when you want granular host-level management
+
+**What it does**:
+- **Automatically creates individual Zabbix hosts** for each discovered device and node
+- Device hosts: `eeroVista-Device-{hostname}`
+- Node hosts: `eeroVista-Node-{nodename}`
+- Zabbix inventory mode enabled with MAC addresses, device types, models available via macros
+- Better organization for Maps, Mass Updates, and SLA reporting
+- **Requires Zabbix 6.0+**
+
+**Prerequisites**:
+Before importing, create these host groups in Zabbix:
+- `eeroVista/Devices`
+- `eeroVista/Nodes`
+
+**Quick Import**:
+```bash
+# Download the template
+wget https://raw.githubusercontent.com/Yeraze/eeroVista/main/templates/zabbix_template_eerovista_complete.xml
+
+# Then import via Zabbix web interface:
+# Configuration → Templates → Import
+```
+
+**Setup Steps**:
+1. Create host groups: `eeroVista/Devices` and `eeroVista/Nodes`
+2. Import the template
+3. Create a host for your eeroVista instance (e.g., "my-eerovista")
+4. Configure macros on the eeroVista host:
+   - `{$EEROVISTA_SCHEME}` = `http` or `https`
+   - `{$EEROVISTA_PORT}` = `8080` (or your port)
+   - `{$PARENT_HOST}` = hostname or IP of eeroVista server (e.g., `192.168.1.100`)
+5. Link the "eeroVista Auto-Discovery" template to the host
+6. Wait 10-30 minutes for discovery to run
+7. Check host groups for auto-created device and node hosts
+
+Both templates include:
 - ✅ Pre-configured triggers and alerts
 - ✅ Configurable thresholds via macros
 - ✅ JSON preprocessing already configured
+- ✅ HTTPS support via `{$EEROVISTA_SCHEME}` macro
 
 **See**: [`templates/README.md`](https://github.com/Yeraze/eeroVista/blob/main/templates/README.md) for detailed import instructions and configuration guide.
 
@@ -64,7 +112,7 @@ If you prefer to configure everything manually instead of using the template:
 3. **Visible name**: `Eero Network`
 4. **Groups**: `Network Devices`
 5. **Interfaces**:
-   - Type: HTTP agent
+   - Type: Agent
    - IP: (eeroVista server IP)
    - Port: 8080
 
@@ -73,8 +121,8 @@ If you prefer to configure everything manually instead of using the template:
 #### Device Discovery
 
 **Name**: Device Discovery
-**Type**: HTTP agent
-**URL**: `http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/devices`
+**Type**: Agent (active)
+**Key**: `web.page.get[{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/devices]`
 **Update interval**: 5m
 
 **LLD Macros**:
@@ -87,10 +135,10 @@ If you prefer to configure everything manually instead of using the template:
 
 | Name | Key | Type | Value Type |
 |------|-----|------|------------|
-| Device [{#HOSTNAME}]: Connected | `device.connected[{#MAC}]` | HTTP agent | Numeric |
-| Device [{#HOSTNAME}]: Signal | `device.signal[{#MAC}]` | HTTP agent | Numeric |
-| Device [{#HOSTNAME}]: Download | `device.bandwidth.down[{#MAC}]` | HTTP agent | Numeric (float) |
-| Device [{#HOSTNAME}]: Upload | `device.bandwidth.up[{#MAC}]` | HTTP agent | Numeric (float) |
+| Device [{#HOSTNAME}]: Connected | `device.connected[{#MAC}]` | Agent | Numeric |
+| Device [{#HOSTNAME}]: Signal | `device.signal[{#MAC}]` | Agent | Numeric |
+| Device [{#HOSTNAME}]: Download | `device.bandwidth.down[{#MAC}]` | Agent | Numeric (float) |
+| Device [{#HOSTNAME}]: Upload | `device.bandwidth.up[{#MAC}]` | Agent | Numeric (float) |
 
 **Trigger Prototypes**:
 
@@ -102,8 +150,8 @@ If you prefer to configure everything manually instead of using the template:
 #### Node Discovery
 
 **Name**: Node Discovery
-**Type**: HTTP agent
-**URL**: `http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/nodes`
+**Type**: Agent (active)
+**Key**: `web.page.get[{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/nodes]`
 **Update interval**: 10m
 
 **LLD Macros**:
@@ -116,8 +164,8 @@ If you prefer to configure everything manually instead of using the template:
 
 | Name | Key | Type | Value Type |
 |------|-----|------|------------|
-| Node [{#NODE_NAME}]: Status | `node.status[{#NODE_ID}]` | HTTP agent | Numeric |
-| Node [{#NODE_NAME}]: Connected Devices | `node.devices[{#NODE_ID}]` | HTTP agent | Numeric |
+| Node [{#NODE_NAME}]: Status | `node.status[{#NODE_ID}]` | Agent | Numeric |
+| Node [{#NODE_NAME}]: Connected Devices | `node.devices[{#NODE_ID}]` | Agent | Numeric |
 
 **Trigger Prototypes**:
 
@@ -131,11 +179,11 @@ If you prefer to configure everything manually instead of using the template:
 
 | Name | Key | URL | Type | Update Interval |
 |------|-----|-----|------|-----------------|
-| Total Devices | `network.devices.total` | `/api/zabbix/data?item=network.devices.total` | HTTP agent | 1m |
-| Online Devices | `network.devices.online` | `/api/zabbix/data?item=network.devices.online` | HTTP agent | 1m |
-| Speedtest Download | `speedtest.download` | `/api/zabbix/data?item=speedtest.download` | HTTP agent | 5m |
-| Speedtest Upload | `speedtest.upload` | `/api/zabbix/data?item=speedtest.upload` | HTTP agent | 5m |
-| Speedtest Latency | `speedtest.latency` | `/api/zabbix/data?item=speedtest.latency` | HTTP agent | 5m |
+| Total Devices | `network.devices.total` | `/api/zabbix/data?item=network.devices.total` | Agent | 1m |
+| Online Devices | `network.devices.online` | `/api/zabbix/data?item=network.devices.online` | Agent | 1m |
+| Speedtest Download | `speedtest.download` | `/api/zabbix/data?item=speedtest.download` | Agent | 5m |
+| Speedtest Upload | `speedtest.upload` | `/api/zabbix/data?item=speedtest.upload` | Agent | 5m |
+| Speedtest Latency | `speedtest.latency` | `/api/zabbix/data?item=speedtest.latency` | Agent | 5m |
 
 ### 4. Create Triggers
 
@@ -145,7 +193,7 @@ If you prefer to configure everything manually instead of using the template:
 | Slow internet | `last(/speedtest.download)<100` | Warning | Download <100 Mbps |
 | High latency | `last(/speedtest.latency)>50` | Warning | Latency >50ms |
 
-## HTTP Agent Configuration
+## Agent Configuration
 
 ### Item URL Format
 
@@ -167,9 +215,8 @@ Zabbix items should extract the `value` field from JSON response:
 ### Example Item Configuration
 
 **Name**: Device Connection Status
-**Type**: HTTP agent
-**Key**: `device.connected[{#MAC}]`
-**URL**: `http://{HOST.CONN}:8080/api/zabbix/data?item=device.connected[{#MAC}]`
+**Type**: Agent (active)
+**Key**: `web.page.get[http://{HOST.CONN}:8080/api/zabbix/data?item=device.connected[{#MAC}]]`
 **Update interval**: 60s
 
 **Preprocessing**:
@@ -376,9 +423,9 @@ Configure Zabbix actions to send emails on trigger events:
    tail -f /var/log/zabbix/zabbix_server.log | grep eerovista
    ```
 
-3. **Test HTTP agent manually** in Zabbix:
+3. **Test Agent items manually** in Zabbix:
    - Configuration → Hosts → Items → Test
-   - Enter URL and check response
+   - Enter key and check response
 
 ### Items Not Updating
 
@@ -429,25 +476,36 @@ If eeroVista is being overloaded:
    - Configure different severities (Warning, High, Disaster)
 
 4. **Performance**:
-   - Use HTTP agent (not external scripts)
+   - Use Agent items (not external scripts)
    - Batch discovery updates
    - Enable value caching in eeroVista (future feature)
 
-## Complete Zabbix Template
+## Complete Zabbix Templates
 
-A complete, production-ready Zabbix template is available:
+Two production-ready Zabbix templates are available:
 
+### Single-Host Template
 **Download**: [`templates/zabbix_template_eerovista.xml`](https://github.com/Yeraze/eeroVista/blob/main/templates/zabbix_template_eerovista.xml)
+
+Best for networks with <50 devices. Creates one host with Low-Level Discovery for all devices and nodes.
+
+### Auto-Discovery Template
+**Download**: [`templates/zabbix_template_eerovista_complete.xml`](https://github.com/Yeraze/eeroVista/blob/main/templates/zabbix_template_eerovista_complete.xml)
+
+Best for networks with 50+ devices. Automatically creates individual Zabbix hosts for each device and node. Requires Zabbix 6.0+.
+
+**Prerequisites**: Create host groups `eeroVista/Devices` and `eeroVista/Nodes` before importing.
 
 **Documentation**: [`templates/README.md`](https://github.com/Yeraze/eeroVista/blob/main/templates/README.md)
 
-The template includes:
+Both templates include:
 - All discovery rules (devices and nodes)
 - All item prototypes with proper preprocessing
 - Trigger prototypes for automated alerting
-- Configurable macros for threshold tuning
+- Configurable macros for threshold tuning (`{$EEROVISTA_SCHEME}`, `{$EEROVISTA_PORT}`, `{$PARENT_HOST}`)
 - Proper value types and units
 - Optimized update intervals
 - 7-day history and 365-day trends
+- HTTPS support via macro configuration
 
 Simply import the template and link it to your eeroVista host - no manual configuration needed!
