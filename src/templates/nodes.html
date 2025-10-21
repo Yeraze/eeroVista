@@ -35,6 +35,39 @@
     </div>
 </div>
 
+<div class="card" style="margin-top: 2rem;">
+    <div class="card-title">Network Configuration</div>
+    <p class="text-muted">IP reservations and port forwarding rules</p>
+
+    <!-- Tabs -->
+    <div style="display: flex; gap: 1rem; margin-top: 1.5rem; border-bottom: 2px solid var(--surface0);">
+        <button class="routing-tab active" data-tab="reservations" onclick="switchRoutingTab('reservations')" style="background: none; border: none; padding: 0.75rem 1rem; cursor: pointer; font-weight: 600; color: var(--subtext0); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s;">
+            IP Reservations <span id="reservations-count" class="tab-count">0</span>
+        </button>
+        <button class="routing-tab" data-tab="forwards" onclick="switchRoutingTab('forwards')" style="background: none; border: none; padding: 0.75rem 1rem; cursor: pointer; font-weight: 600; color: var(--subtext0); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s;">
+            Port Forwards <span id="forwards-count" class="tab-count">0</span>
+        </button>
+    </div>
+
+    <!-- IP Reservations Tab -->
+    <div id="reservations-tab" class="routing-tab-content" style="margin-top: 1.5rem;">
+        <div id="reservations-container">
+            <div style="text-align: center; padding: 2rem; color: var(--subtext0);">
+                Loading IP reservations...
+            </div>
+        </div>
+    </div>
+
+    <!-- Port Forwards Tab -->
+    <div id="forwards-tab" class="routing-tab-content" style="margin-top: 1.5rem; display: none;">
+        <div id="forwards-container">
+            <div style="text-align: center; padding: 2rem; color: var(--subtext0);">
+                Loading port forwards...
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
     .node-grid {
         display: grid;
@@ -163,6 +196,88 @@
     .mesh-bar.empty {
         opacity: 0.2;
         background: var(--surface2);
+    }
+
+    /* Routing tab styles */
+    .routing-tab.active {
+        color: var(--blue) !important;
+        border-bottom-color: var(--blue) !important;
+    }
+
+    .routing-tab:hover {
+        color: var(--text);
+        background: var(--surface0);
+    }
+
+    .tab-count {
+        display: inline-block;
+        background: var(--surface1);
+        color: var(--subtext1);
+        padding: 0.125rem 0.5rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        margin-left: 0.5rem;
+    }
+
+    .routing-tab.active .tab-count {
+        background: var(--blue);
+        color: var(--base);
+    }
+
+    .routing-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+    }
+
+    .routing-table th {
+        background: var(--surface0);
+        padding: 0.75rem;
+        text-align: left;
+        font-weight: 600;
+        color: var(--subtext1);
+        border-bottom: 2px solid var(--surface1);
+        font-size: 0.875rem;
+    }
+
+    .routing-table td {
+        padding: 0.75rem;
+        border-bottom: 1px solid var(--surface0);
+        color: var(--text);
+        font-size: 0.875rem;
+    }
+
+    .routing-table tr:hover {
+        background: var(--surface0);
+    }
+
+    .ip-reserved {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .forward-badge {
+        display: inline-block;
+        background: var(--blue);
+        color: var(--base);
+        padding: 0.125rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        margin-right: 0.25rem;
+    }
+
+    .forward-badge.tcp {
+        background: var(--blue);
+    }
+
+    .forward-badge.udp {
+        background: var(--mauve);
+    }
+
+    .forward-badge.both {
+        background: var(--green);
     }
 </style>
 
@@ -336,10 +451,126 @@
         return `<div class="mesh-quality">${barsHTML.join('')}</div>`;
     }
 
+    // Routing data
+    let reservationsData = [];
+    let forwardsData = [];
+
+    // Load routing data
+    async function loadRoutingData() {
+        try {
+            // Load IP reservations
+            const resResponse = await fetch('/api/routing/reservations');
+            if (resResponse.ok) {
+                const resData = await resResponse.json();
+                reservationsData = resData.reservations || [];
+                document.getElementById('reservations-count').textContent = resData.count || 0;
+                renderReservations();
+            }
+
+            // Load port forwards
+            const fwdResponse = await fetch('/api/routing/port-forwards');
+            if (fwdResponse.ok) {
+                const fwdData = await fwdResponse.json();
+                forwardsData = fwdData.forwards || [];
+                document.getElementById('forwards-count').textContent = fwdData.count || 0;
+                renderForwards();
+            }
+        } catch (error) {
+            console.error('Failed to load routing data:', error);
+        }
+    }
+
+    // Switch routing tabs
+    function switchRoutingTab(tab) {
+        // Update tab buttons
+        document.querySelectorAll('.routing-tab').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`.routing-tab[data-tab="${tab}"]`).classList.add('active');
+
+        // Update tab content
+        document.getElementById('reservations-tab').style.display = tab === 'reservations' ? 'block' : 'none';
+        document.getElementById('forwards-tab').style.display = tab === 'forwards' ? 'block' : 'none';
+    }
+
+    // Render IP reservations table
+    function renderReservations() {
+        const container = document.getElementById('reservations-container');
+
+        if (reservationsData.length === 0) {
+            container.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--subtext0);">No IP reservations configured</div>';
+            return;
+        }
+
+        const tableHTML = `
+            <table class="routing-table">
+                <thead>
+                    <tr>
+                        <th>IP Address</th>
+                        <th>MAC Address</th>
+                        <th>Description</th>
+                        <th>Last Seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${reservationsData.map(res => `
+                        <tr>
+                            <td><span class="ip-reserved">🔒 ${escapeHtml(res.ip_address)}</span></td>
+                            <td><code style="background: var(--surface0); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8125rem;">${escapeHtml(res.mac_address)}</code></td>
+                            <td>${escapeHtml(res.description || 'N/A')}</td>
+                            <td>${formatTimestamp(res.last_seen)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+
+        container.innerHTML = tableHTML;
+    }
+
+    // Render port forwards table
+    function renderForwards() {
+        const container = document.getElementById('forwards-container');
+
+        if (forwardsData.length === 0) {
+            container.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--subtext0);">No port forwards configured</div>';
+            return;
+        }
+
+        const tableHTML = `
+            <table class="routing-table">
+                <thead>
+                    <tr>
+                        <th>IP Address</th>
+                        <th>Ports</th>
+                        <th>Protocol</th>
+                        <th>Description</th>
+                        <th>Last Seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${forwardsData.map(fwd => `
+                        <tr>
+                            <td>${escapeHtml(fwd.ip_address)}</td>
+                            <td><strong>${fwd.gateway_port}</strong> → ${fwd.client_port}</td>
+                            <td><span class="forward-badge ${fwd.protocol}">${fwd.protocol.toUpperCase()}</span></td>
+                            <td>${escapeHtml(fwd.description || 'N/A')}</td>
+                            <td>${formatTimestamp(fwd.last_seen)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        `;
+
+        container.innerHTML = tableHTML;
+    }
+
     // Initial load
     loadNodes();
+    loadRoutingData();
 
     // Refresh every 30 seconds
     setInterval(loadNodes, 30000);
+    setInterval(loadRoutingData, 60000); // Routing data changes less frequently
 </script>
 {% endblock %}
