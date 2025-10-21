@@ -311,15 +311,24 @@
                 style="width: 100%; padding: 0.5rem; border: 1px solid var(--surface1); border-radius: 4px; background: var(--base); color: var(--text);"
             />
         </div>
-        <div>
+        <div style="display: flex; gap: 1rem; background: var(--mantle); padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid var(--surface0);">
             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;">
                 <input
                     type="checkbox"
                     id="show-offline-checkbox"
                     checked
-                    style="width: 18px; height: 18px; cursor: pointer;"
+                    style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--blue);"
                 />
-                <span>Show Offline Devices</span>
+                <span style="font-size: 0.875rem; white-space: nowrap;">Show Offline</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;">
+                <input
+                    type="checkbox"
+                    id="show-guests-checkbox"
+                    checked
+                    style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--peach);"
+                />
+                <span style="font-size: 0.875rem; white-space: nowrap;">Show Guests</span>
             </label>
         </div>
     </div>
@@ -366,6 +375,7 @@
     let currentSort = { column: 'name', direction: 'asc' };
     let filterText = '';
     let showOffline = true;
+    let showGuests = true;
 
     // Routing data
     let reservationsMap = new Map(); // MAC -> reservation info
@@ -562,6 +572,11 @@
                 return false;
             }
 
+            // Filter by guest network status
+            if (!showGuests && device.is_guest) {
+                return false;
+            }
+
             // Filter by text search
             if (filterText) {
                 const searchLower = filterText.toLowerCase();
@@ -615,9 +630,14 @@
                 ? `<span style="font-size: 1.25rem; title="${forwards.length} port forward(s)">🔀</span>`
                 : '';
 
+            // Guest network indicator
+            const guestIndicator = device.is_guest
+                ? `<span style="background: var(--peach); color: var(--base); padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem;" title="Guest Network">GUEST</span>`
+                : '';
+
             return `
                 <tr class="device-row ${rowClass}" onclick="showDeviceDetails(${originalIndex})">
-                    <td>${device.name}</td>
+                    <td>${device.name}${guestIndicator}</td>
                     <td>${formatDeviceType(device.type)}</td>
                     <td>${ipDisplay}</td>
                     <td>${statusBadge}</td>
@@ -1247,6 +1267,11 @@
 
     document.getElementById('show-offline-checkbox').addEventListener('change', (e) => {
         showOffline = e.target.checked;
+        renderDevices();
+    });
+
+    document.getElementById('show-guests-checkbox').addEventListener('change', (e) => {
+        showGuests = e.target.checked;
         renderDevices();
     });
 

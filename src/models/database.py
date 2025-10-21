@@ -87,6 +87,7 @@ class DeviceConnection(Base):
     )
     is_connected: Mapped[Optional[bool]] = mapped_column(Boolean)
     connection_type: Mapped[Optional[str]] = mapped_column(String)  # wireless/wired
+    is_guest: Mapped[Optional[bool]] = mapped_column(Boolean)  # guest network
     signal_strength: Mapped[Optional[int]] = mapped_column(Integer)
     ip_address: Mapped[Optional[str]] = mapped_column(String)
     bandwidth_down_mbps: Mapped[Optional[float]] = mapped_column(Float)
