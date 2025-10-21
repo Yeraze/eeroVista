@@ -399,7 +399,15 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                 </macro>
                                 <macro>
                                     <macro>{$DEVICE_TYPE}</macro>
-                                    <value>{#DEVICE_TYPE}</value>
+                                    <value>{#TYPE}</value>
+                                </macro>
+                                <macro>
+                                    <macro>{$DEVICE_IP}</macro>
+                                    <value>{#IP}</value>
+                                </macro>
+                                <macro>
+                                    <macro>{$DEVICE_CONNECTION_TYPE}</macro>
+                                    <value>{#CONNECTION_TYPE}</value>
                                 </macro>
                             </macros>
                             <inventory_mode>AUTOMATIC</inventory_mode>
@@ -444,6 +452,18 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                 <macro>
                                     <macro>{$NODE_MODEL}</macro>
                                     <value>{#NODE_MODEL}</value>
+                                </macro>
+                                <macro>
+                                    <macro>{$NODE_IS_GATEWAY}</macro>
+                                    <value>{#IS_GATEWAY}</value>
+                                </macro>
+                                <macro>
+                                    <macro>{$NODE_MAC}</macro>
+                                    <value>{#MAC}</value>
+                                </macro>
+                                <macro>
+                                    <macro>{$NODE_FIRMWARE}</macro>
+                                    <value>{#FIRMWARE}</value>
                                 </macro>
                             </macros>
                             <inventory_mode>AUTOMATIC</inventory_mode>

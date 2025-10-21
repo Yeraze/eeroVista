@@ -112,11 +112,16 @@ the following information is available via host macros:
 - `{$DEVICE_HOSTNAME}` - Device hostname
 - `{$DEVICE_NICKNAME}` - Device nickname/friendly name
 - `{$DEVICE_TYPE}` - Device type (laptop, phone, tablet, etc.)
+- `{$DEVICE_IP}` - Last known IP address
+- `{$DEVICE_CONNECTION_TYPE}` - Connection type (wireless/wired)
 
 **Node Hosts**:
 - `{$NODE_ID}` - Eero node ID
 - `{$NODE_NAME}` - Node location/name
 - `{$NODE_MODEL}` - Node hardware model
+- `{$NODE_IS_GATEWAY}` - Gateway flag (1=gateway, 0=leaf node)
+- `{$NODE_MAC}` - Node MAC address
+- `{$NODE_FIRMWARE}` - Firmware/OS version
 
 These macros can be used in:
 - Item names and descriptions
