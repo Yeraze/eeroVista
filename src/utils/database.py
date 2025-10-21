@@ -95,6 +95,13 @@ def _run_migrations(engine) -> None:
                 conn.commit()
             logger.info("Migration complete: 'aliases' column added")
 
+        if "manufacturer" not in columns:
+            logger.info("Running migration: Adding 'manufacturer' column to devices table")
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE devices ADD COLUMN manufacturer VARCHAR"))
+                conn.commit()
+            logger.info("Migration complete: 'manufacturer' column added")
+
     # Migration: Add mesh quality and client count breakdown columns to eero_node_metrics table
     if "eero_node_metrics" in inspector.get_table_names():
         columns = [col["name"] for col in inspector.get_columns("eero_node_metrics")]

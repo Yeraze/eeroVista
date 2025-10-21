@@ -279,6 +279,7 @@ class DeviceCollector(BaseCollector):
                 mac_address=mac_address,
                 hostname=device_data.get("hostname"),
                 nickname=device_data.get("nickname"),
+                manufacturer=device_data.get("manufacturer"),
                 device_type=self._guess_device_type(device_data),
                 first_seen=datetime.utcnow(),
             )
@@ -288,6 +289,7 @@ class DeviceCollector(BaseCollector):
             # Update device info
             device.hostname = device_data.get("hostname") or device.hostname
             device.nickname = device_data.get("nickname") or device.nickname
+            device.manufacturer = device_data.get("manufacturer") or device.manufacturer
             device.last_seen = datetime.utcnow()
 
         # Get connection info

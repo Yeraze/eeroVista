@@ -700,6 +700,21 @@
                         <div class="info-label">Status:</div>
                         <div class="info-value">${device.is_online ? '<span style="color: var(--green);">● Online</span>' : '<span style="color: var(--subtext0);">● Offline</span>'}</div>
                     </div>
+                    ${device.nickname ? `
+                    <div class="info-row">
+                        <div class="info-label">Nickname:</div>
+                        <div class="info-value">${device.nickname}</div>
+                    </div>` : ''}
+                    ${device.hostname ? `
+                    <div class="info-row">
+                        <div class="info-label">Hostname:</div>
+                        <div class="info-value">${device.hostname}</div>
+                    </div>` : ''}
+                    ${device.manufacturer ? `
+                    <div class="info-row">
+                        <div class="info-label">Manufacturer:</div>
+                        <div class="info-value">${device.manufacturer}</div>
+                    </div>` : ''}
                     <div class="info-row">
                         <div class="info-label">IP Address:</div>
                         <div class="info-value">
