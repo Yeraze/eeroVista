@@ -4,7 +4,7 @@
     <date>2025-10-20T18:00:00Z</date>
     <templates>
         <template>
-            <uuid>d1e2v3i4c5e6t7e8m9p0l1a2t3e4d5e6</uuid>
+            <uuid>d1e2a3b4c5e6d7e8a9b0c1a2d3e4d5e6</uuid>
             <template>eeroVista Device Template</template>
             <name>eeroVista Device Template</name>
             <description>Template for monitoring individual eeroVista devices.
@@ -38,7 +38,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
             </groups>
             <items>
                 <item>
-                    <uuid>i1d2e3v4c5o6n7n8e9c0t1e2d3i4t5e6</uuid>
+                    <uuid>a1d2e3b4c5a6d7d8e9c0d1e2d3a4d5e6</uuid>
                     <name>Device Connection Status</name>
                     <type>HTTP_AGENT</type>
                     <key>device.connected</key>
@@ -64,7 +64,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.connected[{$DEVICE_MAC}]</url>
                     <triggers>
                         <trigger>
-                            <uuid>t1d2e3v4o5f6f7l8i9n0e1t2r3i4g5g6</uuid>
+                            <uuid>d1d2e3b4a5f6f7c8a9d0e1d2d3a4e5e6</uuid>
                             <expression>last(/eeroVista Device Template/device.connected)=0</expression>
                             <name>Device {$DEVICE_HOSTNAME} is offline</name>
                             <priority>WARNING</priority>
@@ -73,7 +73,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     </triggers>
                 </item>
                 <item>
-                    <uuid>i2d3e4v5s6i7g8n9a0l1s2t3r4e5n6g7</uuid>
+                    <uuid>a2d3e4b5c6a7e8d9a0c1c2d3e4e5d6e7</uuid>
                     <name>Device Signal Strength</name>
                     <type>HTTP_AGENT</type>
                     <key>device.signal</key>
@@ -100,14 +100,14 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.signal[{$DEVICE_MAC}]</url>
                     <triggers>
                         <trigger>
-                            <uuid>t2d3e4v5w6e7a8k9s0i1g2n3a4l5w6a7</uuid>
+                            <uuid>d2d3e4b5c6e7a8b9c0a1e2d3a4c5c6a7</uuid>
                             <expression>last(/eeroVista Device Template/device.signal)&lt;{$SIGNAL_WARN}</expression>
                             <name>Device {$DEVICE_HOSTNAME} has weak signal</name>
                             <priority>WARNING</priority>
                             <description>WiFi signal strength for {$DEVICE_HOSTNAME} is below {$SIGNAL_WARN} dBm</description>
                         </trigger>
                         <trigger>
-                            <uuid>t3d4e5v6w7e8a9k0s1i2g3n4a5l6c7r8</uuid>
+                            <uuid>d3d4e5b6c7e8a9b0c1a2e3d4a5c6c7e8</uuid>
                             <expression>last(/eeroVista Device Template/device.signal)&lt;{$SIGNAL_CRIT}</expression>
                             <name>Device {$DEVICE_HOSTNAME} has critical signal</name>
                             <priority>HIGH</priority>
@@ -116,7 +116,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     </triggers>
                 </item>
                 <item>
-                    <uuid>i3d4e5v6b7w8d9o0w1n2l3o4a5d6i7t8</uuid>
+                    <uuid>a3d4e5b6b7c8d9a0c1d2c3a4a5d6a7d8</uuid>
                     <name>Device Bandwidth Download</name>
                     <type>HTTP_AGENT</type>
                     <key>device.bandwidth.down</key>
@@ -143,7 +143,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.bandwidth.down[{$DEVICE_MAC}]</url>
                 </item>
                 <item>
-                    <uuid>i4d5e6v7b8w9u0p1l2o3a4d5i6t7e8m9</uuid>
+                    <uuid>a4d5e6b7b8c9d0b1c2a3a4d5a6d7e8a9</uuid>
                     <name>Device Bandwidth Upload</name>
                     <type>HTTP_AGENT</type>
                     <key>device.bandwidth.up</key>
