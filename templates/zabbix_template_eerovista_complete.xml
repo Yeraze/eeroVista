@@ -402,17 +402,6 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                     <value>{#DEVICE_TYPE}</value>
                                 </macro>
                             </macros>
-                            <custom_interfaces>YES</custom_interfaces>
-                            <interfaces>
-                                <interface>
-                                    <default>YES</default>
-                                    <type>ZABBIX</type>
-                                    <useip>NO</useip>
-                                    <ip></ip>
-                                    <dns>{HOST.HOST}</dns>
-                                    <port>10050</port>
-                                </interface>
-                            </interfaces>
                             <inventory_mode>AUTOMATIC</inventory_mode>
                         </host_prototype>
                     </host_prototypes>
@@ -457,17 +446,6 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                     <value>{#NODE_MODEL}</value>
                                 </macro>
                             </macros>
-                            <custom_interfaces>YES</custom_interfaces>
-                            <interfaces>
-                                <interface>
-                                    <default>YES</default>
-                                    <type>ZABBIX</type>
-                                    <useip>NO</useip>
-                                    <ip></ip>
-                                    <dns>{HOST.HOST}</dns>
-                                    <port>10050</port>
-                                </interface>
-                            </interfaces>
                             <inventory_mode>AUTOMATIC</inventory_mode>
                         </host_prototype>
                     </host_prototypes>
