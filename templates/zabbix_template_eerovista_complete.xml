@@ -4,7 +4,7 @@
     <date>2025-10-20T18:00:00Z</date>
     <templates>
         <template>
-            <uuid>d1e2a3b4c5e64e78a9b0c1a2d3e4d5e6</uuid>
+            <uuid>63a7593e51c64b13ad2241b1bb686ad3</uuid>
             <template>eeroVista Device Template</template>
             <name>eeroVista Device Template</name>
             <description>Template for monitoring individual eeroVista devices.
@@ -38,7 +38,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
             </groups>
             <items>
                 <item>
-                    <uuid>a1d2e3b4c5a64d78a9c0d1e2d3a4d5e6</uuid>
+                    <uuid>3f70561fa4124fd8b7e659c0e401c1cc</uuid>
                     <name>Device Connection Status</name>
                     <type>HTTP_AGENT</type>
                     <key>device.connected</key>
@@ -64,7 +64,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.connected[{$DEVICE_MAC}]</url>
                     <triggers>
                         <trigger>
-                            <uuid>d1d2e3b4a5f64f78a9d0e1d2d3a4e5e6</uuid>
+                            <uuid>b7ff4f5b14d14d09bc4cb52f16957660</uuid>
                             <expression>last(/eeroVista Device Template/device.connected)=0</expression>
                             <name>Device {$DEVICE_HOSTNAME} is offline</name>
                             <priority>WARNING</priority>
@@ -73,7 +73,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     </triggers>
                 </item>
                 <item>
-                    <uuid>a2d3e4b5c6a74e89a0c1c2d3e4e5d6e7</uuid>
+                    <uuid>0554bcca76fa44588f9b6abe6b958688</uuid>
                     <name>Device Signal Strength</name>
                     <type>HTTP_AGENT</type>
                     <key>device.signal</key>
@@ -100,14 +100,14 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.signal[{$DEVICE_MAC}]</url>
                     <triggers>
                         <trigger>
-                            <uuid>d2d3e4b5c6e74a89c0a1e2d3a4c5c6a7</uuid>
+                            <uuid>44020a241d9b4bd2a291f407ecb5156d</uuid>
                             <expression>last(/eeroVista Device Template/device.signal)&lt;{$SIGNAL_WARN}</expression>
                             <name>Device {$DEVICE_HOSTNAME} has weak signal</name>
                             <priority>WARNING</priority>
                             <description>WiFi signal strength for {$DEVICE_HOSTNAME} is below {$SIGNAL_WARN} dBm</description>
                         </trigger>
                         <trigger>
-                            <uuid>d3d4e5b6c7e84a9bc1a2e3d4a5c6c7e8</uuid>
+                            <uuid>6b2022b321a7415896daea7e904696e8</uuid>
                             <expression>last(/eeroVista Device Template/device.signal)&lt;{$SIGNAL_CRIT}</expression>
                             <name>Device {$DEVICE_HOSTNAME} has critical signal</name>
                             <priority>HIGH</priority>
@@ -116,7 +116,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     </triggers>
                 </item>
                 <item>
-                    <uuid>a3d4e5b6b7c84d9ac1d2c3a4a5d6a7d8</uuid>
+                    <uuid>8f766ed45b954c529fead6f638f39a37</uuid>
                     <name>Device Bandwidth Download</name>
                     <type>HTTP_AGENT</type>
                     <key>device.bandwidth.down</key>
@@ -143,7 +143,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.bandwidth.down[{$DEVICE_MAC}]</url>
                 </item>
                 <item>
-                    <uuid>a4d5e6b7b8c94d0bc2a3a4d5a6d7e8a9</uuid>
+                    <uuid>b255f07c8d95474f8ffed5e37efd6666</uuid>
                     <name>Device Bandwidth Upload</name>
                     <type>HTTP_AGENT</type>
                     <key>device.bandwidth.up</key>
@@ -189,7 +189,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
             </macros>
         </template>
         <template>
-            <uuid>d1a2d3e4d5e64a7b89a0d1e2d3a4d5e6</uuid>
+            <uuid>e511421ee81d422486d200127661fd94</uuid>
             <template>eeroVista Node Template</template>
             <name>eeroVista Node Template</name>
             <description>Template for monitoring individual eeroVista mesh nodes.
@@ -221,7 +221,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
             </groups>
             <items>
                 <item>
-                    <uuid>a1d2a3d4e5c64d7a89b0c1a2d3e4a5d6</uuid>
+                    <uuid>427a0d400e78467f8e1a3d326cc0c9da</uuid>
                     <name>Node Status</name>
                     <type>HTTP_AGENT</type>
                     <key>node.status</key>
@@ -247,7 +247,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.status[{$NODE_ID}]</url>
                     <triggers>
                         <trigger>
-                            <uuid>d1d2a3d4e5a64f7f89a0d1e2d3e4a5e6</uuid>
+                            <uuid>b6714401923b4fd8bd41a756b4f640c9</uuid>
                             <expression>last(/eeroVista Node Template/node.status)=0</expression>
                             <name>Eero node {$NODE_NAME} is offline</name>
                             <priority>HIGH</priority>
@@ -256,7 +256,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     </triggers>
                 </item>
                 <item>
-                    <uuid>a2d3a4d5e6d74e8b9a0c1e2c3a4d5e6a7</uuid>
+                    <uuid>1197fd4aec9748fb83a2bc27b8734320</uuid>
                     <name>Node Connected Devices</name>
                     <type>HTTP_AGENT</type>
                     <key>node.devices</key>
@@ -282,7 +282,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.devices[{$NODE_ID}]</url>
                 </item>
                 <item>
-                    <uuid>a3d4a5d6e7a84e9c8b1c2d3a4c5a6d7b8</uuid>
+                    <uuid>62bcfe2c752f4462a1994295c794c685</uuid>
                     <name>Node Mesh Quality</name>
                     <type>HTTP_AGENT</type>
                     <key>node.mesh_quality</key>
@@ -308,7 +308,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.mesh_quality[{$NODE_ID}]</url>
                     <triggers>
                         <trigger>
-                            <uuid>d2d3a4d5e6b74a8a90a1e2c3b4c5d6a7</uuid>
+                            <uuid>cb23311444464ee48bb6f08dbb313db2</uuid>
                             <expression>last(/eeroVista Node Template/node.mesh_quality)&lt;3</expression>
                             <name>Eero node {$NODE_NAME} has poor mesh quality</name>
                             <priority>WARNING</priority>
@@ -326,7 +326,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
             </macros>
         </template>
         <template>
-            <uuid>a1b2c3d4e5e64e789a0b1c2d3e4f5a6b</uuid>
+            <uuid>0c88a723b8d34fef9933c4e859610935</uuid>
             <template>eeroVista Auto-Discovery</template>
             <name>eeroVista Auto-Discovery</name>
             <description>Template for auto-discovering Eero devices and nodes as individual Zabbix hosts.
@@ -360,7 +360,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
             </groups>
             <discovery_rules>
                 <discovery_rule>
-                    <uuid>d1e2f3a4b5c647e889a0b1c2d3e4f5a6</uuid>
+                    <uuid>d3f77c1f0255418ab923b59ddc4fc472</uuid>
                     <name>Device Auto-Discovery</name>
                     <type>HTTP_AGENT</type>
                     <key>eerovista.autodiscovery.devices</key>
@@ -369,7 +369,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <description>Discovers all devices and creates individual Zabbix hosts for each</description>
                     <host_prototypes>
                         <host_prototype>
-                            <uuid>a1d2e3f4a5c64e7a8a9bc0d1e2f3a4b5</uuid>
+                            <uuid>551091568e334e84a525311e1fa5062e</uuid>
                             <host>{#HOSTNAME}.{HOST.HOST}</host>
                             <name>eeroVista Device: {#HOSTNAME}</name>
                             <group_links>
@@ -419,7 +419,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/devices</url>
                 </discovery_rule>
                 <discovery_rule>
-                    <uuid>b1c2d3e4a5a64b7c8d9ea0b1c2d3e4f5</uuid>
+                    <uuid>09fcbadecf9f492d8261ce7edeee293a</uuid>
                     <name>Node Auto-Discovery</name>
                     <type>HTTP_AGENT</type>
                     <key>eerovista.autodiscovery.nodes</key>
@@ -428,7 +428,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <description>Discovers all Eero nodes and creates individual Zabbix hosts for each</description>
                     <host_prototypes>
                         <host_prototype>
-                            <uuid>c2d3e4f5a6a74c8d89e0f1a2b3c4d5e6</uuid>
+                            <uuid>48dc2ace07454a30baab77aa52813614</uuid>
                             <host>{#NODE_NAME}.{HOST.HOST}</host>
                             <name>eeroVista Node: {#NODE_NAME}</name>
                             <group_links>
