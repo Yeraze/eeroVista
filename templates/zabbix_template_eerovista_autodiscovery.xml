@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<zabbix_export>
+    <version>6.0</version>
+    <date>2025-10-20T18:00:00Z</date>
+    <templates>
+        <template>
+            <uuid>a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6</uuid>
+            <template>eeroVista Auto-Discovery</template>
+            <name>eeroVista Auto-Discovery</name>
+            <description>Template for auto-discovering Eero devices and nodes as individual Zabbix hosts.
+
+Features:
+- Automatically creates hosts for each discovered device
+- Automatically creates hosts for each discovered node
+- Populates Zabbix inventory with device/node details
+- Each host can be linked to monitoring templates
+- Supports both HTTP and HTTPS via macros
+
+Requirements:
+- eeroVista instance running and accessible
+- Zabbix 6.0+ (for host prototype support)
+- HTTP/HTTPS agent connectivity from Zabbix server to eeroVista
+
+Configuration:
+1. Create a host for your eeroVista instance
+2. Set interface to HTTP agent
+3. Set {$EEROVISTA_SCHEME} macro (default: http, use https for reverse proxy)
+4. Set {$EEROVISTA_PORT} macro (default: 8080)
+5. Set {$EEROVISTA_HOST_GROUP} macro (default: eeroVista/Devices)
+6. Link this template to the host
+7. Discovered devices and nodes will be created as individual hosts with inventory
+
+Documentation: https://github.com/Yeraze/eeroVista</description>
+            <groups>
+                <group>
+                    <name>Templates/Network devices</name>
+                </group>
+            </groups>
+            <discovery_rules>
+                <discovery_rule>
+                    <uuid>d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6</uuid>
+                    <name>Device Auto-Discovery</name>
+                    <type>HTTP_AGENT</type>
+                    <key>eerovista.autodiscovery.devices</key>
+                    <delay>10m</delay>
+                    <lifetime>30d</lifetime>
+                    <description>Discovers all devices and creates individual Zabbix hosts for each</description>
+                    <host_prototypes>
+                        <host_prototype>
+                            <uuid>h1d2e3v4i5c6e7a8u9t0o1d2i3s4c5o6</uuid>
+                            <host>{#HOSTNAME}.{HOST.HOST}</host>
+                            <name>eeroVista Device: {#HOSTNAME}</name>
+                            <group_links>
+                                <group_link>
+                                    <group>
+                                        <name>{$EEROVISTA_HOST_GROUP}</name>
+                                    </group>
+                                </group_link>
+                            </group_links>
+                            <templates>
+                                <template>
+                                    <name>eeroVista Device Template</name>
+                                </template>
+                            </templates>
+                            <macros>
+                                <macro>
+                                    <macro>{$DEVICE_MAC}</macro>
+                                    <value>{#MAC}</value>
+                                </macro>
+                                <macro>
+                                    <macro>{$DEVICE_HOSTNAME}</macro>
+                                    <value>{#HOSTNAME}</value>
+                                </macro>
+                                <macro>
+                                    <macro>{$DEVICE_NICKNAME}</macro>
+                                    <value>{#NICKNAME}</value>
+                                </macro>
+                                <macro>
+                                    <macro>{$DEVICE_TYPE}</macro>
+                                    <value>{#DEVICE_TYPE}</value>
+                                </macro>
+                            </macros>
+                            <custom_interfaces>YES</custom_interfaces>
+                            <interfaces>
+                                <interface>
+                                    <default>YES</default>
+                                    <type>AGENT</type>
+                                    <useip>NO</useip>
+                                    <ip></ip>
+                                    <dns>{HOST.HOST}</dns>
+                                    <port>10050</port>
+                                </interface>
+                            </interfaces>
+                            <inventory_mode>AUTOMATIC</inventory_mode>
+                            <inventory>
+                                <name>{#NICKNAME}</name>
+                                <alias>{#HOSTNAME}</alias>
+                                <type>{#DEVICE_TYPE}</type>
+                                <macaddress_a>{#MAC}</macaddress_a>
+                            </inventory>
+                        </host_prototype>
+                    </host_prototypes>
+                    <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/devices</url>
+                </discovery_rule>
+                <discovery_rule>
+                    <uuid>n1o2d3e4a5u6t7o8d9i0s1c2o3v4e5r6</uuid>
+                    <name>Node Auto-Discovery</name>
+                    <type>HTTP_AGENT</type>
+                    <key>eerovista.autodiscovery.nodes</key>
+                    <delay>30m</delay>
+                    <lifetime>90d</lifetime>
+                    <description>Discovers all Eero nodes and creates individual Zabbix hosts for each</description>
+                    <host_prototypes>
+                        <host_prototype>
+                            <uuid>h2n3o4d5e6a7u8t9o0d1i2s3c4o5v6e7</uuid>
+                            <host>{#NODE_NAME}.{HOST.HOST}</host>
+                            <name>eeroVista Node: {#NODE_NAME}</name>
+                            <group_links>
+                                <group_link>
+                                    <group>
+                                        <name>{$EEROVISTA_NODE_GROUP}</name>
+                                    </group>
+                                </group_link>
+                            </group_links>
+                            <templates>
+                                <template>
+                                    <name>eeroVista Node Template</name>
+                                </template>
+                            </templates>
+                            <macros>
+                                <macro>
+                                    <macro>{$NODE_ID}</macro>
+                                    <value>{#NODE_ID}</value>
+                                </macro>
+                                <macro>
+                                    <macro>{$NODE_NAME}</macro>
+                                    <value>{#NODE_NAME}</value>
+                                </macro>
+                                <macro>
+                                    <macro>{$NODE_MODEL}</macro>
+                                    <value>{#NODE_MODEL}</value>
+                                </macro>
+                            </macros>
+                            <custom_interfaces>YES</custom_interfaces>
+                            <interfaces>
+                                <interface>
+                                    <default>YES</default>
+                                    <type>AGENT</type>
+                                    <useip>NO</useip>
+                                    <ip></ip>
+                                    <dns>{HOST.HOST}</dns>
+                                    <port>10050</port>
+                                </interface>
+                            </interfaces>
+                            <inventory_mode>AUTOMATIC</inventory_mode>
+                            <inventory>
+                                <name>{#NODE_NAME}</name>
+                                <type>Eero Mesh Node</type>
+                                <model>{#NODE_MODEL}</model>
+                                <serialno_a>{#NODE_ID}</serialno_a>
+                            </inventory>
+                        </host_prototype>
+                    </host_prototypes>
+                    <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/nodes</url>
+                </discovery_rule>
+            </discovery_rules>
+            <macros>
+                <macro>
+                    <macro>{$EEROVISTA_SCHEME}</macro>
+                    <value>http</value>
+                    <description>Protocol scheme for eeroVista instance (http or https)</description>
+                </macro>
+                <macro>
+                    <macro>{$EEROVISTA_PORT}</macro>
+                    <value>8080</value>
+                    <description>Port for eeroVista instance</description>
+                </macro>
+                <macro>
+                    <macro>{$EEROVISTA_HOST_GROUP}</macro>
+                    <value>eeroVista/Devices</value>
+                    <description>Host group for auto-discovered devices</description>
+                </macro>
+                <macro>
+                    <macro>{$EEROVISTA_NODE_GROUP}</macro>
+                    <value>eeroVista/Nodes</value>
+                    <description>Host group for auto-discovered nodes</description>
+                </macro>
+            </macros>
+        </template>
+    </templates>
+</zabbix_export>
