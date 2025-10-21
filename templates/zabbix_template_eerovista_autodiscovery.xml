@@ -80,12 +80,12 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                     <value>{#DEVICE_TYPE}</value>
                                 </macro>
                             </macros>
-                            <custom_interfaces>YES</custom_interfaces>
+                            <custom_interfaces>1</custom_interfaces>
                             <interfaces>
                                 <interface>
-                                    <default>YES</default>
-                                    <type>AGENT</type>
-                                    <useip>NO</useip>
+                                    <default>1</default>
+                                    <type>1</type>
+                                    <useip>0</useip>
                                     <ip></ip>
                                     <dns>{HOST.HOST}</dns>
                                     <port>10050</port>
@@ -135,12 +135,12 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                     <value>{#NODE_MODEL}</value>
                                 </macro>
                             </macros>
-                            <custom_interfaces>YES</custom_interfaces>
+                            <custom_interfaces>1</custom_interfaces>
                             <interfaces>
                                 <interface>
-                                    <default>YES</default>
-                                    <type>AGENT</type>
-                                    <useip>NO</useip>
+                                    <default>1</default>
+                                    <type>1</type>
+                                    <useip>0</useip>
                                     <ip></ip>
                                     <dns>{HOST.HOST}</dns>
                                     <port>10050</port>
