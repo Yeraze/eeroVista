@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "eeroVista"
-    version: str = "0.7.1"
+    version: str = "0.8.0"
     debug: bool = False
 
     # Database
