@@ -2,17 +2,32 @@
 
 ## Pending Features
 
-### Bugs
-- [ ] Fix hourly chart x-axis showing "Invalid date" instead of hour labels
-- [ ] Fix 7-day/30-day toggle on main page - currently only affects Top Consumers chart, not Bandwidth Usage chart
+### Network Configuration Features
+- [ ] Pull and display IP address reservations and port forwards
+  - Fetch IP reservations from Eero API
+  - Fetch configured port forwards from Eero API
+  - Create display page (likely in Nodes section) to show all reservations and forwards
+  - In Device Info popup:
+    - Show if IP is random or reserved
+    - Display any configured port forwards for that device
+  - In Devices List table:
+    - Add column with emoji indicator for devices with port forwards
+    - Add padlock emoji 🔒 next to IP address for reserved IPs
 
-### UI Enhancements
-- [ ] Redesign device popup layout:
-  - Make popup twice as wide
-  - Graph at full width across the top
-  - Below graph: 2-column layout (device details left, aliases right)
+### Guest Network Support
+- [ ] Track and display devices connected via Guest Network
+  - Ensure guest network devices appear in Device List
+  - Add visual indicator (special color/badge) for guest network devices
+  - Add "Show Guests" checkbox filter (similar to "Show Offline")
+  - Track guest network connection status separately from main network
 
 ## Completed
+- [x] v0.8.0 Release - UI bug fixes and improvements (PR #22)
+  - Fixed hourly chart x-axis showing "Invalid date" (explicit category scale)
+  - Fixed 7-day/30-day toggle not updating bandwidth chart (destroy/recreate strategy)
+  - Fixed bandwidth chart date range (now shows full requested range with zeros for missing days)
+  - Redesigned device popup: 2x wider (1000px), full-width graph at top, 2-column layout below
+  - No database migrations required
 - [x] Hourly bandwidth endpoint optimization (PR #21)
   - SQL aggregation optimization: reduced query time from 3.0s to 2.3s (23% improvement)
   - In-memory caching with 5-minute TTL: cached requests now 0.003s (99.9% faster)

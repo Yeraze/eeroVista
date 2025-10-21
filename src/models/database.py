@@ -185,6 +185,42 @@ class DailyBandwidth(Base):
     device: Mapped[Optional["Device"]] = relationship()
 
 
+class IpReservation(Base):
+    """DHCP IP address reservation."""
+
+    __tablename__ = "ip_reservations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    mac_address: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    ip_address: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String)
+    eero_url: Mapped[Optional[str]] = mapped_column(String)  # URL from Eero API
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_seen: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class PortForward(Base):
+    """Port forwarding rule."""
+
+    __tablename__ = "port_forwards"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ip_address: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    gateway_port: Mapped[int] = mapped_column(Integer, nullable=False)  # External port
+    client_port: Mapped[int] = mapped_column(Integer, nullable=False)  # Internal port
+    protocol: Mapped[str] = mapped_column(String, nullable=False)  # tcp/udp
+    description: Mapped[Optional[str]] = mapped_column(String)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    reservation_url: Mapped[Optional[str]] = mapped_column(String)  # Link to reservation
+    eero_url: Mapped[Optional[str]] = mapped_column(String)  # URL from Eero API
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_seen: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class Config(Base):
     """Application configuration key-value store."""
 
