@@ -18,13 +18,14 @@ Features:
 
 Requirements:
 - eeroVista instance running and accessible
-- HTTP agent connectivity from Zabbix server to eeroVista
+- HTTP/HTTPS agent connectivity from Zabbix server to eeroVista
 
 Configuration:
 1. Create a host for your eeroVista instance
 2. Set interface to HTTP agent
-3. Set {$EEROVISTA_PORT} macro (default: 8080)
-4. Link this template to the host
+3. Set {$EEROVISTA_SCHEME} macro (default: http, use https for reverse proxy)
+4. Set {$EEROVISTA_PORT} macro (default: 8080)
+5. Link this template to the host
 
 Documentation: https://github.com/Yeraze/eeroVista</description>
             <groups>
@@ -57,7 +58,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             </parameters>
                         </step>
                     </preprocessing>
-                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=network.devices.total</url>
+                    <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=network.devices.total</url>
                 </item>
                 <item>
                     <uuid>b2c3d4e5f6a748a9b0c1d2e3f4a5b6c7</uuid>
@@ -83,7 +84,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             </parameters>
                         </step>
                     </preprocessing>
-                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=network.devices.online</url>
+                    <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=network.devices.online</url>
                 </item>
                 <item>
                     <uuid>c3d4e5f6a7b849c0a1b2d3e4f5a6b7c8</uuid>
@@ -109,7 +110,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             </parameters>
                         </step>
                     </preprocessing>
-                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=network.status</url>
+                    <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=network.status</url>
                     <triggers>
                         <trigger>
                             <uuid>d1e2f3a4b5c647d8a9b0c1d2e3f4a5b6</uuid>
@@ -145,7 +146,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             </parameters>
                         </step>
                     </preprocessing>
-                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=speedtest.download</url>
+                    <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=speedtest.download</url>
                     <triggers>
                         <trigger>
                             <uuid>f2a3b4c5d6e74f8ab9c0d1e2f3a4b5c6</uuid>
@@ -181,7 +182,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             </parameters>
                         </step>
                     </preprocessing>
-                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=speedtest.upload</url>
+                    <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=speedtest.upload</url>
                 </item>
                 <item>
                     <uuid>b6c7d8e9f0a14b2c93e4f5a6b7c8d9e0</uuid>
@@ -208,7 +209,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             </parameters>
                         </step>
                     </preprocessing>
-                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=speedtest.latency</url>
+                    <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=speedtest.latency</url>
                     <triggers>
                         <trigger>
                             <uuid>c3d4e5f6a7b849c091e2f3a4b5c6d7e8</uuid>
@@ -254,7 +255,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                     </parameters>
                                 </step>
                             </preprocessing>
-                            <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.connected[{#MAC}]</url>
+                            <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.connected[{#MAC}]</url>
                         </item_prototype>
                         <item_prototype>
                             <uuid>f2a3b4c5d6e74f8ab9c0d1e2f3a4b5c7</uuid>
@@ -281,7 +282,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                     </parameters>
                                 </step>
                             </preprocessing>
-                            <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.signal[{#MAC}]</url>
+                            <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.signal[{#MAC}]</url>
                         </item_prototype>
                         <item_prototype>
                             <uuid>a3b4c5d6e7f84a9b80d1e2f3a4b5c6d7</uuid>
@@ -308,7 +309,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                     </parameters>
                                 </step>
                             </preprocessing>
-                            <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.bandwidth.down[{#MAC}]</url>
+                            <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.bandwidth.down[{#MAC}]</url>
                         </item_prototype>
                         <item_prototype>
                             <uuid>b4c5d6e7f8a94b0c91e2f3a4b5c6d7e8</uuid>
@@ -335,7 +336,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                     </parameters>
                                 </step>
                             </preprocessing>
-                            <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.bandwidth.up[{#MAC}]</url>
+                            <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.bandwidth.up[{#MAC}]</url>
                         </item_prototype>
                     </item_prototypes>
                     <trigger_prototypes>
@@ -361,7 +362,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <description>WiFi signal strength for {#HOSTNAME} is critically low</description>
                         </trigger_prototype>
                     </trigger_prototypes>
-                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/devices</url>
+                    <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/devices</url>
                 </discovery_rule>
                 <discovery_rule>
                     <uuid>f4a5b6c7d8e94f0ab1c2d3e4f5a6b7c8</uuid>
@@ -396,7 +397,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                     </parameters>
                                 </step>
                             </preprocessing>
-                            <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.status[{#NODE_ID}]</url>
+                            <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.status[{#NODE_ID}]</url>
                         </item_prototype>
                         <item_prototype>
                             <uuid>b6c7d8e9f0a14b2c93e4f5a6b7c8d9e1</uuid>
@@ -422,7 +423,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                     </parameters>
                                 </step>
                             </preprocessing>
-                            <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.devices[{#NODE_ID}]</url>
+                            <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.devices[{#NODE_ID}]</url>
                         </item_prototype>
                         <item_prototype>
                             <uuid>c7d8e9f0a1b24c3da4f5a6b7c8d9e0f1</uuid>
@@ -448,7 +449,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                     </parameters>
                                 </step>
                             </preprocessing>
-                            <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.mesh_quality[{#NODE_ID}]</url>
+                            <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.mesh_quality[{#NODE_ID}]</url>
                         </item_prototype>
                     </item_prototypes>
                     <trigger_prototypes>
@@ -467,14 +468,19 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <description>Mesh quality for node {#NODE_NAME} is below 3 bars</description>
                         </trigger_prototype>
                     </trigger_prototypes>
-                    <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/nodes</url>
+                    <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/nodes</url>
                 </discovery_rule>
             </discovery_rules>
             <macros>
                 <macro>
+                    <macro>{$EEROVISTA_SCHEME}</macro>
+                    <value>http</value>
+                    <description>Protocol scheme for eeroVista instance (http or https)</description>
+                </macro>
+                <macro>
                     <macro>{$EEROVISTA_PORT}</macro>
                     <value>8080</value>
-                    <description>HTTP port for eeroVista instance</description>
+                    <description>Port for eeroVista instance</description>
                 </macro>
                 <macro>
                     <macro>{$SIGNAL_WARN}</macro>
