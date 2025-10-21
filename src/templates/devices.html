@@ -292,6 +292,11 @@
 {% block content %}
 <h1 class="mt-4 mb-4">Connected Devices</h1>
 
+<!-- Routing data error notification -->
+<div id="routing-error-notification" style="display: none; background: var(--yellow); color: var(--base); padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; display: none;">
+    <strong>⚠ Warning:</strong> Unable to load IP reservation and port forward data. Some indicators may be missing.
+</div>
+
 <div class="card">
     <div class="card-title">Device List (<span id="device-count">0</span> devices, <span id="visible-count">0</span> shown)</div>
     <p class="text-muted">Click column headers to sort. Click on a device row to view details.</p>
@@ -329,11 +334,12 @@
                     <th class="sortable-header" data-column="is_online">Status</th>
                     <th class="sortable-header" data-column="connection_type">Connection</th>
                     <th class="sortable-header" data-column="node">Node</th>
+                    <th style="text-align: center; width: 60px;">Fwds</th>
                 </tr>
             </thead>
             <tbody id="devices-table-body">
                 <tr>
-                    <td colspan="6" class="text-center text-muted">
+                    <td colspan="7" class="text-center text-muted">
                         Loading devices...
                     </td>
                 </tr>
@@ -360,6 +366,10 @@
     let currentSort = { column: 'name', direction: 'asc' };
     let filterText = '';
     let showOffline = true;
+
+    // Routing data
+    let reservationsMap = new Map(); // MAC -> reservation info
+    let forwardsMap = new Map(); // IP -> array of forwards
 
     // Format device type with emoji and proper capitalization
     function formatDeviceType(type) {
@@ -426,6 +436,58 @@
                     </td>
                 </tr>
             `;
+        }
+    }
+
+    // Load routing configuration data
+    async function loadRoutingData() {
+        try {
+            const notification = document.getElementById('routing-error-notification');
+            let hasError = false;
+
+            // Load reservations
+            const resResponse = await fetch('/api/routing/reservations');
+            if (resResponse.ok) {
+                const resData = await resResponse.json();
+                reservationsMap.clear();
+                (resData.reservations || []).forEach(res => {
+                    reservationsMap.set(res.mac_address, res);
+                });
+            } else {
+                hasError = true;
+            }
+
+            // Load port forwards
+            const fwdResponse = await fetch('/api/routing/port-forwards');
+            if (fwdResponse.ok) {
+                const fwdData = await fwdResponse.json();
+                forwardsMap.clear();
+                (fwdData.forwards || []).forEach(fwd => {
+                    if (!forwardsMap.has(fwd.ip_address)) {
+                        forwardsMap.set(fwd.ip_address, []);
+                    }
+                    forwardsMap.get(fwd.ip_address).push(fwd);
+                });
+            } else {
+                hasError = true;
+            }
+
+            // Show/hide error notification
+            if (hasError) {
+                notification.style.display = 'block';
+            } else {
+                notification.style.display = 'none';
+            }
+
+            // Re-render devices to show updated routing info
+            renderDevices();
+        } catch (error) {
+            console.error('Failed to load routing data:', error);
+            // Show error notification
+            const notification = document.getElementById('routing-error-notification');
+            if (notification) {
+                notification.style.display = 'block';
+            }
         }
     }
 
@@ -543,21 +605,32 @@
                 ? '<span class="status-badge status-online">Online</span>'
                 : '<span class="status-badge status-offline">Offline</span>';
 
+            // Check if IP is reserved
+            const isReserved = reservationsMap.has(device.mac_address);
+            const ipDisplay = isReserved ? `🔒 ${device.ip_address}` : device.ip_address;
+
+            // Check for port forwards
+            const forwards = forwardsMap.get(device.ip_address) || [];
+            const forwardIndicator = forwards.length > 0
+                ? `<span style="font-size: 1.25rem; title="${forwards.length} port forward(s)">🔀</span>`
+                : '';
+
             return `
                 <tr class="device-row ${rowClass}" onclick="showDeviceDetails(${originalIndex})">
                     <td>${device.name}</td>
                     <td>${formatDeviceType(device.type)}</td>
-                    <td>${device.ip_address}</td>
+                    <td>${ipDisplay}</td>
                     <td>${statusBadge}</td>
                     <td>${device.connection_type}</td>
                     <td>${device.node}</td>
+                    <td style="text-align: center;">${forwardIndicator}</td>
                 </tr>
             `;
         }).join('');
     }
 
     // Modal functions
-    function showDeviceDetails(deviceIndex) {
+    async function showDeviceDetails(deviceIndex) {
         const device = devicesData[deviceIndex];
         const modal = document.getElementById('device-modal');
         const modalTitle = document.getElementById('modal-title');
@@ -565,6 +638,27 @@
 
         // Set title
         modalTitle.textContent = device.name;
+
+        // Fetch reservation and forward data
+        let reservationInfo = null;
+        let forwardInfo = [];
+
+        try {
+            // Check if IP is reserved
+            const resResponse = await fetch(`/api/routing/reservation/${encodeURIComponent(device.mac_address)}`);
+            if (resResponse.ok) {
+                reservationInfo = await resResponse.json();
+            }
+
+            // Get port forwards for this IP
+            const fwdResponse = await fetch(`/api/routing/forwards/${encodeURIComponent(device.ip_address)}`);
+            if (fwdResponse.ok) {
+                const fwdData = await fwdResponse.json();
+                forwardInfo = fwdData.forwards || [];
+            }
+        } catch (error) {
+            console.error('Failed to load routing info:', error);
+        }
 
         // Build the details HTML - start with bandwidth graph at the top (full width)
         let detailsHtml = `
@@ -608,7 +702,10 @@
                     </div>
                     <div class="info-row">
                         <div class="info-label">IP Address:</div>
-                        <div class="info-value">${device.ip_address}</div>
+                        <div class="info-value">
+                            ${reservationInfo && reservationInfo.reserved ? '🔒 ' : ''}${device.ip_address}
+                            ${reservationInfo && reservationInfo.reserved ? '<span style="color: var(--blue); font-size: 0.75rem; margin-left: 0.5rem;">(Reserved)</span>' : '<span style="color: var(--subtext1); font-size: 0.75rem; margin-left: 0.5rem;">(DHCP)</span>'}
+                        </div>
                     </div>
                     <div class="info-row">
                         <div class="info-label">MAC Address:</div>
@@ -649,6 +746,31 @@
                     <div class="aliases-help">Each alias will be added as an alternate DNS name for this device</div>
                     <button id="save-aliases-btn" class="save-button">Save Aliases</button>
                     <div id="save-message" class="save-message"></div>
+
+                    ${forwardInfo.length > 0 ? `
+                    <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--surface0);">
+                        <div class="aliases-label">Port Forwards</div>
+                        <div style="background: var(--surface0); border-radius: 6px; padding: 0.75rem; margin-top: 0.5rem;">
+                            ${forwardInfo.map(fwd => `
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; ${forwardInfo.indexOf(fwd) < forwardInfo.length - 1 ? 'border-bottom: 1px solid var(--surface1);' : ''}">
+                                    <div>
+                                        <div style="font-weight: 600; color: var(--text);">${fwd.description || 'Forward'}</div>
+                                        <div style="font-size: 0.75rem; color: var(--subtext0); margin-top: 0.25rem;">
+                                            Port <strong>${fwd.gateway_port}</strong> → ${fwd.client_port}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <span style="background: var(--${fwd.protocol === 'tcp' ? 'blue' : fwd.protocol === 'udp' ? 'mauve' : 'green'}); color: var(--base); padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">${fwd.protocol.toUpperCase()}</span>
+                                        ${!fwd.enabled ? '<span style="color: var(--red); font-size: 0.75rem; margin-left: 0.5rem;">⚠ Disabled</span>' : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--subtext1); margin-top: 0.5rem;">
+                            ${forwardInfo.length} active port forward${forwardInfo.length !== 1 ? 's' : ''}
+                        </div>
+                    </div>
+                    ` : ''}
                 </div>
             </div>
         `;
@@ -1090,8 +1212,10 @@
 
     // Initial load
     loadDevices();
+    loadRoutingData();
 
-    // Refresh every 30 seconds
+    // Refresh every 30 seconds (devices) and every 60 seconds (routing)
     setInterval(loadDevices, 30000);
+    setInterval(loadRoutingData, 60000); // Routing data changes less frequently
 </script>
 {% endblock %}

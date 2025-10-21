@@ -1142,3 +1142,122 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to get hourly network bandwidth: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/routing/reservations")
+async def get_ip_reservations(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Get all IP address reservations."""
+    try:
+        from src.models.database import IpReservation
+
+        reservations = db.query(IpReservation).order_by(IpReservation.ip_address).all()
+
+        return {
+            "count": len(reservations),
+            "reservations": [
+                {
+                    "mac_address": res.mac_address,
+                    "ip_address": res.ip_address,
+                    "description": res.description,
+                    "last_seen": res.last_seen.isoformat() if res.last_seen else None,
+                }
+                for res in reservations
+            ],
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get IP reservations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/routing/port-forwards")
+async def get_port_forwards(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Get all port forwarding rules."""
+    try:
+        from src.models.database import PortForward
+
+        forwards = db.query(PortForward).filter(
+            PortForward.enabled == True
+        ).order_by(PortForward.ip_address, PortForward.gateway_port).all()
+
+        return {
+            "count": len(forwards),
+            "forwards": [
+                {
+                    "ip_address": fwd.ip_address,
+                    "gateway_port": fwd.gateway_port,
+                    "client_port": fwd.client_port,
+                    "protocol": fwd.protocol,
+                    "description": fwd.description,
+                    "enabled": fwd.enabled,
+                    "last_seen": fwd.last_seen.isoformat() if fwd.last_seen else None,
+                }
+                for fwd in forwards
+            ],
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get port forwards: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/routing/reservation/{mac_address}")
+async def get_reservation_by_mac(mac_address: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Get IP reservation for a specific MAC address."""
+    try:
+        from src.models.database import IpReservation
+
+        # Normalize MAC address (remove colons, convert to uppercase)
+        mac_normalized = mac_address.replace(":", "").replace("-", "").upper()
+
+        # Try to find with various formats (original or normalized)
+        reservation = db.query(IpReservation).filter(
+            (IpReservation.mac_address == mac_address) |
+            (IpReservation.mac_address == mac_normalized)
+        ).first()
+
+        if not reservation:
+            return {"reserved": False, "mac_address": mac_address}
+
+        return {
+            "reserved": True,
+            "mac_address": reservation.mac_address,
+            "ip_address": reservation.ip_address,
+            "description": reservation.description,
+            "last_seen": reservation.last_seen.isoformat() if reservation.last_seen else None,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get reservation for {mac_address}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/routing/forwards/{ip_address}")
+async def get_forwards_by_ip(ip_address: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Get port forwards for a specific IP address."""
+    try:
+        from src.models.database import PortForward
+
+        forwards = db.query(PortForward).filter(
+            PortForward.ip_address == ip_address
+        ).all()
+
+        return {
+            "ip_address": ip_address,
+            "count": len(forwards),
+            "forwards": [
+                {
+                    "gateway_port": fwd.gateway_port,
+                    "client_port": fwd.client_port,
+                    "protocol": fwd.protocol,
+                    "description": fwd.description,
+                    "enabled": fwd.enabled,
+                    "last_seen": fwd.last_seen.isoformat() if fwd.last_seen else None,
+                }
+                for fwd in forwards
+            ],
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get forwards for {ip_address}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

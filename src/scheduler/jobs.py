@@ -6,7 +6,7 @@ from typing import Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from src.collectors import DeviceCollector, NetworkCollector, SpeedtestCollector
+from src.collectors import DeviceCollector, NetworkCollector, RoutingCollector, SpeedtestCollector
 from src.config import get_settings
 from src.eero_client import EeroClientWrapper
 from src.utils.database import get_db_context
@@ -63,11 +63,22 @@ class CollectorScheduler:
             replace_existing=True,
         )
 
+        # Routing collector - run hourly (reservations/forwards change infrequently)
+        routing_interval = 3600  # 1 hour
+        self.scheduler.add_job(
+            func=self._run_routing_collector,
+            trigger=IntervalTrigger(seconds=routing_interval),
+            id="routing_collector",
+            name="Routing Collector",
+            replace_existing=True,
+        )
+
         # Start the scheduler
         self.scheduler.start()
         logger.info(
             f"Scheduler started - device collector: {device_interval}s, "
-            f"network/speedtest collectors: {network_interval}s"
+            f"network/speedtest collectors: {network_interval}s, "
+            f"routing collector: {routing_interval}s"
         )
 
         # Run collectors immediately on startup
@@ -75,6 +86,7 @@ class CollectorScheduler:
         self._run_device_collector()
         self._run_network_collector()
         self._run_speedtest_collector()
+        self._run_routing_collector()
 
     def stop(self) -> None:
         """Stop the scheduler."""
@@ -89,6 +101,7 @@ class CollectorScheduler:
         self._run_device_collector()
         self._run_network_collector()
         self._run_speedtest_collector()
+        self._run_routing_collector()
 
     def _run_device_collector(self) -> None:
         """Run the device collector."""
@@ -146,6 +159,28 @@ class CollectorScheduler:
 
         except Exception as e:
             logger.error(f"Speedtest collector error: {e}", exc_info=True)
+
+    def _run_routing_collector(self) -> None:
+        """Run the routing collector."""
+        try:
+            with get_db_context() as db:
+                client = EeroClientWrapper(db)
+                collector = RoutingCollector(db, client)
+                result = collector.run()
+
+                if result.get("success"):
+                    logger.info(
+                        f"Routing collection complete: "
+                        f"{result.get('reservations_added', 0)} reservations added, "
+                        f"{result.get('reservations_updated', 0)} updated, "
+                        f"{result.get('forwards_added', 0)} forwards added, "
+                        f"{result.get('forwards_updated', 0)} updated"
+                    )
+                else:
+                    logger.error(f"Routing collection failed: {result.get('error')}")
+
+        except Exception as e:
+            logger.error(f"Routing collector error: {e}", exc_info=True)
 
 
 # Global scheduler instance
