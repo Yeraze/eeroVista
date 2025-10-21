@@ -92,21 +92,28 @@ Customize alert thresholds with macros:
 {$LATENCY_WARN} = 50    # Latency warning (ms)
 ```
 
-## Inventory Fields (Auto-Discovery Only)
+## Inventory Fields (Auto-Discovery)
 
-The auto-discovery templates populate Zabbix inventory with:
+The auto-discovery templates set `inventory_mode=AUTOMATIC` for all created hosts.
+While Zabbix 6.0 host prototypes don't support direct inventory population via XML,
+the following information is available via host macros:
 
-**Devices**:
-- Name: Device nickname
-- Alias: Device hostname
-- Type: Device type (laptop, phone, tablet, etc.)
-- MAC Address: Device MAC address
+**Device Hosts**:
+- `{$DEVICE_MAC}` - Device MAC address
+- `{$DEVICE_HOSTNAME}` - Device hostname
+- `{$DEVICE_NICKNAME}` - Device nickname/friendly name
+- `{$DEVICE_TYPE}` - Device type (laptop, phone, tablet, etc.)
 
-**Nodes**:
-- Name: Node location
-- Type: "Eero Mesh Node"
-- Model: Node hardware model
-- Serial Number: Eero node ID
+**Node Hosts**:
+- `{$NODE_ID}` - Eero node ID
+- `{$NODE_NAME}` - Node location/name
+- `{$NODE_MODEL}` - Node hardware model
+
+These macros can be used in:
+- Item names and descriptions
+- Trigger names and messages  
+- Manual inventory population
+- External scripts and integrations
 
 ## Compatibility
 
