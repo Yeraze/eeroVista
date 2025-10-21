@@ -13,6 +13,12 @@
   - Guest devices appear in Device List with clear visual distinction
   - Added database migration for existing users (automatically runs on startup)
   - Tracks guest network connection status separately from main network in time-series data
+  - Fixed frontend null check for is_guest filter (explicit boolean comparison)
+  - Added comprehensive test coverage:
+    - 4 tests for DeviceConnection model with is_guest field
+    - 3 tests for DeviceCollector storing is_guest from API data
+    - 4 tests for API response structure including is_guest field
+    - Tests cover null/undefined handling, defaults, and query operations
 - [x] Device manufacturer field support (2025-10-21)
   - Added manufacturer field to Device database model
   - Updated device collector to store manufacturer from Eero API
