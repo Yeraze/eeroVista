@@ -22,10 +22,7 @@ This directory contains Zabbix templates for monitoring Eero mesh networks via e
 
 ### 2. Auto-Discovery with Individual Hosts (Recommended for Large Networks)
 
-**Templates**:
-- `zabbix_template_eerovista_autodiscovery.xml` (discovery orchestrator)
-- `zabbix_template_eerovista_device.xml` (device monitoring)
-- `zabbix_template_eerovista_node.xml` (node monitoring)
+**Template**: `zabbix_template_eerovista_complete.xml`
 
 - **Best for**: Networks with 50+ devices, or when you want granular host-level management
 - **Creates**: Individual Zabbix hosts for each device and node
@@ -33,11 +30,12 @@ This directory contains Zabbix templates for monitoring Eero mesh networks via e
 - **Cons**: More Zabbix resources, requires Zabbix 6.0+
 
 **What you get**:
-- Automatic host creation for each discovered device
-- Automatic host creation for each discovered node
-- Zabbix inventory populated with MAC addresses, device types, models
+- Automatic host creation for each discovered device (`eeroVista-Device-{hostname}`)
+- Automatic host creation for each discovered node (`eeroVista-Node-{nodename}`)
+- Zabbix inventory mode enabled with MAC addresses, device types, models available via macros
 - Each host has its own set of items and triggers
 - Better for Maps, Mass Updates, and SLA reporting
+- Includes all three templates (Device, Node, and Auto-Discovery) in one file
 
 ## Installation
 
@@ -53,22 +51,23 @@ This directory contains Zabbix templates for monitoring Eero mesh networks via e
 
 ### Auto-Discovery with Individual Hosts
 
-1. Import all three templates in this order:
-   - `zabbix_template_eerovista_device.xml`
-   - `zabbix_template_eerovista_node.xml`
-   - `zabbix_template_eerovista_autodiscovery.xml`
-2. Create host groups:
-   - `eeroVista/Devices` (or customize with `{$EEROVISTA_HOST_GROUP}`)
-   - `eeroVista/Nodes` (or customize with `{$EEROVISTA_NODE_GROUP}`)
-3. Create a host for your eeroVista instance
-4. Configure macros:
+**Prerequisites**:
+1. Create host groups in Zabbix before importing:
+   - `eeroVista/Devices`
+   - `eeroVista/Nodes`
+
+**Setup Steps**:
+1. Import `zabbix_template_eerovista_complete.xml` into Zabbix
+2. Create a host for your eeroVista instance (e.g., "my-eerovista")
+3. Configure macros on the eeroVista host:
    - `{$EEROVISTA_SCHEME}` = `http` or `https`
    - `{$EEROVISTA_PORT}` = `8080` (or your port)
-   - `{$EEROVISTA_HOST_GROUP}` = `eeroVista/Devices`
-   - `{$EEROVISTA_NODE_GROUP}` = `eeroVista/Nodes`
-5. Link autodiscovery template to host
-6. Wait 10-30 minutes for discovery
-7. Check host groups for auto-created device and node hosts
+   - `{$PARENT_HOST}` = hostname or IP of your eeroVista server (e.g., `192.168.1.100` or `eerovista.local`)
+4. Link the "eeroVista Auto-Discovery" template to the host
+5. Wait 10-30 minutes for discovery to run
+6. Check `eeroVista/Devices` and `eeroVista/Nodes` host groups for auto-created hosts
+
+**Important**: The `{$PARENT_HOST}` macro on your eeroVista host will be inherited by all discovered device and node hosts, allowing them to query the eeroVista API.
 
 ## Configuration
 
@@ -81,9 +80,19 @@ Both templates support HTTPS for reverse proxies:
 {$EEROVISTA_PORT} = 443
 ```
 
+### Required Macros (Auto-Discovery)
+
+For the auto-discovery template, set these macros on the eeroVista host:
+
+```
+{$EEROVISTA_SCHEME} = http          # or https for reverse proxy
+{$EEROVISTA_PORT} = 8080            # your eeroVista port
+{$PARENT_HOST} = 192.168.1.100      # hostname or IP of eeroVista server
+```
+
 ### Thresholds
 
-Customize alert thresholds with macros:
+Customize alert thresholds with macros (apply to single-host or device/node templates):
 
 ```
 {$SIGNAL_WARN} = -70    # WiFi signal warning (dBm)
@@ -134,15 +143,17 @@ These macros can be used in:
 ### Hosts not auto-created
 
 - Verify you're using Zabbix 6.0 or later
-- Check that host groups exist before discovery runs
-- Review discovery rule logs in Zabbix UI
-- Ensure Device/Node templates are imported first
+- Check that host groups `eeroVista/Devices` and `eeroVista/Nodes` exist before importing template
+- Review discovery rule logs in Zabbix UI (Latest data → Discovery rules)
+- Verify `{$PARENT_HOST}` macro is set correctly on the eeroVista host
+- Check that eeroVista API endpoints return data: `/api/zabbix/discovery/devices` and `/api/zabbix/discovery/nodes`
 
 ### Template import errors
 
-- Ensure no dashes in UUIDs (must be 32 hex characters)
-- Verify `<applications>` tags are replaced with `<tags>`
-- Check that group "Templates/Network devices" exists
+- Ensure you're using Zabbix 6.0 or later
+- Verify the "Templates/Network devices" group exists (standard Zabbix group)
+- All UUIDs are properly formatted UUIDv4 (generated with Python's uuid library)
+- Templates use `<tags>` instead of deprecated `<applications>`
 
 ## Support
 
