@@ -4,7 +4,7 @@
     <date>2025-10-20T12:00:00Z</date>
     <templates>
         <template>
-            <uuid>d5e52d5d-3f3f-4f8a-8e5e-4c3b2a1f0e9d</uuid>
+            <uuid>d5e52d5d3f3f4f8a8e5e4c3b2a1f0e9d</uuid>
             <template>eeroVista Network Monitor</template>
             <name>eeroVista Network Monitor</name>
             <description>Template for monitoring Eero mesh networks via eeroVista API.
@@ -34,7 +34,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
             </groups>
             <items>
                 <item>
-                    <uuid>a1b2c3d4-e5f6-47a8-a9b0-c1d2e3f4a5b6</uuid>
+                    <uuid>a1b2c3d4e5f647a8a9b0c1d2e3f4a5b6</uuid>
                     <name>Network: Total Devices</name>
                     <type>HTTP_AGENT</type>
                     <key>network.devices.total</key>
@@ -60,7 +60,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=network.devices.total</url>
                 </item>
                 <item>
-                    <uuid>b2c3d4e5-f6a7-48a9-b0c1-d2e3f4a5b6c7</uuid>
+                    <uuid>b2c3d4e5f6a748a9b0c1d2e3f4a5b6c7</uuid>
                     <name>Network: Online Devices</name>
                     <type>HTTP_AGENT</type>
                     <key>network.devices.online</key>
@@ -86,7 +86,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=network.devices.online</url>
                 </item>
                 <item>
-                    <uuid>c3d4e5f6-a7b8-49c0-a1b2-d3e4f5a6b7c8</uuid>
+                    <uuid>c3d4e5f6a7b849c0a1b2d3e4f5a6b7c8</uuid>
                     <name>Network: WAN Status</name>
                     <type>HTTP_AGENT</type>
                     <key>network.status</key>
@@ -112,7 +112,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=network.status</url>
                     <triggers>
                         <trigger>
-                            <uuid>d1e2f3a4-b5c6-47d8-a9b0-c1d2e3f4a5b6</uuid>
+                            <uuid>d1e2f3a4b5c647d8a9b0c1d2e3f4a5b6</uuid>
                             <expression>last(/eeroVista Network Monitor/network.status)=0</expression>
                             <name>Network WAN is offline</name>
                             <priority>DISASTER</priority>
@@ -121,7 +121,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     </triggers>
                 </item>
                 <item>
-                    <uuid>e4f5a6b7-c8d9-4e0f-a1b2-c3d4e5f6a7b8</uuid>
+                    <uuid>e4f5a6b7c8d94e0fa1b2c3d4e5f6a7b8</uuid>
                     <name>Speedtest: Download Speed</name>
                     <type>HTTP_AGENT</type>
                     <key>speedtest.download</key>
@@ -148,7 +148,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=speedtest.download</url>
                     <triggers>
                         <trigger>
-                            <uuid>f2a3b4c5-d6e7-4f8a-b9c0-d1e2f3a4b5c6</uuid>
+                            <uuid>f2a3b4c5d6e74f8ab9c0d1e2f3a4b5c6</uuid>
                             <expression>last(/eeroVista Network Monitor/speedtest.download)&lt;{$SPEED_WARN}</expression>
                             <name>Internet speed is slow (download &lt; {$SPEED_WARN} Mbps)</name>
                             <priority>WARNING</priority>
@@ -157,7 +157,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     </triggers>
                 </item>
                 <item>
-                    <uuid>a5b6c7d8-e9f0-4a1b-82d3-e4f5a6b7c8d9</uuid>
+                    <uuid>a5b6c7d8e9f04a1b82d3e4f5a6b7c8d9</uuid>
                     <name>Speedtest: Upload Speed</name>
                     <type>HTTP_AGENT</type>
                     <key>speedtest.upload</key>
@@ -184,7 +184,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=speedtest.upload</url>
                 </item>
                 <item>
-                    <uuid>b6c7d8e9-f0a1-4b2c-93e4-f5a6b7c8d9e0</uuid>
+                    <uuid>b6c7d8e9f0a14b2c93e4f5a6b7c8d9e0</uuid>
                     <name>Speedtest: Latency</name>
                     <type>HTTP_AGENT</type>
                     <key>speedtest.latency</key>
@@ -211,7 +211,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=speedtest.latency</url>
                     <triggers>
                         <trigger>
-                            <uuid>c3d4e5f6-a7b8-49c0-91e2-f3a4b5c6d7e8</uuid>
+                            <uuid>c3d4e5f6a7b849c091e2f3a4b5c6d7e8</uuid>
                             <expression>last(/eeroVista Network Monitor/speedtest.latency)&gt;{$LATENCY_WARN}</expression>
                             <name>Internet latency is high (&gt; {$LATENCY_WARN} ms)</name>
                             <priority>WARNING</priority>
@@ -222,7 +222,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
             </items>
             <discovery_rules>
                 <discovery_rule>
-                    <uuid>d1e2f3a4-b5c6-47d8-a9f0-a1b2c3d4e5f6</uuid>
+                    <uuid>d1e2f3a4b5c647d8a9f0a1b2c3d4e5f6</uuid>
                     <name>Device Discovery</name>
                     <type>HTTP_AGENT</type>
                     <key>eerovista.discovery.devices</key>
@@ -231,7 +231,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <description>Discovers all devices on the Eero network</description>
                     <item_prototypes>
                         <item_prototype>
-                            <uuid>e1f2a3b4-c5d6-4e7f-a8b9-c0d1e2f3a4b5</uuid>
+                            <uuid>e1f2a3b4c5d64e7fa8b9c0d1e2f3a4b5</uuid>
                             <name>Device [{#HOSTNAME}]: Connected</name>
                             <type>HTTP_AGENT</type>
                             <key>device.connected[{#MAC}]</key>
@@ -257,7 +257,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.connected[{#MAC}]</url>
                         </item_prototype>
                         <item_prototype>
-                            <uuid>f2a3b4c5-d6e7-4f8a-b9c0-d1e2f3a4b5c7</uuid>
+                            <uuid>f2a3b4c5d6e74f8ab9c0d1e2f3a4b5c7</uuid>
                             <name>Device [{#HOSTNAME}]: Signal Strength</name>
                             <type>HTTP_AGENT</type>
                             <key>device.signal[{#MAC}]</key>
@@ -284,7 +284,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.signal[{#MAC}]</url>
                         </item_prototype>
                         <item_prototype>
-                            <uuid>a3b4c5d6-e7f8-4a9b-80d1-e2f3a4b5c6d7</uuid>
+                            <uuid>a3b4c5d6e7f84a9b80d1e2f3a4b5c6d7</uuid>
                             <name>Device [{#HOSTNAME}]: Bandwidth Download</name>
                             <type>HTTP_AGENT</type>
                             <key>device.bandwidth.down[{#MAC}]</key>
@@ -311,7 +311,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.bandwidth.down[{#MAC}]</url>
                         </item_prototype>
                         <item_prototype>
-                            <uuid>b4c5d6e7-f8a9-4b0c-91e2-f3a4b5c6d7e8</uuid>
+                            <uuid>b4c5d6e7f8a94b0c91e2f3a4b5c6d7e8</uuid>
                             <name>Device [{#HOSTNAME}]: Bandwidth Upload</name>
                             <type>HTTP_AGENT</type>
                             <key>device.bandwidth.up[{#MAC}]</key>
@@ -340,21 +340,21 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     </item_prototypes>
                     <trigger_prototypes>
                         <trigger_prototype>
-                            <uuid>c1d2e3f4-a5b6-4c7d-a8f9-a0b1c2d3e4f5</uuid>
+                            <uuid>c1d2e3f4a5b64c7da8f9a0b1c2d3e4f5</uuid>
                             <expression>last(/eeroVista Network Monitor/device.connected[{#MAC}])=0</expression>
                             <name>Device {#HOSTNAME} is offline</name>
                             <priority>WARNING</priority>
                             <description>Device {#HOSTNAME} ({#NICKNAME}) has disconnected from the network</description>
                         </trigger_prototype>
                         <trigger_prototype>
-                            <uuid>d2e3f4a5-b6c7-4d8e-b9a0-b1c2d3e4f5a6</uuid>
+                            <uuid>d2e3f4a5b6c74d8eb9a0b1c2d3e4f5a6</uuid>
                             <expression>last(/eeroVista Network Monitor/device.signal[{#MAC}])&lt;{$SIGNAL_WARN}</expression>
                             <name>Device {#HOSTNAME} has weak signal (&lt; {$SIGNAL_WARN} dBm)</name>
                             <priority>WARNING</priority>
                             <description>WiFi signal strength for {#HOSTNAME} is below warning threshold</description>
                         </trigger_prototype>
                         <trigger_prototype>
-                            <uuid>e3f4a5b6-c7d8-4e9f-a0b1-c2d3e4f5a6b7</uuid>
+                            <uuid>e3f4a5b6c7d84e9fa0b1c2d3e4f5a6b7</uuid>
                             <expression>last(/eeroVista Network Monitor/device.signal[{#MAC}])&lt;{$SIGNAL_CRIT}</expression>
                             <name>Device {#HOSTNAME} has critical signal (&lt; {$SIGNAL_CRIT} dBm)</name>
                             <priority>HIGH</priority>
@@ -364,7 +364,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/devices</url>
                 </discovery_rule>
                 <discovery_rule>
-                    <uuid>f4a5b6c7-d8e9-4f0a-b1c2-d3e4f5a6b7c8</uuid>
+                    <uuid>f4a5b6c7d8e94f0ab1c2d3e4f5a6b7c8</uuid>
                     <name>Node Discovery</name>
                     <type>HTTP_AGENT</type>
                     <key>eerovista.discovery.nodes</key>
@@ -373,7 +373,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <description>Discovers all Eero mesh nodes</description>
                     <item_prototypes>
                         <item_prototype>
-                            <uuid>a5b6c7d8-e9f0-4a1b-82d3-e4f5a6b7c8da</uuid>
+                            <uuid>a5b6c7d8e9f04a1b82d3e4f5a6b7c8da</uuid>
                             <name>Node [{#NODE_NAME}]: Status</name>
                             <type>HTTP_AGENT</type>
                             <key>node.status[{#NODE_ID}]</key>
@@ -399,7 +399,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.status[{#NODE_ID}]</url>
                         </item_prototype>
                         <item_prototype>
-                            <uuid>b6c7d8e9-f0a1-4b2c-93e4-f5a6b7c8d9e1</uuid>
+                            <uuid>b6c7d8e9f0a14b2c93e4f5a6b7c8d9e1</uuid>
                             <name>Node [{#NODE_NAME}]: Connected Devices</name>
                             <type>HTTP_AGENT</type>
                             <key>node.devices[{#NODE_ID}]</key>
@@ -425,7 +425,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <url>http://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.devices[{#NODE_ID}]</url>
                         </item_prototype>
                         <item_prototype>
-                            <uuid>c7d8e9f0-a1b2-4c3d-a4f5-a6b7c8d9e0f1</uuid>
+                            <uuid>c7d8e9f0a1b24c3da4f5a6b7c8d9e0f1</uuid>
                             <name>Node [{#NODE_NAME}]: Mesh Quality</name>
                             <type>HTTP_AGENT</type>
                             <key>node.mesh_quality[{#NODE_ID}]</key>
@@ -453,14 +453,14 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     </item_prototypes>
                     <trigger_prototypes>
                         <trigger_prototype>
-                            <uuid>d4e5f6a7-b8c9-4d0e-b1a2-b3c4d5e6f7a8</uuid>
+                            <uuid>d4e5f6a7b8c94d0eb1a2b3c4d5e6f7a8</uuid>
                             <expression>last(/eeroVista Network Monitor/node.status[{#NODE_ID}])=0</expression>
                             <name>Eero node {#NODE_NAME} is offline</name>
                             <priority>HIGH</priority>
                             <description>Eero mesh node {#NODE_NAME} ({#NODE_MODEL}) has gone offline</description>
                         </trigger_prototype>
                         <trigger_prototype>
-                            <uuid>e5f6a7b8-c9d0-4e1f-a2b3-c4d5e6f7a8b9</uuid>
+                            <uuid>e5f6a7b8c9d04e1fa2b3c4d5e6f7a8b9</uuid>
                             <expression>last(/eeroVista Network Monitor/node.mesh_quality[{#NODE_ID}])&lt;3</expression>
                             <name>Eero node {#NODE_NAME} has poor mesh quality</name>
                             <priority>WARNING</priority>
