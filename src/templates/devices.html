@@ -869,8 +869,16 @@
     function formatBytes(mb) {
         if (mb >= 1000) {
             return `${(mb / 1000).toFixed(2)} GB`;
+        } else if (mb >= 1) {
+            return `${mb.toFixed(2)} MB`;
+        } else if (mb >= 0.001) {
+            // Convert MB to KB (1 MB = 1024 KB)
+            return `${(mb * 1024).toFixed(2)} KB`;
+        } else if (mb > 0) {
+            // Convert MB to Bytes (1 MB = 1024 * 1024 Bytes)
+            return `${(mb * 1024 * 1024).toFixed(0)} Bytes`;
         }
-        return `${mb.toFixed(2)} MB`;
+        return '0 Bytes';
     }
 
     // Load and render bandwidth chart for device
@@ -918,6 +926,14 @@
         const downloadData = dailyData.map(d => d.download_mb);
         const uploadData = dailyData.map(d => d.upload_mb);
 
+        // Use lighter colors for incomplete (today's) data
+        const downloadColors = dailyData.map(d =>
+            d.is_incomplete ? 'rgba(30, 102, 245, 0.4)' : 'rgba(30, 102, 245, 0.8)'
+        );
+        const uploadColors = dailyData.map(d =>
+            d.is_incomplete ? 'rgba(136, 57, 239, 0.4)' : 'rgba(136, 57, 239, 0.8)'
+        );
+
         bandwidthChart = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -926,14 +942,14 @@
                     {
                         label: 'Download',
                         data: downloadData,
-                        backgroundColor: 'rgba(30, 102, 245, 0.8)', // Catppuccin blue
+                        backgroundColor: downloadColors,
                         borderColor: 'rgb(30, 102, 245)',
                         borderWidth: 1
                     },
                     {
                         label: 'Upload',
                         data: uploadData,
-                        backgroundColor: 'rgba(136, 57, 239, 0.8)', // Catppuccin mauve
+                        backgroundColor: uploadColors,
                         borderColor: 'rgb(136, 57, 239)',
                         borderWidth: 1
                     }
@@ -956,11 +972,14 @@
                                 const dateStr = context[0].label;
                                 const [year, month, day] = dateStr.split('-').map(Number);
                                 const date = new Date(year, month - 1, day);
-                                return date.toLocaleDateString('en-US', {
+                                const formatted = date.toLocaleDateString('en-US', {
                                     weekday: 'short',
                                     month: 'short',
                                     day: 'numeric'
                                 });
+                                // Add note for incomplete data
+                                const dataPoint = dailyData[context[0].dataIndex];
+                                return dataPoint.is_incomplete ? formatted + ' (incomplete)' : formatted;
                             },
                             label: function(context) {
                                 return `${context.dataset.label}: ${formatBytes(context.parsed.y)}`;
@@ -970,6 +989,7 @@
                 },
                 scales: {
                     x: {
+                        type: 'category',  // Explicitly use category scale to prevent date parsing
                         stacked: false,
                         title: {
                             display: true,
@@ -993,14 +1013,11 @@
                         stacked: false,
                         title: {
                             display: true,
-                            text: 'Data Usage (MB)'
+                            text: 'Data Usage'
                         },
                         ticks: {
                             callback: function(value) {
-                                if (value >= 1000) {
-                                    return (value / 1000).toFixed(1) + ' GB';
-                                }
-                                return value.toFixed(0) + ' MB';
+                                return formatBytes(value);
                             }
                         }
                     }
@@ -1054,6 +1071,10 @@
                 return;
             }
 
+            // Get today's date at midnight (local timezone)
+            const now = new Date();
+            const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
             // Aggregate data by hour
             const hourlyData = Array(24).fill(null).map((_, hour) => ({
                 hour: hour,
@@ -1064,15 +1085,21 @@
             }));
 
             // Sum bandwidth rates for each hour (convert Mbps to MB by dividing by 8 and multiplying by collection interval)
-            // Approximate: Mbps * 60 seconds / 8 bits per byte ≈ MB per minute
-            const secondsPerDataPoint = 60; // Assume 1-minute collection intervals
+            // Only include data from today (local timezone)
+            const secondsPerDataPoint = 30; // 30-second collection intervals
             data.history.forEach(point => {
-                const timestamp = new Date(point.timestamp);
-                const hour = timestamp.getHours();
-                if (point.download_mbps !== null && point.upload_mbps !== null) {
-                    hourlyData[hour].download_mb += (point.download_mbps * secondsPerDataPoint) / 8;
-                    hourlyData[hour].upload_mb += (point.upload_mbps * secondsPerDataPoint) / 8;
-                    hourlyData[hour].count++;
+                // Parse UTC timestamp correctly (API timestamps are UTC but lack 'Z' suffix)
+                // Adding 'Z' tells JavaScript to parse as UTC
+                const timestamp = new Date(point.timestamp.endsWith('Z') ? point.timestamp : point.timestamp + 'Z');
+
+                // Filter: only include timestamps >= today at midnight
+                if (timestamp >= todayMidnight) {
+                    const hour = timestamp.getHours();
+                    if (point.download_mbps !== null && point.upload_mbps !== null) {
+                        hourlyData[hour].download_mb += (point.download_mbps * secondsPerDataPoint) / 8;
+                        hourlyData[hour].upload_mb += (point.upload_mbps * secondsPerDataPoint) / 8;
+                        hourlyData[hour].count++;
+                    }
                 }
             });
 
@@ -1150,6 +1177,7 @@
                 },
                 scales: {
                     x: {
+                        type: 'category',  // Explicitly use category scale to prevent parsing issues
                         stacked: false,
                         title: {
                             display: true,
@@ -1161,14 +1189,11 @@
                         stacked: false,
                         title: {
                             display: true,
-                            text: 'Data Usage (MB)'
+                            text: 'Data Usage'
                         },
                         ticks: {
                             callback: function(value) {
-                                if (value >= 1000) {
-                                    return (value / 1000).toFixed(1) + ' GB';
-                                }
-                                return value.toFixed(0) + ' MB';
+                                return formatBytes(value);
                             }
                         }
                     }

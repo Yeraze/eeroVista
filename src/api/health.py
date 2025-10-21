@@ -670,6 +670,8 @@ async def get_device_bandwidth_total(
 
     try:
         from datetime import timedelta, date
+        from src.config import get_settings
+        from zoneinfo import ZoneInfo
 
         with get_db_context() as db:
             from src.models.database import Device, DailyBandwidth
@@ -680,9 +682,17 @@ async def get_device_bandwidth_total(
                 raise HTTPException(status_code=404, detail="Device not found")
 
             # Get daily bandwidth records
-            # Use UTC date to match UTC timestamps in database
-            today_utc = datetime.utcnow().date()
-            since_date = today_utc - timedelta(days=days - 1)
+            # Use local timezone to match how data collection stores dates
+            settings = get_settings()
+            tz = settings.get_timezone()
+            now_local = datetime.now(tz)
+            today_local = now_local.date()
+            since_date = today_local - timedelta(days=days - 1)
+
+            # Generate complete date range
+            all_dates = [since_date + timedelta(days=i) for i in range(days)]
+
+            # Fetch records from database
             daily_records = (
                 db.query(DailyBandwidth)
                 .filter(
@@ -693,18 +703,33 @@ async def get_device_bandwidth_total(
                 .all()
             )
 
+            # Create a lookup map for existing records
+            records_by_date = {record.date: record for record in daily_records}
+
             # Calculate totals
             total_download = sum(record.download_mb for record in daily_records)
             total_upload = sum(record.upload_mb for record in daily_records)
 
-            # Format daily breakdown
+            # Format daily breakdown with complete date range (fill zeros for missing days)
             daily_breakdown = []
-            for record in daily_records:
-                daily_breakdown.append({
-                    "date": record.date.isoformat(),
-                    "download_mb": round(record.download_mb, 2),
-                    "upload_mb": round(record.upload_mb, 2),
-                })
+            for date_obj in all_dates:
+                is_today = date_obj == today_local
+                if date_obj in records_by_date:
+                    record = records_by_date[date_obj]
+                    daily_breakdown.append({
+                        "date": date_obj.isoformat(),
+                        "download_mb": round(record.download_mb, 2),
+                        "upload_mb": round(record.upload_mb, 2),
+                        "is_incomplete": is_today,  # Today's data is still being collected
+                    })
+                else:
+                    # No data for this date - fill with zeros
+                    daily_breakdown.append({
+                        "date": date_obj.isoformat(),
+                        "download_mb": 0.0,
+                        "upload_mb": 0.0,
+                        "is_incomplete": False,
+                    })
 
             return {
                 "device": {
@@ -714,7 +739,7 @@ async def get_device_bandwidth_total(
                 "period": {
                     "days": days,
                     "start_date": since_date.isoformat(),
-                    "end_date": today_utc.isoformat(),
+                    "end_date": today_local.isoformat(),
                 },
                 "totals": {
                     "download_mb": round(total_download, 2),
