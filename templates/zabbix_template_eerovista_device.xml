@@ -31,11 +31,6 @@ Required macros (set automatically by host prototype):
 - {$EEROVISTA_PORT} - eeroVista port (inherited)
 
 Documentation: https://github.com/Yeraze/eeroVista</description>
-            <groups>
-                <group>
-                    <name>Templates/Network devices</name>
-                </group>
-            </groups>
             <items>
                 <item>
                     <uuid>a1d2e3b4c5a6d7d8e9c0d1e2d3a4d5e6</uuid>
