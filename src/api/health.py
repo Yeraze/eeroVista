@@ -2,8 +2,9 @@
 
 import json
 import logging
+import time
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -25,6 +26,11 @@ class DeviceAliasesRequest(BaseModel):
 
 # Track when the app started
 APP_START_TIME = datetime.utcnow()
+
+# Simple in-memory cache for expensive queries
+# Cache structure: {cache_key: (data, expiry_time)}
+_bandwidth_cache: Dict[str, tuple[Dict[str, Any], float]] = {}
+CACHE_TTL_SECONDS = 300  # 5 minutes
 
 
 def get_eero_client(db: Session = Depends(get_db)) -> EeroClientWrapper:
@@ -980,6 +986,7 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
     """Get network-wide bandwidth usage aggregated by hour for the current day (in local timezone).
 
     Returns hourly bandwidth totals for today based on the configured timezone.
+    Includes caching with 5-minute TTL to improve performance for repeat requests.
     """
     try:
         from datetime import timedelta
@@ -990,11 +997,32 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
         settings = get_settings()
         tz = settings.get_timezone()
 
+        # Check cache first
+        now_local = datetime.now(tz)
+        cache_key = now_local.date().isoformat()
+        current_time = time.time()
+
+        # Clean up expired cache entries
+        expired_keys = [
+            key for key, (_, expiry) in _bandwidth_cache.items()
+            if expiry < current_time
+        ]
+        for key in expired_keys:
+            del _bandwidth_cache[key]
+
+        # Return cached data if available and not expired
+        if cache_key in _bandwidth_cache:
+            cached_data, expiry = _bandwidth_cache[cache_key]
+            if expiry > current_time:
+                logger.debug(f"Returning cached bandwidth data for {cache_key}")
+                return cached_data
+
+        logger.debug(f"Cache miss for {cache_key}, querying database...")
+
         with get_db_context() as db:
             from src.models.database import DeviceConnection
 
             # Get start of today in local timezone, convert to UTC for database query
-            now_local = datetime.now(tz)
             today_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
             today_start_utc = today_start_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
 
@@ -1072,7 +1100,7 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
             total_download = sum(h["download_mb"] for h in hourly_breakdown)
             total_upload = sum(h["upload_mb"] for h in hourly_breakdown)
 
-            return {
+            result = {
                 "period": {
                     "date": now_local.date().isoformat(),
                     "timezone": str(tz),
@@ -1086,6 +1114,12 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
                 },
                 "hourly_breakdown": hourly_breakdown,
             }
+
+            # Cache the result with TTL
+            _bandwidth_cache[cache_key] = (result, current_time + CACHE_TTL_SECONDS)
+            logger.debug(f"Cached bandwidth data for {cache_key} (expires in {CACHE_TTL_SECONDS}s)")
+
+            return result
 
     except Exception as e:
         logger.error(f"Failed to get hourly network bandwidth: {e}")
