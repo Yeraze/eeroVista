@@ -9,6 +9,13 @@
   - Consider caching or lazy loading
 
 ## Completed
+- [x] v0.7.1 Release - Zabbix 6.0+ templates with auto-discovery (PR #20)
+  - Zabbix 6.0+ compatibility: deprecated applications→tags, proper UUIDs, required groups
+  - New auto-discovery template with host prototypes (creates individual hosts for devices/nodes)
+  - HTTPS support via configurable macros
+  - Enhanced discovery metadata: IP addresses, MAC addresses, firmware versions, connection types
+  - Removed separate template files, consolidated into single complete template
+  - Comprehensive setup documentation with troubleshooting
 - [x] v0.7.0 Release - Dashboard enhancements, timezone fixes, and performance improvements (PR #19)
   - Dashboard enhancements: incomplete data indicator, top 5 bandwidth consumers, hourly charts
   - Timezone fixes: data collection/API alignment, JavaScript date parsing

@@ -2,8 +2,9 @@
 
 import json
 import logging
+import time
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -25,6 +26,11 @@ class DeviceAliasesRequest(BaseModel):
 
 # Track when the app started
 APP_START_TIME = datetime.utcnow()
+
+# Simple in-memory cache for expensive queries
+# Cache structure: {cache_key: (data, expiry_time)}
+_bandwidth_cache: Dict[str, tuple[Dict[str, Any], float]] = {}
+CACHE_TTL_SECONDS = 300  # 5 minutes
 
 
 def get_eero_client(db: Session = Depends(get_db)) -> EeroClientWrapper:
@@ -980,21 +986,43 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
     """Get network-wide bandwidth usage aggregated by hour for the current day (in local timezone).
 
     Returns hourly bandwidth totals for today based on the configured timezone.
+    Includes caching with 5-minute TTL to improve performance for repeat requests.
     """
     try:
         from datetime import timedelta
-        from sqlalchemy import func, extract
+        from sqlalchemy import func, extract, Integer
         from src.config import get_settings
         from zoneinfo import ZoneInfo
 
         settings = get_settings()
         tz = settings.get_timezone()
 
+        # Check cache first
+        now_local = datetime.now(tz)
+        cache_key = now_local.date().isoformat()
+        current_time = time.time()
+
+        # Clean up expired cache entries
+        expired_keys = [
+            key for key, (_, expiry) in _bandwidth_cache.items()
+            if expiry < current_time
+        ]
+        for key in expired_keys:
+            del _bandwidth_cache[key]
+
+        # Return cached data if available and not expired
+        if cache_key in _bandwidth_cache:
+            cached_data, expiry = _bandwidth_cache[cache_key]
+            if expiry > current_time:
+                logger.debug(f"Returning cached bandwidth data for {cache_key}")
+                return cached_data
+
+        logger.debug(f"Cache miss for {cache_key}, querying database...")
+
         with get_db_context() as db:
             from src.models.database import DeviceConnection
 
             # Get start of today in local timezone, convert to UTC for database query
-            now_local = datetime.now(tz)
             today_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
             today_start_utc = today_start_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
 
@@ -1007,39 +1035,45 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
             interval_seconds = settings.collection_interval_devices
             rate_to_mb = interval_seconds / 8.0
 
-            # Query device connections for today
-            # Note: We still need to fetch all connections to convert timestamps to local timezone
-            # SQLite doesn't have native timezone support, so we do timezone conversion in Python
-            connections = (
-                db.query(DeviceConnection)
+            # Calculate timezone offset in hours for SQL
+            # We need to adjust the hour extraction by the timezone offset
+            offset_seconds = today_start_local.utcoffset().total_seconds()
+            offset_hours = int(offset_seconds / 3600)
+
+            # Query and aggregate in SQL using timezone-adjusted hour extraction
+            # This is MUCH faster than fetching all rows and aggregating in Python
+            hourly_query = (
+                db.query(
+                    # Extract hour with timezone offset adjustment
+                    func.cast(
+                        (func.strftime('%H', DeviceConnection.timestamp) + offset_hours) % 24,
+                        Integer
+                    ).label('hour'),
+                    func.sum(
+                        func.coalesce(DeviceConnection.bandwidth_down_mbps, 0.0) * rate_to_mb
+                    ).label('download_mb'),
+                    func.sum(
+                        func.coalesce(DeviceConnection.bandwidth_up_mbps, 0.0) * rate_to_mb
+                    ).label('upload_mb'),
+                    func.count(DeviceConnection.id).label('count')
+                )
                 .filter(
                     DeviceConnection.timestamp >= today_start_utc,
                     DeviceConnection.timestamp < today_end_utc
                 )
+                .group_by('hour')
                 .all()
             )
 
-            # Aggregate by hour in local timezone
-            hourly_data = {}
-            for conn in connections:
-                # Convert UTC timestamp to local timezone
-                timestamp_utc = conn.timestamp.replace(tzinfo=ZoneInfo("UTC"))
-                timestamp_local = timestamp_utc.astimezone(tz)
-                hour_key = timestamp_local.hour
-
-                if hour_key not in hourly_data:
-                    hourly_data[hour_key] = {
-                        "download_mb": 0.0,
-                        "upload_mb": 0.0,
-                        "count": 0
-                    }
-
-                # Accumulate bandwidth
-                if conn.bandwidth_down_mbps is not None:
-                    hourly_data[hour_key]["download_mb"] += conn.bandwidth_down_mbps * rate_to_mb
-                if conn.bandwidth_up_mbps is not None:
-                    hourly_data[hour_key]["upload_mb"] += conn.bandwidth_up_mbps * rate_to_mb
-                hourly_data[hour_key]["count"] += 1
+            # Convert query results to dictionary for easy lookup
+            hourly_data = {
+                row.hour: {
+                    "download_mb": row.download_mb,
+                    "upload_mb": row.upload_mb,
+                    "count": row.count
+                }
+                for row in hourly_query
+            }
 
             # Format hourly breakdown (0-23 hours)
             hourly_breakdown = []
@@ -1066,7 +1100,7 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
             total_download = sum(h["download_mb"] for h in hourly_breakdown)
             total_upload = sum(h["upload_mb"] for h in hourly_breakdown)
 
-            return {
+            result = {
                 "period": {
                     "date": now_local.date().isoformat(),
                     "timezone": str(tz),
@@ -1080,6 +1114,12 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
                 },
                 "hourly_breakdown": hourly_breakdown,
             }
+
+            # Cache the result with TTL
+            _bandwidth_cache[cache_key] = (result, current_time + CACHE_TTL_SECONDS)
+            logger.debug(f"Cached bandwidth data for {cache_key} (expires in {CACHE_TTL_SECONDS}s)")
+
+            return result
 
     except Exception as e:
         logger.error(f"Failed to get hourly network bandwidth: {e}")
