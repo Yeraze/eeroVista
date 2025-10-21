@@ -80,7 +80,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                     <value>{#DEVICE_TYPE}</value>
                                 </macro>
                             </macros>
-                            <custom_interfaces>1</custom_interfaces>
+                            <custom_interfaces>YES</custom_interfaces>
                             <interfaces>
                                 <interface>
                                     <default>1</default>
@@ -135,7 +135,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                     <value>{#NODE_MODEL}</value>
                                 </macro>
                             </macros>
-                            <custom_interfaces>1</custom_interfaces>
+                            <custom_interfaces>YES</custom_interfaces>
                             <interfaces>
                                 <interface>
                                     <default>1</default>
