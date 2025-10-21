@@ -573,7 +573,7 @@
             }
 
             // Filter by guest network status
-            if (!showGuests && device.is_guest) {
+            if (!showGuests && device.is_guest === true) {
                 return false;
             }
 

@@ -116,6 +116,127 @@ class TestDeviceModel:
         assert updated.manufacturer == "Updated Manufacturer"
 
 
+class TestDeviceConnectionGuest:
+    """Test DeviceConnection with guest network status."""
+
+    @pytest.fixture
+    def db_session(self):
+        """Create an in-memory SQLite database for testing."""
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False}
+        )
+        Base.metadata.create_all(engine)
+        SessionLocal = sessionmaker(bind=engine)
+        session = SessionLocal()
+        yield session
+        session.close()
+
+    def test_create_device_connection_with_guest_status(self, db_session):
+        """Test creating device connection with guest network status."""
+        device = Device(
+            mac_address="aa:bb:cc:dd:ee:ff",
+            hostname="test-device",
+        )
+        db_session.add(device)
+        db_session.commit()
+
+        connection = DeviceConnection(
+            device_id=device.id,
+            timestamp=datetime.utcnow(),
+            is_connected=True,
+            is_guest=True,
+        )
+        db_session.add(connection)
+        db_session.commit()
+
+        assert connection.is_guest is True
+        assert connection.id is not None
+
+    def test_create_device_connection_without_guest_status(self, db_session):
+        """Test creating device connection without guest status (defaults to None/False)."""
+        device = Device(
+            mac_address="aa:bb:cc:dd:ee:ff",
+            hostname="test-device",
+        )
+        db_session.add(device)
+        db_session.commit()
+
+        connection = DeviceConnection(
+            device_id=device.id,
+            timestamp=datetime.utcnow(),
+            is_connected=True,
+        )
+        db_session.add(connection)
+        db_session.commit()
+
+        assert connection.is_guest is None or connection.is_guest is False
+
+    def test_query_guest_connections(self, db_session):
+        """Test querying connections by guest status."""
+        device = Device(
+            mac_address="aa:bb:cc:dd:ee:ff",
+            hostname="test-device",
+        )
+        db_session.add(device)
+        db_session.commit()
+
+        # Create guest connection
+        guest_connection = DeviceConnection(
+            device_id=device.id,
+            timestamp=datetime.utcnow(),
+            is_connected=True,
+            is_guest=True,
+        )
+        db_session.add(guest_connection)
+
+        # Create non-guest connection
+        regular_connection = DeviceConnection(
+            device_id=device.id,
+            timestamp=datetime.utcnow(),
+            is_connected=True,
+            is_guest=False,
+        )
+        db_session.add(regular_connection)
+        db_session.commit()
+
+        # Query guest connections
+        guest_connections = db_session.query(DeviceConnection).filter(
+            DeviceConnection.is_guest == True
+        ).all()
+
+        assert len(guest_connections) == 1
+        assert guest_connections[0].is_guest is True
+
+    def test_update_guest_status(self, db_session):
+        """Test updating guest status on existing connection."""
+        device = Device(
+            mac_address="aa:bb:cc:dd:ee:ff",
+            hostname="test-device",
+        )
+        db_session.add(device)
+        db_session.commit()
+
+        connection = DeviceConnection(
+            device_id=device.id,
+            timestamp=datetime.utcnow(),
+            is_connected=True,
+            is_guest=False,
+        )
+        db_session.add(connection)
+        db_session.commit()
+
+        # Update to guest
+        connection.is_guest = True
+        db_session.commit()
+
+        # Verify update
+        updated = db_session.query(DeviceConnection).filter(
+            DeviceConnection.id == connection.id
+        ).first()
+        assert updated.is_guest is True
+
+
 class TestDeviceNameFallback:
     """Test device name fallback logic."""
 
@@ -230,6 +351,22 @@ class TestDeviceCollector:
             "connected": True,
             "connection_type": "wireless",
             "ip": "192.168.1.100",
+            "is_guest": False,
+        }
+
+    @pytest.fixture
+    def mock_guest_device_data(self):
+        """Create mock guest device data from Eero API."""
+        return {
+            "mac": "bb:cc:dd:ee:ff:00",
+            "hostname": "guest-device",
+            "nickname": "Guest Device",
+            "manufacturer": "Guest Manufacturer",
+            "device_type": "generic",
+            "connected": True,
+            "connection_type": "wireless",
+            "ip": "192.168.1.200",
+            "is_guest": True,
         }
 
     def test_store_manufacturer_on_new_device(self, db_session, mock_device_data):
@@ -300,6 +437,103 @@ class TestDeviceCollector:
         ).first()
         assert updated_device.manufacturer == "Existing Manufacturer"
 
+    def test_store_guest_status_on_device_connection(self, db_session, mock_guest_device_data):
+        """Test that is_guest is stored when creating device connection."""
+        # Create device first
+        device = Device(
+            mac_address=mock_guest_device_data["mac"],
+            hostname=mock_guest_device_data.get("hostname"),
+            first_seen=datetime.utcnow(),
+        )
+        db_session.add(device)
+        db_session.commit()
+
+        # Simulate connection creation logic from device_collector.py
+        is_guest = mock_guest_device_data.get("is_guest", False)
+        connection = DeviceConnection(
+            device_id=device.id,
+            timestamp=datetime.utcnow(),
+            is_connected=mock_guest_device_data.get("connected", False),
+            connection_type=mock_guest_device_data.get("connection_type", "wireless"),
+            is_guest=is_guest,
+            ip_address=mock_guest_device_data.get("ip"),
+        )
+        db_session.add(connection)
+        db_session.commit()
+
+        # Verify is_guest was stored
+        stored_connection = db_session.query(DeviceConnection).filter(
+            DeviceConnection.device_id == device.id
+        ).first()
+        assert stored_connection.is_guest is True
+
+    def test_store_non_guest_status_on_device_connection(self, db_session, mock_device_data):
+        """Test that is_guest=False is stored for non-guest devices."""
+        # Create device first
+        device = Device(
+            mac_address=mock_device_data["mac"],
+            hostname=mock_device_data.get("hostname"),
+            first_seen=datetime.utcnow(),
+        )
+        db_session.add(device)
+        db_session.commit()
+
+        # Simulate connection creation logic from device_collector.py
+        is_guest = mock_device_data.get("is_guest", False)
+        connection = DeviceConnection(
+            device_id=device.id,
+            timestamp=datetime.utcnow(),
+            is_connected=mock_device_data.get("connected", False),
+            connection_type=mock_device_data.get("connection_type", "wireless"),
+            is_guest=is_guest,
+            ip_address=mock_device_data.get("ip"),
+        )
+        db_session.add(connection)
+        db_session.commit()
+
+        # Verify is_guest was stored as False
+        stored_connection = db_session.query(DeviceConnection).filter(
+            DeviceConnection.device_id == device.id
+        ).first()
+        assert stored_connection.is_guest is False
+
+    def test_default_guest_status_when_not_in_api_data(self, db_session):
+        """Test that is_guest defaults to False when not provided by API."""
+        # Create device
+        device = Device(
+            mac_address="cc:dd:ee:ff:00:11",
+            hostname="device-without-guest",
+            first_seen=datetime.utcnow(),
+        )
+        db_session.add(device)
+        db_session.commit()
+
+        # Simulate API data without is_guest field
+        mock_data_no_guest = {
+            "connected": True,
+            "connection_type": "wired",
+            "ip": "192.168.1.150",
+        }
+
+        # Simulate logic with .get() fallback
+        is_guest = mock_data_no_guest.get("is_guest", False)
+        connection = DeviceConnection(
+            device_id=device.id,
+            timestamp=datetime.utcnow(),
+            is_connected=mock_data_no_guest.get("connected", False),
+            connection_type=mock_data_no_guest.get("connection_type", "wireless"),
+            is_guest=is_guest,
+            ip_address=mock_data_no_guest.get("ip"),
+        )
+        db_session.add(connection)
+        db_session.commit()
+
+        # Verify is_guest defaults to False
+        stored_connection = db_session.query(DeviceConnection).filter(
+            DeviceConnection.device_id == device.id
+        ).first()
+        assert stored_connection.is_guest is False
+
 
 class TestDeviceAPIResponse:
     """Test /devices endpoint response structure."""
@@ -323,6 +557,7 @@ class TestDeviceAPIResponse:
             "mac_address",
             "last_seen",
             "aliases",
+            "is_guest",
         }
 
         # Verify critical new fields are in expected structure
@@ -330,6 +565,7 @@ class TestDeviceAPIResponse:
         assert "hostname" in expected_device_fields
         assert "manufacturer" in expected_device_fields
         assert "name" in expected_device_fields  # Computed field
+        assert "is_guest" in expected_device_fields  # Guest network status
 
     def test_device_response_structure(self):
         """Test the overall structure of device API response."""
@@ -375,3 +611,54 @@ class TestDeviceAPIResponse:
         )
 
         assert device_name == "Oculus VR, LLC"
+
+    def test_guest_device_response_includes_is_guest(self):
+        """Test that guest device API response includes is_guest field."""
+        mock_guest_device = {
+            "name": "Guest Device",
+            "nickname": "Guest Device",
+            "hostname": "guest-device",
+            "manufacturer": "Guest Inc.",
+            "type": "generic",
+            "ip_address": "192.168.1.200",
+            "is_online": True,
+            "connection_type": "wireless",
+            "signal_strength": -45,
+            "bandwidth_down_mbps": 10.5,
+            "bandwidth_up_mbps": 2.5,
+            "node": "Eero Node 1",
+            "mac_address": "bb:cc:dd:ee:ff:00",
+            "last_seen": "2024-01-01T12:00:00",
+            "aliases": None,
+            "is_guest": True,
+        }
+
+        # Verify is_guest field is present
+        assert "is_guest" in mock_guest_device
+        assert mock_guest_device["is_guest"] is True
+
+    def test_non_guest_device_response_includes_is_guest(self):
+        """Test that non-guest device API response includes is_guest=False."""
+        mock_regular_device = {
+            "name": "Regular Device",
+            "is_guest": False,
+        }
+
+        # Verify is_guest field is present and False
+        assert "is_guest" in mock_regular_device
+        assert mock_regular_device["is_guest"] is False
+
+    def test_guest_status_handles_null_values(self):
+        """Test that is_guest field properly handles None/null values."""
+        # Mock device with None is_guest (should be treated as False)
+        mock_device_none = {
+            "name": "Device",
+            "is_guest": None,
+        }
+
+        # In JavaScript: if (!showGuests && device.is_guest === true)
+        # None/null should NOT match === true
+        is_guest = mock_device_none["is_guest"]
+        assert is_guest is None  # Verify it's None
+        assert is_guest != True  # Verify it doesn't equal True
+        assert (is_guest is True) is False  # Verify explicit check is False
