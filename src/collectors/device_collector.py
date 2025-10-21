@@ -295,6 +295,7 @@ class DeviceCollector(BaseCollector):
         # Get connection info
         is_connected = device_data.get("connected", False)
         connection_type = device_data.get("connection_type", "wireless")
+        is_guest = device_data.get("is_guest", False)
 
         # Get connected eero node
         eero_node_id = None
@@ -342,6 +343,7 @@ class DeviceCollector(BaseCollector):
             timestamp=timestamp,
             is_connected=is_connected,
             connection_type=connection_type,
+            is_guest=is_guest,
             signal_strength=signal_strength,
             ip_address=device_data.get("ip"),
             bandwidth_down_mbps=bandwidth_down,

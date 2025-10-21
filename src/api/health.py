@@ -312,6 +312,7 @@ async def get_devices() -> Dict[str, Any]:
                 connection_type = "unknown"
                 ip_address = "N/A"
                 is_online = False
+                is_guest = False
                 signal_strength = None
                 bandwidth_down = None
                 bandwidth_up = None
@@ -325,6 +326,7 @@ async def get_devices() -> Dict[str, Any]:
                     ip_address = latest_connection.ip_address or "N/A"
                     is_online = latest_connection.is_connected or False
                     connection_type = latest_connection.connection_type or "unknown"
+                    is_guest = latest_connection.is_guest or False
                     signal_strength = latest_connection.signal_strength
                     bandwidth_down = latest_connection.bandwidth_down_mbps
                     bandwidth_up = latest_connection.bandwidth_up_mbps
@@ -347,6 +349,7 @@ async def get_devices() -> Dict[str, Any]:
                     "type": device.device_type or "unknown",
                     "ip_address": ip_address,
                     "is_online": is_online,
+                    "is_guest": is_guest,
                     "connection_type": connection_type,
                     "signal_strength": signal_strength,
                     "bandwidth_down_mbps": bandwidth_down,

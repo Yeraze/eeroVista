@@ -126,3 +126,13 @@ def _run_migrations(engine) -> None:
                 conn.execute(text("ALTER TABLE eero_node_metrics ADD COLUMN connected_wireless_count INTEGER"))
                 conn.commit()
             logger.info("Migration complete: 'connected_wireless_count' column added")
+
+    # Migration: Add is_guest column to device_connections table
+    if "device_connections" in inspector.get_table_names():
+        columns = [col["name"] for col in inspector.get_columns("device_connections")]
+        if "is_guest" not in columns:
+            logger.info("Running migration: Adding 'is_guest' column to device_connections table")
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE device_connections ADD COLUMN is_guest BOOLEAN"))
+                conn.commit()
+            logger.info("Migration complete: 'is_guest' column added")

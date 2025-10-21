@@ -2,14 +2,23 @@
 
 ## Pending Features
 
-### Guest Network Support
-- [ ] Track and display devices connected via Guest Network
-  - Ensure guest network devices appear in Device List
-  - Add visual indicator (special color/badge) for guest network devices
-  - Add "Show Guests" checkbox filter (similar to "Show Offline")
-  - Track guest network connection status separately from main network
+(No pending features at this time)
 
 ## Completed
+- [x] Guest Network Support (2025-10-21)
+  - Added is_guest field to DeviceConnection database model
+  - Updated device collector to store guest network status from Eero API
+  - Added guest network filter checkbox ("Show Guest Network") in device list UI
+  - Added visual "GUEST" badge indicator for guest network devices (Catppuccin peach color)
+  - Guest devices appear in Device List with clear visual distinction
+  - Added database migration for existing users (automatically runs on startup)
+  - Tracks guest network connection status separately from main network in time-series data
+  - Fixed frontend null check for is_guest filter (explicit boolean comparison)
+  - Added comprehensive test coverage:
+    - 4 tests for DeviceConnection model with is_guest field
+    - 3 tests for DeviceCollector storing is_guest from API data
+    - 4 tests for API response structure including is_guest field
+    - Tests cover null/undefined handling, defaults, and query operations
 - [x] Device manufacturer field support (2025-10-21)
   - Added manufacturer field to Device database model
   - Updated device collector to store manufacturer from Eero API
