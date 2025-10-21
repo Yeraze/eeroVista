@@ -173,8 +173,8 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
             <macros>
                 <macro>
                     <macro>{$PARENT_HOST}</macro>
-                    <value>{HOST.HOST}</value>
-                    <description>Parent eeroVista host (auto-populated)</description>
+                    <value>localhost</value>
+                    <description>Hostname or IP of parent eeroVista server (inherited from parent host)</description>
                 </macro>
                 <macro>
                     <macro>{$SIGNAL_WARN}</macro>
@@ -320,8 +320,8 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
             <macros>
                 <macro>
                     <macro>{$PARENT_HOST}</macro>
-                    <value>{HOST.HOST}</value>
-                    <description>Parent eeroVista host (auto-populated)</description>
+                    <value>localhost</value>
+                    <description>Hostname or IP of parent eeroVista server (inherited from parent host)</description>
                 </macro>
             </macros>
         </template>
@@ -370,7 +370,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <host_prototypes>
                         <host_prototype>
                             <uuid>551091568e334e84a525311e1fa5062e</uuid>
-                            <host>{#HOSTNAME}.{HOST.HOST}</host>
+                            <host>eeroVista-Device-{#HOSTNAME}</host>
                             <name>eeroVista Device: {#HOSTNAME}</name>
                             <group_links>
                                 <group_link>
@@ -429,7 +429,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <host_prototypes>
                         <host_prototype>
                             <uuid>48dc2ace07454a30baab77aa52813614</uuid>
-                            <host>{#NODE_NAME}.{HOST.HOST}</host>
+                            <host>eeroVista-Node-{#NODE_NAME}</host>
                             <name>eeroVista Node: {#NODE_NAME}</name>
                             <group_links>
                                 <group_link>

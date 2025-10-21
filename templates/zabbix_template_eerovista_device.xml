@@ -173,8 +173,8 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
             <macros>
                 <macro>
                     <macro>{$PARENT_HOST}</macro>
-                    <value>{HOST.HOST}</value>
-                    <description>Parent eeroVista host (auto-populated)</description>
+                    <value>localhost</value>
+                    <description>Hostname or IP of parent eeroVista server (inherited from parent host)</description>
                 </macro>
                 <macro>
                     <macro>{$SIGNAL_WARN}</macro>

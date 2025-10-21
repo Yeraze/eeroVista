@@ -48,7 +48,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <host_prototypes>
                         <host_prototype>
                             <uuid>a1d2e3f4a5c64e7a8a9bc0d1e2f3a4b5</uuid>
-                            <host>{#HOSTNAME}.{HOST.HOST}</host>
+                            <host>eeroVista-Device-{#HOSTNAME}</host>
                             <name>eeroVista Device: {#HOSTNAME}</name>
                             <group_links>
                                 <group_link>
@@ -107,7 +107,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <host_prototypes>
                         <host_prototype>
                             <uuid>c2d3e4f5a6a74c8d89e0f1a2b3c4d5e6</uuid>
-                            <host>{#NODE_NAME}.{HOST.HOST}</host>
+                            <host>eeroVista-Node-{#NODE_NAME}</host>
                             <name>eeroVista Node: {#NODE_NAME}</name>
                             <group_links>
                                 <group_link>
