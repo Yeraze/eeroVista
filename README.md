@@ -94,7 +94,25 @@ Full documentation is available at [https://yeraze.github.io/eeroVista/](https:/
 
 ## Screenshots
 
-(Coming soon)
+### Dashboard
+![Dashboard](docs/images/mainpage.png)
+*Real-time network overview with bandwidth usage, top consumers, and network statistics*
+
+### Device List
+![Device List](docs/images/devicelist.png)
+*Connected devices with status, IP addresses, signal strength, and port forwarding indicators*
+
+### Device Details
+![Device Details](docs/images/device-detail.png)
+*Individual device metrics, bandwidth graphs, DNS aliases, and port forward configuration*
+
+### Network Topology
+![Network Topology](docs/images/nodes.png)
+*Mesh network topology showing nodes, connection quality, and routing configuration*
+
+### Topology Visualization
+![Topology Visualization](docs/images/topology.png)
+*Visual representation of network mesh connections and device distribution*
 
 ## Important Notes
 

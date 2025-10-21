@@ -49,7 +49,25 @@ A read-only web-based monitoring tool for Eero mesh networks.
 
 ## Screenshots
 
-(To be added)
+### Dashboard
+![Dashboard](images/mainpage.png)
+
+The main dashboard provides a real-time overview of your Eero network with bandwidth graphs, top bandwidth consumers, and key network statistics.
+
+### Device Management
+![Device List](images/devicelist.png)
+
+View all connected devices with detailed information including connection status, IP addresses (with DHCP reservation indicators 🔒), signal strength, and port forwarding status (🔀).
+
+### Device Details
+![Device Details](images/device-detail.png)
+
+Click any device to see detailed metrics, historical bandwidth usage, configure DNS aliases, and view port forwarding configuration.
+
+### Network Topology
+![Network Topology](images/nodes.png)
+
+Monitor your mesh network nodes, connection quality between nodes, connected device counts, and network routing configuration including IP reservations and port forwards.
 
 ## Important Notes
 

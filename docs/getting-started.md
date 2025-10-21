@@ -109,6 +109,27 @@ docker compose up -d
 
 See [API Reference](api-reference.md) for complete endpoint documentation.
 
+## What You'll See
+
+### Dashboard
+![Dashboard](images/mainpage.png)
+
+After initial data collection completes, the dashboard will display:
+- Real-time bandwidth usage graphs (hourly, 7-day, and 30-day views)
+- Top bandwidth consumers
+- Network statistics (online devices, total devices, WAN status)
+- Recent speedtest results
+
+### Device List
+![Device List](images/devicelist.png)
+
+The Devices page shows all connected devices with:
+- Connection status (online/offline)
+- IP addresses with DHCP reservation indicators (🔒)
+- Signal strength for wireless devices
+- Port forwarding indicators (🔀)
+- Sortable and filterable table
+
 ## Troubleshooting
 
 ### Authentication Issues
