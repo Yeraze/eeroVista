@@ -4,7 +4,7 @@
     <date>2025-10-20T18:00:00Z</date>
     <templates>
         <template>
-            <uuid>a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6</uuid>
+            <uuid>a1b2c3d4e5f647b889d0e1f2a3b4c5d6</uuid>
             <template>eeroVista Auto-Discovery</template>
             <name>eeroVista Auto-Discovery</name>
             <description>Template for auto-discovering Eero devices and nodes as individual Zabbix hosts.
@@ -38,7 +38,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
             </groups>
             <discovery_rules>
                 <discovery_rule>
-                    <uuid>d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6</uuid>
+                    <uuid>d1e2f3a4b5c647e8a9a0b1c2d3e4f5a6</uuid>
                     <name>Device Auto-Discovery</name>
                     <type>HTTP_AGENT</type>
                     <key>eerovista.autodiscovery.devices</key>
@@ -47,7 +47,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <description>Discovers all devices and creates individual Zabbix hosts for each</description>
                     <host_prototypes>
                         <host_prototype>
-                            <uuid>h1d2e3v4i5c6e7a8u9t0o1d2i3s4c5o6</uuid>
+                            <uuid>a1d2e3f4a5c64e7a8a9bc0d1e2f3a4b5</uuid>
                             <host>{#HOSTNAME}.{HOST.HOST}</host>
                             <name>eeroVista Device: {#HOSTNAME}</name>
                             <group_links>
@@ -84,8 +84,8 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <interfaces>
                                 <interface>
                                     <default>YES</default>
-                                    <type>1</type>
-                                    <useip>0</useip>
+                                    <type>ZABBIX</type>
+                                    <useip>NO</useip>
                                     <ip></ip>
                                     <dns>{HOST.HOST}</dns>
                                     <port>10050</port>
@@ -97,7 +97,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/devices</url>
                 </discovery_rule>
                 <discovery_rule>
-                    <uuid>n1o2d3e4a5u6t7o8d9i0s1c2o3v4e5r6</uuid>
+                    <uuid>b1c2d3e4a5a64b7c8d9ea0b1c2d3e4f5</uuid>
                     <name>Node Auto-Discovery</name>
                     <type>HTTP_AGENT</type>
                     <key>eerovista.autodiscovery.nodes</key>
@@ -106,7 +106,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <description>Discovers all Eero nodes and creates individual Zabbix hosts for each</description>
                     <host_prototypes>
                         <host_prototype>
-                            <uuid>h2n3o4d5e6a7u8t9o0d1i2s3c4o5v6e7</uuid>
+                            <uuid>c2d3e4f5a6a74c8d89e0f1a2b3c4d5e6</uuid>
                             <host>{#NODE_NAME}.{HOST.HOST}</host>
                             <name>eeroVista Node: {#NODE_NAME}</name>
                             <group_links>
@@ -139,8 +139,8 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <interfaces>
                                 <interface>
                                     <default>YES</default>
-                                    <type>1</type>
-                                    <useip>0</useip>
+                                    <type>ZABBIX</type>
+                                    <useip>NO</useip>
                                     <ip></ip>
                                     <dns>{HOST.HOST}</dns>
                                     <port>10050</port>
