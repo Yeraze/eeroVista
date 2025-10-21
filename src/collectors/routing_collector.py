@@ -3,6 +3,8 @@
 import logging
 from datetime import datetime
 
+from sqlalchemy.dialects.sqlite import insert
+
 from src.collectors.base import BaseCollector
 from src.models.database import IpReservation, PortForward
 
@@ -45,65 +47,79 @@ class RoutingCollector(BaseCollector):
             forwards_updated = 0
             current_time = datetime.utcnow()
 
-            # Process IP reservations
+            # Process IP reservations using upsert to avoid race conditions
             for res in routing.reservations.data:
-                # Check if reservation exists
-                existing = self.db.query(IpReservation).filter(
+                # Check if exists (for statistics tracking)
+                exists = self.db.query(IpReservation).filter(
                     IpReservation.mac_address == res.mac
-                ).first()
+                ).first() is not None
 
-                if existing:
-                    # Update existing reservation
-                    existing.ip_address = res.ip
-                    existing.description = res.description
-                    existing.eero_url = res.url
-                    existing.last_seen = current_time
-                    reservations_updated += 1
-                else:
-                    # Create new reservation
-                    reservation = IpReservation(
-                        mac_address=res.mac,
+                # Upsert reservation atomically
+                stmt = insert(IpReservation).values(
+                    mac_address=res.mac,
+                    ip_address=res.ip,
+                    description=res.description,
+                    eero_url=res.url,
+                    last_seen=current_time,
+                    created_at=current_time,
+                )
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['mac_address'],
+                    set_=dict(
                         ip_address=res.ip,
                         description=res.description,
                         eero_url=res.url,
                         last_seen=current_time,
                     )
-                    self.db.add(reservation)
+                )
+                self.db.execute(stmt)
+
+                # Track statistics
+                if exists:
+                    reservations_updated += 1
+                else:
                     reservations_added += 1
 
-            # Process port forwards
-            # Use a composite key of (ip, gateway_port, protocol) to identify unique forwards
+            # Process port forwards using upsert to avoid race conditions
+            # Use a composite unique key of (ip_address, gateway_port, protocol)
             for fwd in routing.forwards.data:
-                # Check if forward exists
-                existing = self.db.query(PortForward).filter(
+                # Check if exists (for statistics tracking)
+                exists = self.db.query(PortForward).filter(
                     PortForward.ip_address == fwd.ip,
                     PortForward.gateway_port == fwd.gateway_port,
                     PortForward.protocol == fwd.protocol
-                ).first()
+                ).first() is not None
 
-                if existing:
-                    # Update existing forward
-                    existing.client_port = fwd.client_port
-                    existing.description = fwd.description
-                    existing.enabled = fwd.enabled
-                    existing.reservation_url = fwd.reservation
-                    existing.eero_url = fwd.url
-                    existing.last_seen = current_time
-                    forwards_updated += 1
-                else:
-                    # Create new forward
-                    forward = PortForward(
-                        ip_address=fwd.ip,
-                        gateway_port=fwd.gateway_port,
+                # Upsert forward atomically
+                stmt = insert(PortForward).values(
+                    ip_address=fwd.ip,
+                    gateway_port=fwd.gateway_port,
+                    client_port=fwd.client_port,
+                    protocol=fwd.protocol,
+                    description=fwd.description,
+                    enabled=fwd.enabled,
+                    reservation_url=fwd.reservation,
+                    eero_url=fwd.url,
+                    last_seen=current_time,
+                    created_at=current_time,
+                )
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['ip_address', 'gateway_port', 'protocol'],
+                    set_=dict(
                         client_port=fwd.client_port,
-                        protocol=fwd.protocol,
                         description=fwd.description,
                         enabled=fwd.enabled,
                         reservation_url=fwd.reservation,
                         eero_url=fwd.url,
                         last_seen=current_time,
                     )
-                    self.db.add(forward)
+                )
+                self.db.execute(stmt)
+
+                # Track statistics
+                if exists:
+                    forwards_updated += 1
+                else:
                     forwards_added += 1
 
             self.db.commit()

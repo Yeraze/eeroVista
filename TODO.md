@@ -2,18 +2,6 @@
 
 ## Pending Features
 
-### Network Configuration Features
-- [ ] Pull and display IP address reservations and port forwards
-  - Fetch IP reservations from Eero API
-  - Fetch configured port forwards from Eero API
-  - Create display page (likely in Nodes section) to show all reservations and forwards
-  - In Device Info popup:
-    - Show if IP is random or reserved
-    - Display any configured port forwards for that device
-  - In Devices List table:
-    - Add column with emoji indicator for devices with port forwards
-    - Add padlock emoji 🔒 next to IP address for reserved IPs
-
 ### Guest Network Support
 - [ ] Track and display devices connected via Guest Network
   - Ensure guest network devices appear in Device List
@@ -22,6 +10,13 @@
   - Track guest network connection status separately from main network
 
 ## Completed
+- [x] v0.9.0 Release - IP reservations and port forwards tracking (PR #23)
+  - Backend: Database models, data collector, and API endpoints for DHCP reservations and port forwards
+  - Frontend: Tabbed display on Nodes page, visual indicators in Devices List (🔒 for reserved IPs, 🔀 for port forwards)
+  - Device popup: Shows reservation status and configured port forwards with protocol badges
+  - Performance: O(1) lookups with Map data structures, smart refresh intervals (hourly collector, 60s UI)
+  - Testing: 13 unit tests covering models, collector logic, and API endpoints
+  - No database migrations required (new tables created automatically)
 - [x] v0.8.0 Release - UI bug fixes and improvements (PR #22)
   - Fixed hourly chart x-axis showing "Invalid date" (explicit category scale)
   - Fixed 7-day/30-day toggle not updating bandwidth chart (destroy/recreate strategy)

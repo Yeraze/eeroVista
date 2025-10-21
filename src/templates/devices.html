@@ -292,6 +292,11 @@
 {% block content %}
 <h1 class="mt-4 mb-4">Connected Devices</h1>
 
+<!-- Routing data error notification -->
+<div id="routing-error-notification" style="display: none; background: var(--yellow); color: var(--base); padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; display: none;">
+    <strong>⚠ Warning:</strong> Unable to load IP reservation and port forward data. Some indicators may be missing.
+</div>
+
 <div class="card">
     <div class="card-title">Device List (<span id="device-count">0</span> devices, <span id="visible-count">0</span> shown)</div>
     <p class="text-muted">Click column headers to sort. Click on a device row to view details.</p>
@@ -437,6 +442,9 @@
     // Load routing configuration data
     async function loadRoutingData() {
         try {
+            const notification = document.getElementById('routing-error-notification');
+            let hasError = false;
+
             // Load reservations
             const resResponse = await fetch('/api/routing/reservations');
             if (resResponse.ok) {
@@ -445,6 +453,8 @@
                 (resData.reservations || []).forEach(res => {
                     reservationsMap.set(res.mac_address, res);
                 });
+            } else {
+                hasError = true;
             }
 
             // Load port forwards
@@ -458,12 +468,26 @@
                     }
                     forwardsMap.get(fwd.ip_address).push(fwd);
                 });
+            } else {
+                hasError = true;
+            }
+
+            // Show/hide error notification
+            if (hasError) {
+                notification.style.display = 'block';
+            } else {
+                notification.style.display = 'none';
             }
 
             // Re-render devices to show updated routing info
             renderDevices();
         } catch (error) {
             console.error('Failed to load routing data:', error);
+            // Show error notification
+            const notification = document.getElementById('routing-error-notification');
+            if (notification) {
+                notification.style.display = 'block';
+            }
         }
     }
 

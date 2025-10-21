@@ -205,6 +205,11 @@ class PortForward(Base):
     """Port forwarding rule."""
 
     __tablename__ = "port_forwards"
+    __table_args__ = (
+        UniqueConstraint(
+            "ip_address", "gateway_port", "protocol", name="uq_port_forward_rule"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     ip_address: Mapped[str] = mapped_column(String, nullable=False, index=True)

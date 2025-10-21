@@ -1210,9 +1210,10 @@ async def get_reservation_by_mac(mac_address: str, db: Session = Depends(get_db)
         # Normalize MAC address (remove colons, convert to uppercase)
         mac_normalized = mac_address.replace(":", "").replace("-", "").upper()
 
-        # Try to find with various formats
+        # Try to find with various formats (original or normalized)
         reservation = db.query(IpReservation).filter(
-            IpReservation.mac_address == mac_address
+            (IpReservation.mac_address == mac_address) |
+            (IpReservation.mac_address == mac_normalized)
         ).first()
 
         if not reservation:
