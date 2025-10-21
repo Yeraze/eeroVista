@@ -244,7 +244,7 @@ async def get_network_topology() -> Dict[str, Any]:
 
                 # Only include online devices
                 if latest_connection and latest_connection.is_connected:
-                    device_name = device.nickname or device.hostname or device.mac_address
+                    device_name = device.nickname or device.hostname or device.manufacturer or device.mac_address
 
                     # Get node name
                     node_name = None
@@ -329,7 +329,7 @@ async def get_devices() -> Dict[str, Any]:
                     bandwidth_down = latest_connection.bandwidth_down_mbps
                     bandwidth_up = latest_connection.bandwidth_up_mbps
 
-                device_name = device.nickname or device.hostname or device.mac_address
+                device_name = device.nickname or device.hostname or device.manufacturer or device.mac_address
 
                 # Parse aliases
                 aliases = []
@@ -341,6 +341,9 @@ async def get_devices() -> Dict[str, Any]:
 
                 devices_list.append({
                     "name": device_name,
+                    "nickname": device.nickname,
+                    "hostname": device.hostname,
+                    "manufacturer": device.manufacturer,
                     "type": device.device_type or "unknown",
                     "ip_address": ip_address,
                     "is_online": is_online,
@@ -574,7 +577,7 @@ async def get_device_bandwidth_history(
 
             return {
                 "mac_address": mac_address,
-                "device_name": device.nickname or device.hostname or mac_address,
+                "device_name": device.nickname or device.hostname or device.manufacturer or mac_address,
                 "hours": hours,
                 "data_points": len(history),
                 "history": history,
@@ -734,7 +737,7 @@ async def get_device_bandwidth_total(
             return {
                 "device": {
                     "mac_address": device.mac_address,
-                    "name": device.nickname or device.hostname or device.mac_address,
+                    "name": device.nickname or device.hostname or device.manufacturer or device.mac_address,
                 },
                 "period": {
                     "days": days,
@@ -946,7 +949,7 @@ async def get_network_bandwidth_top_devices(days: int = 7, limit: int = 5) -> Di
             # Organize data by device
             device_data_map = {}
             for device, total_mb in top_devices_query:
-                device_name = device.nickname or device.hostname or device.mac_address
+                device_name = device.nickname or device.hostname or device.manufacturer or device.mac_address
                 device_data_map[device.id] = {
                     "name": device_name,
                     "mac_address": device.mac_address,

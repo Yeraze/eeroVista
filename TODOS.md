@@ -10,6 +10,13 @@
   - Track guest network connection status separately from main network
 
 ## Completed
+- [x] Device manufacturer field support (2025-10-21)
+  - Added manufacturer field to Device database model
+  - Updated device collector to store manufacturer from Eero API
+  - Enhanced device name fallback chain: nickname → hostname → manufacturer → mac_address
+  - Updated Device Details popup to show individual name fields (Nickname, Hostname, Manufacturer)
+  - Added database migration for existing users (automatically runs on startup)
+  - Fixes devices showing MAC addresses instead of readable manufacturer names (e.g., "Oculus VR, LLC")
 - [x] Improved bandwidth formatting for small values (2025-10-21)
   - Updated formatBytes() to show KB for values < 1 MB (e.g., "30.72 KB" instead of "0.03 MB")
   - Added Bytes display for values < 1 KB

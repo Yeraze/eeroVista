@@ -56,6 +56,7 @@ class Device(Base):
     mac_address: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     hostname: Mapped[Optional[str]] = mapped_column(String)
     nickname: Mapped[Optional[str]] = mapped_column(String)
+    manufacturer: Mapped[Optional[str]] = mapped_column(String)
     device_type: Mapped[Optional[str]] = mapped_column(String)
     aliases: Mapped[Optional[str]] = mapped_column(Text)  # JSON array of alias strings
     first_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
