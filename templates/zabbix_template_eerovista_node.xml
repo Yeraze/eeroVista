@@ -4,7 +4,7 @@
     <date>2025-10-20T18:00:00Z</date>
     <templates>
         <template>
-            <uuid>d1a2d3e4d5e6a7b8c9a0d1e2d3a4d5e6</uuid>
+            <uuid>d1a2d3e4d5e64a7b89a0d1e2d3a4d5e6</uuid>
             <template>eeroVista Node Template</template>
             <name>eeroVista Node Template</name>
             <description>Template for monitoring individual eeroVista mesh nodes.
@@ -36,7 +36,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
             </groups>
             <items>
                 <item>
-                    <uuid>a1d2a3d4e5c6d7a8d9b0c1a2d3e4a5d6</uuid>
+                    <uuid>a1d2a3d4e5c64d7a89b0c1a2d3e4a5d6</uuid>
                     <name>Node Status</name>
                     <type>HTTP_AGENT</type>
                     <key>node.status</key>
@@ -62,7 +62,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.status[{$NODE_ID}]</url>
                     <triggers>
                         <trigger>
-                            <uuid>d1d2a3d4e5a6f7f8c9a0d1e2d3e4a5e6</uuid>
+                            <uuid>d1d2a3d4e5a64f7f89a0d1e2d3e4a5e6</uuid>
                             <expression>last(/eeroVista Node Template/node.status)=0</expression>
                             <name>Eero node {$NODE_NAME} is offline</name>
                             <priority>HIGH</priority>
@@ -71,7 +71,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     </triggers>
                 </item>
                 <item>
-                    <uuid>a2d3a4d5e6d7e8b9a0c1e2c3a4d5e6a7</uuid>
+                    <uuid>a2d3a4d5e6d74e8b9a0c1e2c3a4d5e6a7</uuid>
                     <name>Node Connected Devices</name>
                     <type>HTTP_AGENT</type>
                     <key>node.devices</key>
@@ -97,7 +97,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.devices[{$NODE_ID}]</url>
                 </item>
                 <item>
-                    <uuid>a3d4a5d6e7a8e9c0b1c2d3a4c5a6d7b8</uuid>
+                    <uuid>a3d4a5d6e7a84e9c8b1c2d3a4c5a6d7b8</uuid>
                     <name>Node Mesh Quality</name>
                     <type>HTTP_AGENT</type>
                     <key>node.mesh_quality</key>
@@ -123,7 +123,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                     <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.mesh_quality[{$NODE_ID}]</url>
                     <triggers>
                         <trigger>
-                            <uuid>d2d3a4d5e6b7a8a9e0a1e2c3b4c5d6a7</uuid>
+                            <uuid>d2d3a4d5e6b74a8a90a1e2c3b4c5d6a7</uuid>
                             <expression>last(/eeroVista Node Template/node.mesh_quality)&lt;3</expression>
                             <name>Eero node {$NODE_NAME} has poor mesh quality</name>
                             <priority>WARNING</priority>

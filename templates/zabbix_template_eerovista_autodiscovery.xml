@@ -38,7 +38,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
             </groups>
             <discovery_rules>
                 <discovery_rule>
-                    <uuid>d1e2f3a4b5c647e8a9a0b1c2d3e4f5a6</uuid>
+                    <uuid>d1e2f3a4b5c647e889a0b1c2d3e4f5a6</uuid>
                     <name>Device Auto-Discovery</name>
                     <type>HTTP_AGENT</type>
                     <key>eerovista.autodiscovery.devices</key>
