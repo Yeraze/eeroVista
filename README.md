@@ -7,8 +7,8 @@
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
   [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-  [![Docker Image](https://ghcr-badge.egpl.dev/yeraze/eeroVista/latest_tag?color=%235b4566&ignore=latest,main&label=version&trim=)](https://github.com/Yeraze/eeroVista/pkgs/container/eeroVista)
-[![Docker Pulls](https://ghcr-badge.egpl.dev/yeraze/eeroVista/size?color=%235b4566&tag=latest&label=image%20size&trim=)](https://github.com/Yeraze/eeroVista/pkgs/container/eeroVista)
+  [![Docker Image]([https://ghcr-badge.egpl.dev/yeraze/eeroVista/latest_tag?color=%235b4566&ignore=latest,main&label=version&trim=](https://ghcr-badge.egpl.dev/yeraze/eerovista/latest_tag?color=%235b4566&ignore=latest,main,sha256*&label=version&trim=major))](https://github.com/Yeraze/eeroVista/pkgs/container/eeroVista)
+[![Docker Pulls](https://ghcr-badge.egpl.dev/yeraze/eerovista/size?color=%235b4566&tag=latest&label=image%20size&trim=)](https://github.com/Yeraze/eeroVista/pkgs/container/eeroVista)
 </div>
 
 ---
