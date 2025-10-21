@@ -10,6 +10,23 @@
   - Track guest network connection status separately from main network
 
 ## Completed
+- [x] Improved bandwidth formatting for small values (2025-10-21)
+  - Updated formatBytes() to show KB for values < 1 MB (e.g., "30.72 KB" instead of "0.03 MB")
+  - Added Bytes display for values < 1 KB
+  - Updated chart y-axis labels to use smart formatting (automatically shows GB/MB/KB/Bytes)
+  - Changed y-axis title from "Data Usage (MB)" to "Data Usage" for accuracy
+  - Fixes devices with low bandwidth showing misleading "0 MB" values
+- [x] Chart data completeness and hourly view fixes (2025-10-21)
+  - Fixed device bandwidth endpoint to return full date range (7/30 days) with zeros for missing data
+  - Fixed device hourly chart to show only today's data (UTC timezone parsing issue)
+  - Aligned Device Details popup bandwidth charts with Dashboard implementation
+  - Added incomplete data indicator (lighter colors for today's data)
+  - Added category scale to prevent "Invalid date" x-axis issues
+  - Added "(incomplete)" notation in tooltips for today's data
+  - Added `is_incomplete` flag to device bandwidth endpoint matching network endpoint
+  - Corrected collection interval calculation from 60s to 30s
+  - Fixed UTC timestamp parsing by appending 'Z' suffix for correct timezone conversion
+  - Ensures consistent chart behavior across Dashboard and Device Details views
 - [x] v0.9.0 Release - IP reservations and port forwards tracking (PR #23)
   - Backend: Database models, data collector, and API endpoints for DHCP reservations and port forwards
   - Frontend: Tabbed display on Nodes page, visual indicators in Devices List (🔒 for reserved IPs, 🔀 for port forwards)
@@ -51,4 +68,4 @@
 
 ---
 
-*Last updated: 2025-10-20*
+*Last updated: 2025-10-21*
