@@ -1,6 +1,7 @@
 """Tests for Zabbix integration endpoints."""
 
 from datetime import datetime
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,7 +23,10 @@ from src.models.database import (
 @pytest.fixture
 def db_session():
     """Create an in-memory SQLite database for testing."""
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False}  # Allow cross-thread access for TestClient
+    )
     Base.metadata.create_all(engine)
     SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
@@ -130,9 +134,12 @@ def sample_zabbix_data(db_session):
 class TestZabbixDiscovery:
     """Tests for Zabbix Low-Level Discovery endpoints."""
 
-    @pytest.mark.skip(reason="Requires database override setup")
-    def test_device_discovery_returns_json(self):
+    @patch("src.utils.database.get_db_context")
+    def test_device_discovery_returns_json(self, mock_db_context, db_session, sample_zabbix_data):
         """Test that device discovery returns valid JSON."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
         from src.main import app
 
         client = TestClient(app)
@@ -141,9 +148,12 @@ class TestZabbixDiscovery:
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/json"
 
-    @pytest.mark.skip(reason="Requires database override setup")
-    def test_device_discovery_has_data_key(self):
+    @patch("src.utils.database.get_db_context")
+    def test_device_discovery_has_data_key(self, mock_db_context, db_session, sample_zabbix_data):
         """Test that device discovery response has 'data' key."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
         from src.main import app
 
         client = TestClient(app)
@@ -153,25 +163,33 @@ class TestZabbixDiscovery:
         assert "data" in json_data
         assert isinstance(json_data["data"], list)
 
-    @pytest.mark.skip(reason="Requires database override setup")
-    def test_device_discovery_includes_required_macros(self):
+    @patch("src.utils.database.get_db_context")
+    def test_device_discovery_includes_required_macros(self, mock_db_context, db_session, sample_zabbix_data):
         """Test that device discovery includes all required LLD macros."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
         from src.main import app
 
         client = TestClient(app)
         response = client.get("/api/zabbix/discovery/devices")
 
         json_data = response.json()
-        if len(json_data["data"]) > 0:
-            device = json_data["data"][0]
-            assert "{#MAC}" in device
-            assert "{#HOSTNAME}" in device
-            assert "{#NICKNAME}" in device
-            assert "{#TYPE}" in device
+        assert len(json_data["data"]) > 0, "Expected at least one device in discovery data"
+        device = json_data["data"][0]
+        assert "{#MAC}" in device
+        assert "{#HOSTNAME}" in device
+        assert "{#NICKNAME}" in device
+        assert "{#TYPE}" in device
+        assert "{#IP}" in device
+        assert "{#CONNECTION_TYPE}" in device
 
-    @pytest.mark.skip(reason="Requires database override setup")
-    def test_node_discovery_returns_json(self):
+    @patch("src.utils.database.get_db_context")
+    def test_node_discovery_returns_json(self, mock_db_context, db_session, sample_zabbix_data):
         """Test that node discovery returns valid JSON."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
         from src.main import app
 
         client = TestClient(app)
@@ -180,9 +198,12 @@ class TestZabbixDiscovery:
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/json"
 
-    @pytest.mark.skip(reason="Requires database override setup")
-    def test_node_discovery_has_data_key(self):
+    @patch("src.utils.database.get_db_context")
+    def test_node_discovery_has_data_key(self, mock_db_context, db_session, sample_zabbix_data):
         """Test that node discovery response has 'data' key."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
         from src.main import app
 
         client = TestClient(app)
@@ -192,34 +213,42 @@ class TestZabbixDiscovery:
         assert "data" in json_data
         assert isinstance(json_data["data"], list)
 
-    @pytest.mark.skip(reason="Requires database override setup")
-    def test_node_discovery_includes_required_macros(self):
+    @patch("src.utils.database.get_db_context")
+    def test_node_discovery_includes_required_macros(self, mock_db_context, db_session, sample_zabbix_data):
         """Test that node discovery includes all required LLD macros."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
         from src.main import app
 
         client = TestClient(app)
         response = client.get("/api/zabbix/discovery/nodes")
 
         json_data = response.json()
-        if len(json_data["data"]) > 0:
-            node = json_data["data"][0]
-            assert "{#NODE_ID}" in node
-            assert "{#NODE_NAME}" in node
-            assert "{#NODE_MODEL}" in node
-            assert "{#IS_GATEWAY}" in node
+        assert len(json_data["data"]) > 0, "Expected at least one node in discovery data"
+        node = json_data["data"][0]
+        assert "{#NODE_ID}" in node
+        assert "{#NODE_NAME}" in node
+        assert "{#NODE_MODEL}" in node
+        assert "{#IS_GATEWAY}" in node
+        assert "{#MAC}" in node
+        assert "{#FIRMWARE}" in node
 
-    @pytest.mark.skip(reason="Requires database override setup")
-    def test_node_discovery_gateway_flag_is_string(self):
+    @patch("src.utils.database.get_db_context")
+    def test_node_discovery_gateway_flag_is_string(self, mock_db_context, db_session, sample_zabbix_data):
         """Test that IS_GATEWAY is returned as string '0' or '1'."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
         from src.main import app
 
         client = TestClient(app)
         response = client.get("/api/zabbix/discovery/nodes")
 
         json_data = response.json()
-        if len(json_data["data"]) > 0:
-            for node in json_data["data"]:
-                assert node["{#IS_GATEWAY}"] in ["0", "1"]
+        assert len(json_data["data"]) > 0, "Expected at least one node in discovery data"
+        for node in json_data["data"]:
+            assert node["{#IS_GATEWAY}"] in ["0", "1"]
 
 
 class TestZabbixDataEndpoint:
@@ -247,46 +276,69 @@ class TestZabbixDataEndpoint:
             assert "value" in json_data
             assert "timestamp" in json_data
 
-    @pytest.mark.skip(reason="Requires database override setup")
-    def test_network_devices_total_metric(self):
+    @patch("src.utils.database.get_db_context")
+    def test_network_devices_total_metric(self, mock_db_context, db_session, sample_zabbix_data):
         """Test network.devices.total metric."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
         from src.main import app
 
         client = TestClient(app)
         response = client.get("/api/zabbix/data?item=network.devices.total")
 
-        # May return 200 or 404 depending on data availability
-        assert response.status_code in [200, 404]
+        assert response.status_code == 200
+        json_data = response.json()
+        assert json_data["value"] == 10
+        assert "timestamp" in json_data
 
-    @pytest.mark.skip(reason="Requires database override setup")
-    def test_network_devices_online_metric(self):
+    @patch("src.utils.database.get_db_context")
+    def test_network_devices_online_metric(self, mock_db_context, db_session, sample_zabbix_data):
         """Test network.devices.online metric."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
         from src.main import app
 
         client = TestClient(app)
         response = client.get("/api/zabbix/data?item=network.devices.online")
 
-        assert response.status_code in [200, 404]
+        assert response.status_code == 200
+        json_data = response.json()
+        assert json_data["value"] == 7
+        assert "timestamp" in json_data
 
-    @pytest.mark.skip(reason="Requires database override setup")
-    def test_network_status_metric(self):
+    @patch("src.utils.database.get_db_context")
+    def test_network_status_metric(self, mock_db_context, db_session, sample_zabbix_data):
         """Test network.status metric."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
         from src.main import app
 
         client = TestClient(app)
         response = client.get("/api/zabbix/data?item=network.status")
 
-        assert response.status_code in [200, 404]
+        assert response.status_code == 200
+        json_data = response.json()
+        assert json_data["value"] == 1  # online
+        assert "timestamp" in json_data
 
-    @pytest.mark.skip(reason="Requires database override setup")
-    def test_speedtest_download_metric(self):
+    @patch("src.utils.database.get_db_context")
+    def test_speedtest_download_metric(self, mock_db_context, db_session, sample_zabbix_data):
         """Test speedtest.download metric."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
         from src.main import app
 
         client = TestClient(app)
         response = client.get("/api/zabbix/data?item=speedtest.download")
 
-        assert response.status_code in [200, 404]
+        assert response.status_code == 200
+        json_data = response.json()
+        assert json_data["value"] == 150.5
+        assert "timestamp" in json_data
 
     def test_device_metric_requires_mac_address(self):
         """Test that device metrics require MAC address identifier."""
@@ -359,6 +411,161 @@ class TestZabbixItemKeyParsing:
         # Should return the original string and None
         assert metric_name == "invalid[key"
         assert identifier is None
+
+
+class TestZabbixDeviceMetrics:
+    """Tests for Zabbix device-specific metrics."""
+
+    @patch("src.utils.database.get_db_context")
+    def test_device_connected_metric(self, mock_db_context, db_session, sample_zabbix_data):
+        """Test device.connected[MAC] metric."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
+        from src.main import app
+
+        client = TestClient(app)
+        mac = sample_zabbix_data["device1"].mac_address
+        response = client.get(f"/api/zabbix/data?item=device.connected[{mac}]")
+
+        assert response.status_code == 200
+        json_data = response.json()
+        assert json_data["value"] == 1  # connected
+        assert "timestamp" in json_data
+
+    @patch("src.utils.database.get_db_context")
+    def test_device_signal_metric(self, mock_db_context, db_session, sample_zabbix_data):
+        """Test device.signal[MAC] metric."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
+        from src.main import app
+
+        client = TestClient(app)
+        mac = sample_zabbix_data["device1"].mac_address
+        response = client.get(f"/api/zabbix/data?item=device.signal[{mac}]")
+
+        assert response.status_code == 200
+        json_data = response.json()
+        assert json_data["value"] == -45
+        assert "timestamp" in json_data
+
+    @patch("src.utils.database.get_db_context")
+    def test_device_bandwidth_down_metric(self, mock_db_context, db_session, sample_zabbix_data):
+        """Test device.bandwidth.down[MAC] metric."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
+        from src.main import app
+
+        client = TestClient(app)
+        mac = sample_zabbix_data["device1"].mac_address
+        response = client.get(f"/api/zabbix/data?item=device.bandwidth.down[{mac}]")
+
+        assert response.status_code == 200
+        json_data = response.json()
+        assert json_data["value"] == 25.5
+        assert "timestamp" in json_data
+
+    @patch("src.utils.database.get_db_context")
+    def test_device_bandwidth_up_metric(self, mock_db_context, db_session, sample_zabbix_data):
+        """Test device.bandwidth.up[MAC] metric."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
+        from src.main import app
+
+        client = TestClient(app)
+        mac = sample_zabbix_data["device1"].mac_address
+        response = client.get(f"/api/zabbix/data?item=device.bandwidth.up[{mac}]")
+
+        assert response.status_code == 200
+        json_data = response.json()
+        assert json_data["value"] == 10.2
+        assert "timestamp" in json_data
+
+    @patch("src.utils.database.get_db_context")
+    def test_device_not_found(self, mock_db_context, db_session, sample_zabbix_data):
+        """Test device metric with non-existent MAC."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
+        from src.main import app
+
+        client = TestClient(app)
+        response = client.get("/api/zabbix/data?item=device.connected[FF:FF:FF:FF:FF:FF]")
+
+        assert response.status_code == 404
+        assert "Device not found" in response.json()["detail"]
+
+
+class TestZabbixNodeMetrics:
+    """Tests for Zabbix node-specific metrics."""
+
+    @patch("src.utils.database.get_db_context")
+    def test_node_status_metric(self, mock_db_context, db_session, sample_zabbix_data):
+        """Test node.status[NODE_ID] metric."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
+        from src.main import app
+
+        client = TestClient(app)
+        node_id = sample_zabbix_data["node1"].eero_id
+        response = client.get(f"/api/zabbix/data?item=node.status[{node_id}]")
+
+        assert response.status_code == 200
+        json_data = response.json()
+        assert json_data["value"] == 1  # online
+        assert "timestamp" in json_data
+
+    @patch("src.utils.database.get_db_context")
+    def test_node_devices_metric(self, mock_db_context, db_session, sample_zabbix_data):
+        """Test node.devices[NODE_ID] metric."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
+        from src.main import app
+
+        client = TestClient(app)
+        node_id = sample_zabbix_data["node1"].eero_id
+        response = client.get(f"/api/zabbix/data?item=node.devices[{node_id}]")
+
+        assert response.status_code == 200
+        json_data = response.json()
+        assert json_data["value"] == 5
+        assert "timestamp" in json_data
+
+    @patch("src.utils.database.get_db_context")
+    def test_node_mesh_quality_metric(self, mock_db_context, db_session, sample_zabbix_data):
+        """Test node.mesh_quality[NODE_ID] metric."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
+        from src.main import app
+
+        client = TestClient(app)
+        node_id = sample_zabbix_data["node1"].eero_id
+        response = client.get(f"/api/zabbix/data?item=node.mesh_quality[{node_id}]")
+
+        assert response.status_code == 200
+        json_data = response.json()
+        assert json_data["value"] == 5
+        assert "timestamp" in json_data
+
+    @patch("src.utils.database.get_db_context")
+    def test_node_not_found(self, mock_db_context, db_session, sample_zabbix_data):
+        """Test node metric with non-existent NODE_ID."""
+        mock_db_context.return_value.__enter__.return_value = db_session
+        mock_db_context.return_value.__exit__.return_value = None
+
+        from src.main import app
+
+        client = TestClient(app)
+        response = client.get("/api/zabbix/data?item=node.status[nonexistent_node]")
+
+        assert response.status_code == 404
+        assert "Node not found" in response.json()["detail"]
 
 
 class TestZabbixDataValues:

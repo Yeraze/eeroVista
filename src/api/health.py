@@ -983,7 +983,7 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
     """
     try:
         from datetime import timedelta
-        from sqlalchemy import func, extract
+        from sqlalchemy import func, extract, Integer
         from src.config import get_settings
         from zoneinfo import ZoneInfo
 
@@ -1007,39 +1007,45 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
             interval_seconds = settings.collection_interval_devices
             rate_to_mb = interval_seconds / 8.0
 
-            # Query device connections for today
-            # Note: We still need to fetch all connections to convert timestamps to local timezone
-            # SQLite doesn't have native timezone support, so we do timezone conversion in Python
-            connections = (
-                db.query(DeviceConnection)
+            # Calculate timezone offset in hours for SQL
+            # We need to adjust the hour extraction by the timezone offset
+            offset_seconds = today_start_local.utcoffset().total_seconds()
+            offset_hours = int(offset_seconds / 3600)
+
+            # Query and aggregate in SQL using timezone-adjusted hour extraction
+            # This is MUCH faster than fetching all rows and aggregating in Python
+            hourly_query = (
+                db.query(
+                    # Extract hour with timezone offset adjustment
+                    func.cast(
+                        (func.strftime('%H', DeviceConnection.timestamp) + offset_hours) % 24,
+                        Integer
+                    ).label('hour'),
+                    func.sum(
+                        func.coalesce(DeviceConnection.bandwidth_down_mbps, 0.0) * rate_to_mb
+                    ).label('download_mb'),
+                    func.sum(
+                        func.coalesce(DeviceConnection.bandwidth_up_mbps, 0.0) * rate_to_mb
+                    ).label('upload_mb'),
+                    func.count(DeviceConnection.id).label('count')
+                )
                 .filter(
                     DeviceConnection.timestamp >= today_start_utc,
                     DeviceConnection.timestamp < today_end_utc
                 )
+                .group_by('hour')
                 .all()
             )
 
-            # Aggregate by hour in local timezone
-            hourly_data = {}
-            for conn in connections:
-                # Convert UTC timestamp to local timezone
-                timestamp_utc = conn.timestamp.replace(tzinfo=ZoneInfo("UTC"))
-                timestamp_local = timestamp_utc.astimezone(tz)
-                hour_key = timestamp_local.hour
-
-                if hour_key not in hourly_data:
-                    hourly_data[hour_key] = {
-                        "download_mb": 0.0,
-                        "upload_mb": 0.0,
-                        "count": 0
-                    }
-
-                # Accumulate bandwidth
-                if conn.bandwidth_down_mbps is not None:
-                    hourly_data[hour_key]["download_mb"] += conn.bandwidth_down_mbps * rate_to_mb
-                if conn.bandwidth_up_mbps is not None:
-                    hourly_data[hour_key]["upload_mb"] += conn.bandwidth_up_mbps * rate_to_mb
-                hourly_data[hour_key]["count"] += 1
+            # Convert query results to dictionary for easy lookup
+            hourly_data = {
+                row.hour: {
+                    "download_mb": row.download_mb,
+                    "upload_mb": row.upload_mb,
+                    "count": row.count
+                }
+                for row in hourly_query
+            }
 
             # Format hourly breakdown (0-23 hours)
             hourly_breakdown = []
