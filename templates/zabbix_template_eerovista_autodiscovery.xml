@@ -92,12 +92,6 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                 </interface>
                             </interfaces>
                             <inventory_mode>AUTOMATIC</inventory_mode>
-                            <inventory>
-                                <name>{#NICKNAME}</name>
-                                <alias>{#HOSTNAME}</alias>
-                                <type>{#DEVICE_TYPE}</type>
-                                <macaddress_a>{#MAC}</macaddress_a>
-                            </inventory>
                         </host_prototype>
                     </host_prototypes>
                     <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/devices</url>
@@ -153,12 +147,6 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                 </interface>
                             </interfaces>
                             <inventory_mode>AUTOMATIC</inventory_mode>
-                            <inventory>
-                                <name>{#NODE_NAME}</name>
-                                <type>Eero Mesh Node</type>
-                                <model>{#NODE_MODEL}</model>
-                                <serialno_a>{#NODE_ID}</serialno_a>
-                            </inventory>
                         </host_prototype>
                     </host_prototypes>
                     <url>{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/nodes</url>
