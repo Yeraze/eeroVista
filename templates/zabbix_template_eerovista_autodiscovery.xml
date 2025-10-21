@@ -83,7 +83,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <custom_interfaces>YES</custom_interfaces>
                             <interfaces>
                                 <interface>
-                                    <default>1</default>
+                                    <default>YES</default>
                                     <type>1</type>
                                     <useip>0</useip>
                                     <ip></ip>
@@ -138,7 +138,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             <custom_interfaces>YES</custom_interfaces>
                             <interfaces>
                                 <interface>
-                                    <default>1</default>
+                                    <default>YES</default>
                                     <type>1</type>
                                     <useip>0</useip>
                                     <ip></ip>
