@@ -24,6 +24,12 @@ class NetworkCollector(BaseCollector):
             # Use first network
             network = networks[0]
 
+            # Networks can be Pydantic models or dicts, handle both
+            if isinstance(network, dict):
+                network_name = network.get('name')
+            else:
+                network_name = network.name
+
             # Count devices
             devices_data = self.eero_client.get_devices()
             total_devices = len(devices_data) if devices_data else 0
@@ -35,10 +41,10 @@ class NetworkCollector(BaseCollector):
 
             # Get full network details from network client
             eero = self.eero_client._get_client()
-            network_client = eero.network_clients.get(network.name)
+            network_client = eero.network_clients.get(network_name)
 
             if not network_client:
-                logger.warning(f"Network client for '{network.name}' not found")
+                logger.warning(f"Network client for '{network_name}' not found")
                 return {"items_collected": 0, "errors": 1}
 
             # Get full network details (returns a dict)

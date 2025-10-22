@@ -42,7 +42,15 @@ async def dashboard(
 
     # Get basic network info
     networks = client.get_networks()
-    network_name = networks[0].name if networks else "Unknown"
+    if networks:
+        # Networks can be Pydantic models or dicts, handle both
+        first_network = networks[0]
+        if isinstance(first_network, dict):
+            network_name = first_network.get('name', 'Unknown')
+        else:
+            network_name = first_network.name
+    else:
+        network_name = "Unknown"
 
     # Get collection intervals from settings
     from src.config import get_settings
