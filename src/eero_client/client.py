@@ -125,8 +125,13 @@ class EeroClientWrapper:
             if not account:
                 return None
 
-            # Account is a Pydantic model, access attributes directly
-            networks = account.networks.data
+            # Handle both Pydantic model and dict (from validation fallback)
+            if isinstance(account, dict):
+                # Raw dict from validation error fallback
+                networks = account.get('networks', {}).get('data', [])
+            else:
+                # Pydantic model, access attributes directly
+                networks = account.networks.data
             return networks
 
         except Exception as e:
@@ -150,8 +155,12 @@ class EeroClientWrapper:
                 networks = self.get_networks()
                 if not networks:
                     return None
-                # Networks are NetworkInfo Pydantic models, access name as attribute
-                network_name = networks[0].name
+                # Networks can be Pydantic models or dicts, handle both
+                first_network = networks[0]
+                if isinstance(first_network, dict):
+                    network_name = first_network.get('name')
+                else:
+                    network_name = first_network.name
 
             # Get eeros for network using network_clients
             network_client = eero.network_clients.get(network_name)
@@ -183,8 +192,12 @@ class EeroClientWrapper:
                 networks = self.get_networks()
                 if not networks:
                     return None
-                # Networks are NetworkInfo Pydantic models, access name as attribute
-                network_name = networks[0].name
+                # Networks can be Pydantic models or dicts, handle both
+                first_network = networks[0]
+                if isinstance(first_network, dict):
+                    network_name = first_network.get('name')
+                else:
+                    network_name = first_network.name
 
             # Get devices for network using network_clients
             network_client = eero.network_clients.get(network_name)
@@ -222,7 +235,12 @@ class EeroClientWrapper:
                 networks = self.get_networks()
                 if not networks:
                     return None
-                network_name = networks[0].name
+                # Networks can be Pydantic models or dicts, handle both
+                first_network = networks[0]
+                if isinstance(first_network, dict):
+                    network_name = first_network.get('name')
+                else:
+                    network_name = first_network.name
 
             # Get network ID
             network_client = eero.network_clients.get(network_name)
