@@ -29,7 +29,8 @@ def patch_pydantic_models():
     are None instead of strings.
     """
     try:
-        from eero.client.models import NetworkInfo, PremiumDetails
+        from eero.client.models import NetworkInfo
+        from eero.client.models.account import PremiumDetails
 
         logger.info("Patching eero-client Pydantic models for Optional fields")
 
