@@ -2,7 +2,9 @@
 
 ## Pending Features
 
-(No pending features at this time)
+- [ ] Amazon Account Authentication Support (#31)
+  - Shared admin workaround now works with Pydantic model patch
+  - Full Amazon OAuth support deferred pending user feedback
 
 ## Completed
 - [x] Guest Network Support (2025-10-21)

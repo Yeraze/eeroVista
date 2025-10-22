@@ -4,17 +4,55 @@ Monkey-patch for eero-client library to fix Pydantic 2.8.2 compatibility.
 Bug: eero-client 2.2.2 uses TypeAdapter(list[type(model)]) which fails with Pydantic 2.8.2
 Fix: Change to TypeAdapter(list[model])
 
+Bug: eero-client models don't allow None for amazon_directed_id and premium_details.interval
+Fix: Make these fields Optional to support shared admin accounts
+
 This patch must be imported before any eero-client usage.
 """
 
 import logging
 from copy import copy
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 from pydantic.errors import PydanticSchemaGenerationError
 
 logger = logging.getLogger(__name__)
+
+
+def patch_pydantic_models():
+    """
+    Patch eero-client Pydantic models to allow None values for optional fields.
+
+    This fixes validation errors when accessing accounts as a shared admin on
+    Amazon-linked networks, where amazon_directed_id and premium_details.interval
+    are None instead of strings.
+    """
+    try:
+        from eero.client.models import NetworkInfo, PremiumDetails
+
+        logger.info("Patching eero-client Pydantic models for Optional fields")
+
+        # Patch NetworkInfo.amazon_directed_id to be Optional
+        if hasattr(NetworkInfo, '__annotations__'):
+            if 'amazon_directed_id' in NetworkInfo.__annotations__:
+                NetworkInfo.__annotations__['amazon_directed_id'] = Optional[str]
+                logger.debug("Patched NetworkInfo.amazon_directed_id to Optional[str]")
+
+        # Patch PremiumDetails.interval to be Optional
+        if hasattr(PremiumDetails, '__annotations__'):
+            if 'interval' in PremiumDetails.__annotations__:
+                PremiumDetails.__annotations__['interval'] = Optional[str]
+                logger.debug("Patched PremiumDetails.interval to Optional[str]")
+
+        # Rebuild the models with updated annotations
+        NetworkInfo.model_rebuild()
+        PremiumDetails.model_rebuild()
+
+        logger.info("Pydantic model patches applied successfully")
+
+    except Exception as e:
+        logger.warning(f"Could not patch Pydantic models (non-critical): {e}")
 
 
 def patch_eero_client():
@@ -82,5 +120,6 @@ def patch_eero_client():
         raise
 
 
-# Apply patch immediately when module is imported
+# Apply patches immediately when module is imported
+patch_pydantic_models()
 patch_eero_client()
