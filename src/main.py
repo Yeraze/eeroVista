@@ -9,7 +9,10 @@ from fastapi.staticfiles import StaticFiles
 
 from src import __version__
 
-# IMPORTANT: Apply eero-client patch before any imports that use eero
+# IMPORTANT: Apply eero-client patches before any imports that use eero
+# This import triggers module-level code that applies BOTH patches:
+#   1. patch_pydantic_models() - Makes Optional fields accept None
+#   2. patch_eero_client() - Fixes TypeAdapter usage
 from src.utils.eero_patch import patch_eero_client  # noqa: F401
 
 from src.api import health, prometheus, setup, web, zabbix
