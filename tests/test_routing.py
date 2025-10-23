@@ -255,7 +255,10 @@ class TestRoutingCollector:
         """Create a mock Eero client."""
         client = Mock()
         client.is_authenticated.return_value = True
-        client.get_networks.return_value = [Mock(name="Home")]
+        # Create a mock network with a proper string name
+        mock_network = Mock()
+        mock_network.name = "Home"
+        client.get_networks.return_value = [mock_network]
         return client
 
     @pytest.fixture

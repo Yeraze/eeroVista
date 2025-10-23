@@ -497,6 +497,7 @@ class TestDeviceCollector:
         # Create device first
         device = Device(
             mac_address=mock_device_data["mac"],
+            network_name="test-network",
             hostname=mock_device_data.get("hostname"),
             first_seen=datetime.utcnow(),
         )

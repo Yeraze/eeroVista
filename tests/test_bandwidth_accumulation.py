@@ -59,6 +59,7 @@ class TestBandwidthAccumulation:
             bandwidth_down_mbps=None,
             bandwidth_up_mbps=5.0,
             timestamp=timestamp,
+            network_name="test-network",
         )
 
         # Should not create a record
@@ -75,6 +76,7 @@ class TestBandwidthAccumulation:
             bandwidth_down_mbps=None,
             bandwidth_up_mbps=None,
             timestamp=timestamp,
+            network_name="test-network",
         )
 
         record = (
@@ -96,6 +98,7 @@ class TestBandwidthAccumulation:
             bandwidth_down_mbps=0.0,
             bandwidth_up_mbps=0.0,
             timestamp=timestamp1,
+            network_name="test-network",
         )
 
         record = (
@@ -115,6 +118,7 @@ class TestBandwidthAccumulation:
             bandwidth_down_mbps=0.0,
             bandwidth_up_mbps=0.0,
             timestamp=timestamp2,
+            network_name="test-network",
         )
 
         db_session.refresh(record)
@@ -136,6 +140,7 @@ class TestBandwidthAccumulation:
             bandwidth_down_mbps=10.0,
             bandwidth_up_mbps=5.0,
             timestamp=timestamp_today,
+            network_name="test-network",
         )
 
         # Simulate next day - we need to mock datetime.utcnow() to return tomorrow
@@ -169,6 +174,7 @@ class TestBandwidthAccumulation:
                 bandwidth_down_mbps=10.0,
                 bandwidth_up_mbps=5.0,
                 timestamp=tomorrow_time,
+            network_name="test-network",
             )
 
         # Should have two separate records
@@ -200,6 +206,7 @@ class TestBandwidthAccumulation:
             bandwidth_down_mbps=10.0,
             bandwidth_up_mbps=5.0,
             timestamp=timestamp1,
+            network_name="test-network",
         )
 
         # Track network-wide bandwidth
@@ -208,6 +215,7 @@ class TestBandwidthAccumulation:
             bandwidth_down_mbps=20.0,
             bandwidth_up_mbps=10.0,
             timestamp=timestamp1,
+            network_name="test-network",
         )
 
         # Should have two separate records
@@ -240,6 +248,7 @@ class TestBandwidthAccumulation:
             bandwidth_down_mbps=10.0,
             bandwidth_up_mbps=5.0,
             timestamp=base_time,
+            network_name="test-network",
         )
 
         # Second accumulation 30 seconds later
