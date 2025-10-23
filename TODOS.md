@@ -17,7 +17,8 @@
     - Tracks skipped auth-dependent migrations and retries them post-authentication
     - Corrects legacy data by matching devices/nodes between database and current API state
     - Preserves historical data: updates device_id references via MAC matching before cleanup
-    - Tested with production database: 682,850 connections + 392 bandwidth records preserved ✓
+    - **Preserves aliases**: copies DNS aliases from old devices to new devices before deletion
+    - Tested with production database: 682,850 connections + 392 bandwidth records + 4 devices with aliases preserved ✓
     - Prevents duplicate devices by skipping 'default' updates, deleting them after reference updates
   - Collectors: Updated device, network, speedtest, and routing collectors for multi-network support
   - API endpoints: Added optional ?network= query parameter to 20+ endpoints with backward compatibility

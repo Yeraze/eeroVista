@@ -316,6 +316,35 @@ def run(session: Session, eero_client) -> None:
         # These need manual review or API lookup since they don't have device relationships
         logger.info("  Note: network_metrics, speedtests, and port_forwards may need manual correction")
 
+        # CRITICAL: Copy aliases from old 'default' devices to new devices before deletion
+        # Aliases are set in eeroVista app and used for DNS - must be preserved!
+        logger.info("  Copying aliases from old devices to new devices...")
+        aliases_copied = session.execute(text("""
+            UPDATE devices AS new_dev
+            SET aliases = (
+                SELECT old_dev.aliases
+                FROM devices AS old_dev
+                WHERE LOWER(old_dev.mac_address) = LOWER(new_dev.mac_address)
+                  AND old_dev.network_name = 'default'
+                  AND new_dev.network_name != 'default'
+                  AND old_dev.aliases IS NOT NULL
+                  AND old_dev.aliases != '[]'
+                  AND old_dev.aliases != ''
+                LIMIT 1
+            )
+            WHERE EXISTS (
+                SELECT 1
+                FROM devices AS old_dev
+                WHERE LOWER(old_dev.mac_address) = LOWER(new_dev.mac_address)
+                  AND old_dev.network_name = 'default'
+                  AND new_dev.network_name != 'default'
+                  AND old_dev.aliases IS NOT NULL
+                  AND old_dev.aliases != '[]'
+                  AND old_dev.aliases != ''
+            )
+        """)).rowcount
+        logger.info(f"    ✓ Copied aliases to {aliases_copied} devices")
+
         # Delete any remaining 'default' records to prevent duplicates
         # These are old devices from before multi-network support
         # The collector will recreate them with correct network names when they reconnect
