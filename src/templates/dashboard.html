@@ -764,8 +764,11 @@
     }
 
     // Initial load
-    loadNetworks();  // Load networks first
-    updateAll();
+    async function initialize() {
+        await loadNetworks();  // Wait for networks to load first
+        updateAll();
+    }
+    initialize();
 
     // Update every 30 seconds
     setInterval(updateAll, 30000);

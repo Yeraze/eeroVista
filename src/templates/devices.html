@@ -1343,9 +1343,12 @@
     }
 
     // Initial load
-    loadNetworks();  // Load networks first
-    loadDevices();
-    loadRoutingData();
+    async function initialize() {
+        await loadNetworks();  // Wait for networks to load first
+        loadDevices();
+        loadRoutingData();
+    }
+    initialize();
 
     // Refresh every 30 seconds (devices) and every 60 seconds (routing)
     setInterval(loadDevices, 30000);

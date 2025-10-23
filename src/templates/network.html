@@ -610,8 +610,11 @@
     }
 
     // Initial load
-    loadNetworks();  // Load networks first
-    loadTopology();
+    async function initialize() {
+        await loadNetworks();  // Wait for networks to load first
+        loadTopology();
+    }
+    initialize();
 
     // Refresh every 30 seconds
     setInterval(loadTopology, 30000);
