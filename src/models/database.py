@@ -28,10 +28,13 @@ class EeroNode(Base):
     """Eero mesh network node (eero device)."""
 
     __tablename__ = "eero_nodes"
+    __table_args__ = (
+        UniqueConstraint('network_name', 'eero_id', name='uix_network_eero'),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     network_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    eero_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    eero_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     location: Mapped[Optional[str]] = mapped_column(String)
     model: Mapped[Optional[str]] = mapped_column(String)
     mac_address: Mapped[Optional[str]] = mapped_column(String)
@@ -52,10 +55,13 @@ class Device(Base):
     """Connected client device."""
 
     __tablename__ = "devices"
+    __table_args__ = (
+        UniqueConstraint('network_name', 'mac_address', name='uix_network_mac'),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     network_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    mac_address: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    mac_address: Mapped[str] = mapped_column(String, nullable=False, index=True)
     hostname: Mapped[Optional[str]] = mapped_column(String)
     nickname: Mapped[Optional[str]] = mapped_column(String)
     manufacturer: Mapped[Optional[str]] = mapped_column(String)
