@@ -274,6 +274,28 @@ def run(session: Session, eero_client) -> None:
             """)).rowcount
             logger.info(f"    ✓ Updated {bandwidth_updated} daily_bandwidth records to use new device IDs")
 
+            # Second pass: For daily_bandwidth records that couldn't be matched to new devices,
+            # infer the network from successfully migrated device_connections
+            logger.info("  Inferring network for remaining daily_bandwidth records from device_connections...")
+            bandwidth_inferred = session.execute(text("""
+                UPDATE daily_bandwidth
+                SET network_name = (
+                    SELECT DISTINCT dc.network_name
+                    FROM device_connections dc
+                    WHERE dc.device_id = daily_bandwidth.device_id
+                      AND dc.network_name != 'default'
+                    LIMIT 1
+                )
+                WHERE daily_bandwidth.network_name = 'default'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM device_connections dc
+                      WHERE dc.device_id = daily_bandwidth.device_id
+                        AND dc.network_name != 'default'
+                  )
+            """)).rowcount
+            logger.info(f"    ✓ Inferred network for {bandwidth_inferred} daily_bandwidth records from device_connections")
+
             logger.info("  Correcting ip_reservations by MAC address...")
             reservations_updated = session.execute(text("""
                 UPDATE ip_reservations
@@ -307,7 +329,13 @@ def run(session: Session, eero_client) -> None:
 
         # Clean up related tables
         session.execute(text("DELETE FROM device_connections WHERE network_name = 'default'"))
-        session.execute(text("DELETE FROM daily_bandwidth WHERE network_name = 'default'"))
+
+        # Check for any remaining daily_bandwidth with 'default' network
+        remaining_bandwidth = session.execute(text("SELECT COUNT(*) FROM daily_bandwidth WHERE network_name = 'default'")).scalar()
+        if remaining_bandwidth > 0:
+            logger.warning(f"    ⚠ {remaining_bandwidth} daily_bandwidth records still have network_name='default' (couldn't infer network)")
+            logger.warning("    These records will be kept but may not appear in network-filtered queries")
+
         session.execute(text("DELETE FROM ip_reservations WHERE network_name = 'default'"))
         session.execute(text("DELETE FROM port_forwards WHERE network_name = 'default'"))
         session.execute(text("DELETE FROM network_metrics WHERE network_name = 'default'"))
