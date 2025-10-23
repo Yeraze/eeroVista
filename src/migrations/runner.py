@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Set
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -10,6 +10,9 @@ from sqlalchemy.orm import Session
 from src.models.database import Config
 
 logger = logging.getLogger(__name__)
+
+# Track migrations that were skipped due to missing authentication
+_skipped_auth_migrations: Set[str] = set()
 
 
 def get_applied_migrations(session: Session) -> List[str]:
@@ -47,8 +50,14 @@ def mark_migration_applied(session: Session, migration_name: str) -> None:
     session.commit()
 
 
-def run_migrations(session: Session, eero_client) -> None:
-    """Run all pending migrations."""
+def run_migrations(session: Session, eero_client, retry_skipped: bool = False) -> None:
+    """Run all pending migrations.
+
+    Args:
+        session: Database session
+        eero_client: Eero client wrapper (may be None if not authenticated)
+        retry_skipped: If True, retry migrations that were previously skipped
+    """
     logger.info("Checking for pending database migrations...")
 
     applied = get_applied_migrations(session)
@@ -56,16 +65,28 @@ def run_migrations(session: Session, eero_client) -> None:
 
     # Import migrations
     migrations = [
-        ('001_add_network_name', 'src.migrations.001_add_network_name'),
-        ('002_update_unique_constraints', 'src.migrations.002_update_unique_constraints'),
-        ('003_fix_routing_constraints', 'src.migrations.003_fix_routing_constraints'),
-        ('004_correct_network_assignments', 'src.migrations.004_correct_network_assignments'),
+        ('001_add_network_name', 'src.migrations.001_add_network_name', False),
+        ('002_update_unique_constraints', 'src.migrations.002_update_unique_constraints', False),
+        ('003_fix_routing_constraints', 'src.migrations.003_fix_routing_constraints', False),
+        ('004_correct_network_assignments', 'src.migrations.004_correct_network_assignments', True),  # Requires auth
     ]
 
-    for migration_name, module_path in migrations:
+    for migration_name, module_path, requires_auth in migrations:
+        # Skip already applied migrations unless we're retrying
         if migration_name in applied:
-            logger.info(f"  ✓ {migration_name} (already applied)")
-            continue
+            if not (retry_skipped and migration_name in _skipped_auth_migrations):
+                logger.info(f"  ✓ {migration_name} (already applied)")
+                continue
+            else:
+                logger.info(f"  Retrying previously skipped migration: {migration_name}")
+                _skipped_auth_migrations.discard(migration_name)
+
+        # Skip auth-required migrations if not authenticated (unless retrying)
+        if requires_auth and not retry_skipped:
+            if not eero_client or not eero_client.is_authenticated():
+                logger.warning(f"  ⏸ {migration_name} (skipped - requires authentication)")
+                _skipped_auth_migrations.add(migration_name)
+                continue
 
         logger.info(f"  Running {migration_name}...")
         try:
@@ -77,8 +98,39 @@ def run_migrations(session: Session, eero_client) -> None:
             mark_migration_applied(session, migration_name)
 
             logger.info(f"  ✓ {migration_name} completed")
+            _skipped_auth_migrations.discard(migration_name)
         except Exception as e:
             logger.error(f"  ✗ {migration_name} failed: {e}")
             raise
 
-    logger.info("All migrations completed")
+    if not retry_skipped and _skipped_auth_migrations:
+        logger.info(f"Migrations skipped (will retry after authentication): {', '.join(_skipped_auth_migrations)}")
+    else:
+        logger.info("All migrations completed")
+
+
+def has_pending_auth_migrations() -> bool:
+    """Check if there are migrations waiting for authentication."""
+    return len(_skipped_auth_migrations) > 0
+
+
+def retry_auth_migrations(eero_client) -> None:
+    """Retry migrations that were skipped due to missing authentication.
+
+    This should be called after successful Eero authentication.
+
+    Args:
+        eero_client: Authenticated Eero client wrapper
+    """
+    if not _skipped_auth_migrations:
+        return
+
+    logger.info("Retrying auth-dependent migrations after successful authentication")
+
+    from src.utils.database import get_db_context
+
+    try:
+        with get_db_context() as session:
+            run_migrations(session, eero_client, retry_skipped=True)
+    except Exception as e:
+        logger.error(f"Failed to retry auth-dependent migrations: {e}", exc_info=True)

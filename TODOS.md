@@ -11,12 +11,20 @@
   - Migration system: Created structured migration runner with version tracking
   - Migration 001: Added network_name to 8 tables with proper indexes
   - Migration 002: Updated unique constraints from single-column to composite (network_name + column)
+  - Migration 003: Fixed routing table constraints (ip_reservations composite unique index)
+  - Migration 004: Intelligent network assignment correction via MAC address matching with Eero API
+    - Automatically runs after first successful authentication
+    - Tracks skipped auth-dependent migrations and retries them post-authentication
+    - Corrects legacy data by matching devices/nodes between database and current API state
   - Collectors: Updated device, network, speedtest, and routing collectors for multi-network support
   - API endpoints: Added optional ?network= query parameter to 20+ endpoints with backward compatibility
   - Frontend: Functional network selector dropdown with localStorage persistence across all pages
+    - Fixed race condition: network selector now loads before data requests
   - Network topology: Updated graph visualization with per-network data
   - Nodes page: Per-network Eero device listing
   - Tested with 2 networks: Yoder (100 devices) + GauntletN-5G (71 devices) = 171 total
+    - Migrated production database with 682,850+ historical connection records
+    - Automated migration 004 correctly assigned legacy data to proper networks
   - SQLite limitations: Handled table recreation for constraint updates (DROP/CREATE pattern)
 - [x] Amazon Account Shared Admin Support - v1.0.1 (2025-10-22)
   - Fixed Pydantic validation errors for shared admin accounts (#31)
