@@ -5,6 +5,19 @@
 (No pending features at this time)
 
 ## Completed
+- [x] Multi-Network Support - v1.1.0 (2025-10-23)
+  - Full multi-network data collection and filtering across entire application
+  - Database schema: Added network_name column to all tables with composite unique constraints
+  - Migration system: Created structured migration runner with version tracking
+  - Migration 001: Added network_name to 8 tables with proper indexes
+  - Migration 002: Updated unique constraints from single-column to composite (network_name + column)
+  - Collectors: Updated device, network, speedtest, and routing collectors for multi-network support
+  - API endpoints: Added optional ?network= query parameter to 20+ endpoints with backward compatibility
+  - Frontend: Functional network selector dropdown with localStorage persistence across all pages
+  - Network topology: Updated graph visualization with per-network data
+  - Nodes page: Per-network Eero device listing
+  - Tested with 2 networks: Yoder (100 devices) + GauntletN-5G (71 devices) = 171 total
+  - SQLite limitations: Handled table recreation for constraint updates (DROP/CREATE pattern)
 - [x] Amazon Account Shared Admin Support - v1.0.1 (2025-10-22)
   - Fixed Pydantic validation errors for shared admin accounts (#31)
   - Enables "Invite Admin" workaround for Amazon-linked networks
@@ -89,4 +102,4 @@
 
 ---
 
-*Last updated: 2025-10-21*
+*Last updated: 2025-10-23*
