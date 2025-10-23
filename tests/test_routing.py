@@ -328,10 +328,10 @@ class TestRoutingCollector:
         """Test updating existing routing data."""
         from src.collectors.routing_collector import RoutingCollector
 
-        # Add existing reservation
+        # Add existing reservation (use "Home" to match mock network name)
         existing_reservation = IpReservation(
             mac_address="aa:bb:cc:dd:ee:ff",
-            network_name="test-network",
+            network_name="Home",
             ip_address="192.168.1.99",  # Different IP
             description="Old Description",
         )
