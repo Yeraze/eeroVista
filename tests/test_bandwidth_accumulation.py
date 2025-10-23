@@ -185,6 +185,7 @@ class TestBandwidthAccumulation:
         device = Device(
             mac_address="00:11:22:33:44:55",
             hostname="Test Device",
+            network_name="test-network",
         )
         db_session.add(device)
         db_session.commit()
