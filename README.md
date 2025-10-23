@@ -250,6 +250,9 @@ MIT License - See [LICENSE](LICENSE) file for details
 - **Issues**: [GitHub Issues](https://github.com/Yeraze/eeroVista/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/Yeraze/eeroVista/discussions)
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=eeroVista/eeroVista&type=date&legend=top-left)](https://www.star-history.com/#eeroVista/eeroVista&type=date&legend=top-left)
 ---
 
 <div align="center">
