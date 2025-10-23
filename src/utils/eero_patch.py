@@ -29,9 +29,11 @@ def patch_pydantic_models():
     are None instead of strings.
     """
     try:
+        print("[PATCH] Importing eero-client Pydantic models...")
         from eero.client.models import NetworkInfo
         from eero.client.models.account import PremiumDetails
 
+        print("[PATCH] Patching eero-client Pydantic models for Optional fields")
         logger.info("Patching eero-client Pydantic models for Optional fields")
 
         # Patch NetworkInfo.amazon_directed_id to be Optional
@@ -50,15 +52,18 @@ def patch_pydantic_models():
         NetworkInfo.model_rebuild()
         PremiumDetails.model_rebuild()
 
+        print("[PATCH] ✓ Pydantic model patches applied successfully")
         logger.info("Pydantic model patches applied successfully")
 
     except Exception as e:
+        print(f"[PATCH] ✗ Could not patch Pydantic models: {e}")
         logger.warning(f"Could not patch Pydantic models (non-critical): {e}")
 
 
 def patch_eero_client():
     """Apply runtime patch to fix eero-client Pydantic compatibility."""
     try:
+        print("[PATCH] Applying eero-client Pydantic 2.8.2 compatibility patch...")
         from eero.client.routes import method_factory
         from eero.client.routes.routes import GET_RESOURCES, POST_RESOURCES, Resource
         from eero.client.models import ErrorMeta
@@ -114,9 +119,11 @@ def patch_eero_client():
         # Apply the patch
         method_factory.make_method = patched_make_method
 
+        print("[PATCH] ✓ eero-client patch applied successfully")
         logger.info("eero-client patch applied successfully")
 
     except Exception as e:
+        print(f"[PATCH] ✗ Failed to patch eero-client: {e}")
         logger.error(f"Failed to patch eero-client: {e}")
         raise
 
