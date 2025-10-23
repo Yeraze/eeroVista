@@ -38,6 +38,29 @@ def get_eero_client(db: Session = Depends(get_db)) -> EeroClientWrapper:
     return EeroClientWrapper(db)
 
 
+def get_network_name_filter(network: Optional[str], client: EeroClientWrapper) -> Optional[str]:
+    """
+    Get the network name to filter by.
+
+    If network is specified, use it.
+    If not specified, use the first available network for backwards compatibility.
+    Returns None only if no networks are available.
+    """
+    if network:
+        return network
+
+    # Default to first network for backwards compatibility
+    networks = client.get_networks()
+    if not networks:
+        return None
+
+    first_network = networks[0]
+    if isinstance(first_network, dict):
+        return first_network.get('name')
+    else:
+        return first_network.name
+
+
 @router.get("/health")
 async def health_check(client: EeroClientWrapper = Depends(get_eero_client)) -> Dict[str, Any]:
     """Health check endpoint."""
@@ -159,24 +182,49 @@ async def collection_status() -> Dict[str, Any]:
 
 
 @router.get("/dashboard-stats")
-async def dashboard_stats() -> Dict[str, Any]:
-    """Get current dashboard statistics."""
+async def dashboard_stats(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, Any]:
+    """Get current dashboard statistics for a specific network.
+
+    Args:
+        network: Optional network name to filter by. Defaults to first network.
+    """
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {
+                "devices_online": 0,
+                "devices_total": 0,
+                "eero_nodes": 0,
+                "wan_status": "unknown",
+                "guest_network_enabled": False,
+                "updates_available": False,
+                "last_update": None,
+            }
+
         with get_db_context() as db:
             from src.models.database import EeroNode, NetworkMetric
 
-            # Get latest network metric
+            # Get latest network metric for this network
             latest_metric = (
                 db.query(NetworkMetric)
+                .filter(NetworkMetric.network_name == network_name)
                 .order_by(NetworkMetric.timestamp.desc())
                 .first()
             )
 
-            # Count eero nodes
-            eero_count = db.query(EeroNode).count()
+            # Count eero nodes in this network
+            eero_count = db.query(EeroNode).filter(
+                EeroNode.network_name == network_name
+            ).count()
 
-            # Check if any node has updates available
-            updates_available = db.query(EeroNode).filter(EeroNode.update_available == True).count() > 0
+            # Check if any node in this network has updates available
+            updates_available = db.query(EeroNode).filter(
+                EeroNode.network_name == network_name,
+                EeroNode.update_available == True
+            ).count() > 0
 
             if latest_metric:
                 return {
@@ -213,9 +261,26 @@ async def dashboard_stats() -> Dict[str, Any]:
 
 
 @router.get("/network-topology")
-async def get_network_topology() -> Dict[str, Any]:
-    """Get network topology showing nodes and connected devices."""
+async def get_network_topology(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, Any]:
+    """Get network topology showing nodes and connected devices for a specific network.
+
+    Args:
+        network: Optional network name to filter by. Defaults to first network.
+    """
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {
+                "nodes": [],
+                "devices": [],
+                "mesh_links": [],
+                "total_nodes": 0,
+                "total_devices": 0,
+            }
+
         with get_db_context() as db:
             from src.models.database import Device, DeviceConnection, EeroNode
 
@@ -228,8 +293,10 @@ async def get_network_topology() -> Dict[str, Any]:
                 "is_gateway": False,
             }]
 
-            # Get all eero nodes
-            eero_nodes = db.query(EeroNode).all()
+            # Get all eero nodes for this network
+            eero_nodes = db.query(EeroNode).filter(
+                EeroNode.network_name == network_name
+            ).all()
             gateway_node_id = None
 
             for node in eero_nodes:
@@ -271,9 +338,11 @@ async def get_network_topology() -> Dict[str, Any]:
                         "connection_type": "mesh",
                     })
 
-            # Get all online devices with their connections
+            # Get all online devices with their connections for this network
             devices_list = []
-            devices = db.query(Device).all()
+            devices = db.query(Device).filter(
+                Device.network_name == network_name
+            ).all()
 
             for device in devices:
                 # Get most recent connection
@@ -329,16 +398,29 @@ async def get_network_topology() -> Dict[str, Any]:
 
 
 @router.get("/devices")
-async def get_devices() -> Dict[str, Any]:
-    """Get list of all devices with their latest connection status."""
+async def get_devices(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, Any]:
+    """Get list of all devices with their latest connection status for a specific network.
+
+    Args:
+        network: Optional network name to filter by. Defaults to first network.
+    """
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {"devices": [], "total": 0}
+
         with get_db_context() as db:
             from src.models.database import Device, DeviceConnection, EeroNode
 
-            # Get all devices with their most recent connection
+            # Get all devices with their most recent connection for this network
             devices_list = []
 
-            devices = db.query(Device).all()
+            devices = db.query(Device).filter(
+                Device.network_name == network_name
+            ).all()
 
             for device in devices:
                 # Get most recent connection record
@@ -417,14 +499,27 @@ async def get_devices() -> Dict[str, Any]:
 
 
 @router.get("/nodes")
-async def get_nodes() -> Dict[str, Any]:
-    """Get list of all eero nodes (mesh network devices)."""
+async def get_nodes(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, Any]:
+    """Get list of all eero nodes (mesh network devices) for a specific network.
+
+    Args:
+        network: Optional network name to filter by. Defaults to first network.
+    """
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {"nodes": [], "total": 0}
+
         with get_db_context() as db:
             from src.models.database import EeroNode, EeroNodeMetric
 
             nodes_list = []
-            nodes = db.query(EeroNode).all()
+            nodes = db.query(EeroNode).filter(
+                EeroNode.network_name == network_name
+            ).all()
 
             for node in nodes:
                 # Get most recent metrics
@@ -489,18 +584,33 @@ async def get_nodes() -> Dict[str, Any]:
 @router.put("/devices/{mac_address}/aliases")
 async def update_device_aliases(
     mac_address: str,
-    request: DeviceAliasesRequest
+    request: DeviceAliasesRequest,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client)
 ) -> Dict[str, Any]:
-    """Update aliases for a specific device."""
+    """Update aliases for a specific device in a specific network.
+
+    Args:
+        mac_address: Device MAC address
+        request: Aliases request body
+        network: Optional network name to filter by. Defaults to first network.
+    """
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network available")
+
         with get_db_context() as db:
             from src.models.database import Device
 
-            # Find device by MAC address
-            device = db.query(Device).filter(Device.mac_address == mac_address).first()
+            # Find device by MAC address in this network
+            device = db.query(Device).filter(
+                Device.mac_address == mac_address,
+                Device.network_name == network_name
+            ).first()
 
             if not device:
-                raise HTTPException(status_code=404, detail="Device not found")
+                raise HTTPException(status_code=404, detail="Device not found in this network")
 
             # Validate and clean aliases
             cleaned_aliases = []
@@ -536,16 +646,32 @@ async def update_device_aliases(
 
 
 @router.get("/devices/{mac_address}/aliases")
-async def get_device_aliases(mac_address: str) -> Dict[str, Any]:
-    """Get aliases for a specific device."""
+async def get_device_aliases(
+    mac_address: str,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, Any]:
+    """Get aliases for a specific device in a specific network.
+
+    Args:
+        mac_address: Device MAC address
+        network: Optional network name to filter by. Defaults to first network.
+    """
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network available")
+
         with get_db_context() as db:
             from src.models.database import Device
 
-            device = db.query(Device).filter(Device.mac_address == mac_address).first()
+            device = db.query(Device).filter(
+                Device.mac_address == mac_address,
+                Device.network_name == network_name
+            ).first()
 
             if not device:
-                raise HTTPException(status_code=404, detail="Device not found")
+                raise HTTPException(status_code=404, detail="Device not found in this network")
 
             aliases = []
             if device.aliases:
@@ -568,13 +694,17 @@ async def get_device_aliases(mac_address: str) -> Dict[str, Any]:
 
 @router.get("/devices/{mac_address}/bandwidth-history")
 async def get_device_bandwidth_history(
-    mac_address: str, hours: int = 24
+    mac_address: str,
+    hours: int = 24,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client)
 ) -> Dict[str, Any]:
-    """Get bandwidth usage history for a specific device.
+    """Get bandwidth usage history for a specific device in a specific network.
 
     Args:
         mac_address: Device MAC address
         hours: Number of hours of history to return (default: 24, max: 168)
+        network: Optional network name to filter by. Defaults to first network.
 
     Raises:
         HTTPException: If hours is not between 1 and 168
@@ -587,13 +717,20 @@ async def get_device_bandwidth_history(
         )
 
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network available")
+
         with get_db_context() as db:
             from src.models.database import Device, DeviceConnection
 
-            # Find device
-            device = db.query(Device).filter(Device.mac_address == mac_address).first()
+            # Find device in this network
+            device = db.query(Device).filter(
+                Device.mac_address == mac_address,
+                Device.network_name == network_name
+            ).first()
             if not device:
-                raise HTTPException(status_code=404, detail="Device not found")
+                raise HTTPException(status_code=404, detail="Device not found in this network")
 
             # Calculate time range
             from datetime import timedelta
@@ -636,11 +773,16 @@ async def get_device_bandwidth_history(
 
 
 @router.get("/network/bandwidth-history")
-async def get_network_bandwidth_history(hours: int = 24) -> Dict[str, Any]:
-    """Get cumulative network-wide bandwidth usage history.
+async def get_network_bandwidth_history(
+    hours: int = 24,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, Any]:
+    """Get cumulative network-wide bandwidth usage history for a specific network.
 
     Args:
         hours: Number of hours of history to return (default: 24, max: 168)
+        network: Optional network name to filter by. Defaults to first network.
 
     Raises:
         HTTPException: If hours is not between 1 and 168
@@ -653,16 +795,20 @@ async def get_network_bandwidth_history(hours: int = 24) -> Dict[str, Any]:
         )
 
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {"hours": hours, "data_points": 0, "history": []}
+
         from datetime import timedelta
         from sqlalchemy import func
 
         with get_db_context() as db:
-            from src.models.database import DeviceConnection
+            from src.models.database import Device, DeviceConnection
 
             # Calculate time range
             cutoff_time = datetime.utcnow() - timedelta(hours=hours)
 
-            # Get all connections in time range, aggregated by timestamp
+            # Get all connections in time range for devices in this network
             # Group by timestamp and sum bandwidth across all devices
             connections = (
                 db.query(
@@ -670,7 +816,11 @@ async def get_network_bandwidth_history(hours: int = 24) -> Dict[str, Any]:
                     func.sum(DeviceConnection.bandwidth_down_mbps).label('total_download'),
                     func.sum(DeviceConnection.bandwidth_up_mbps).label('total_upload'),
                 )
-                .filter(DeviceConnection.timestamp >= cutoff_time)
+                .join(Device, DeviceConnection.device_id == Device.id)
+                .filter(
+                    Device.network_name == network_name,
+                    DeviceConnection.timestamp >= cutoff_time
+                )
                 .group_by(DeviceConnection.timestamp)
                 .order_by(DeviceConnection.timestamp.asc())
                 .all()
@@ -698,13 +848,17 @@ async def get_network_bandwidth_history(hours: int = 24) -> Dict[str, Any]:
 
 @router.get("/devices/{mac_address}/bandwidth-total")
 async def get_device_bandwidth_total(
-    mac_address: str, days: int = 7
+    mac_address: str,
+    days: int = 7,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client)
 ) -> Dict[str, Any]:
-    """Get accumulated bandwidth totals for a device over multiple days.
+    """Get accumulated bandwidth totals for a device over multiple days in a specific network.
 
     Args:
         mac_address: Device MAC address
         days: Number of days to include (default: 7, max: 90)
+        network: Optional network name to filter by. Defaults to first network.
 
     Raises:
         HTTPException: If days is not between 1 and 90
@@ -717,6 +871,10 @@ async def get_device_bandwidth_total(
         )
 
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network available")
+
         from datetime import timedelta, date
         from src.config import get_settings
         from zoneinfo import ZoneInfo
@@ -724,10 +882,13 @@ async def get_device_bandwidth_total(
         with get_db_context() as db:
             from src.models.database import Device, DailyBandwidth
 
-            # Find device
-            device = db.query(Device).filter(Device.mac_address == mac_address).first()
+            # Find device in this network
+            device = db.query(Device).filter(
+                Device.mac_address == mac_address,
+                Device.network_name == network_name
+            ).first()
             if not device:
-                raise HTTPException(status_code=404, detail="Device not found")
+                raise HTTPException(status_code=404, detail="Device not found in this network")
 
             # Get daily bandwidth records
             # Use local timezone to match how data collection stores dates
@@ -805,11 +966,16 @@ async def get_device_bandwidth_total(
 
 
 @router.get("/network/bandwidth-total")
-async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
-    """Get network-wide accumulated bandwidth totals over multiple days.
+async def get_network_bandwidth_total(
+    days: int = 7,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, Any]:
+    """Get network-wide accumulated bandwidth totals over multiple days for a specific network.
 
     Args:
         days: Number of days to include (default: 7, max: 90)
+        network: Optional network name to filter by. Defaults to first network.
 
     Raises:
         HTTPException: If days is not between 1 and 90
@@ -822,6 +988,14 @@ async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
         )
 
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {
+                "period": {"days": days, "start_date": None, "end_date": None},
+                "totals": {"download_mb": 0, "upload_mb": 0, "total_mb": 0},
+                "daily_breakdown": []
+            }
+
         from datetime import timedelta, date
         from src.config import get_settings
         from zoneinfo import ZoneInfo
@@ -829,7 +1003,7 @@ async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
         with get_db_context() as db:
             from src.models.database import DailyBandwidth
 
-            # Get daily bandwidth records for network-wide (device_id = NULL)
+            # Get daily bandwidth records for network-wide (device_id = NULL) in this network
             # Use local timezone to match how data collection stores dates
             settings = get_settings()
             tz = settings.get_timezone()
@@ -840,10 +1014,11 @@ async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
             # Generate complete date range
             all_dates = [since_date + timedelta(days=i) for i in range(days)]
 
-            # Fetch records from database
+            # Fetch records from database for this network
             daily_records = (
                 db.query(DailyBandwidth)
                 .filter(
+                    DailyBandwidth.network_name == network_name,
                     DailyBandwidth.device_id.is_(None),
                     DailyBandwidth.date >= since_date
                 )
@@ -899,8 +1074,13 @@ async def get_network_bandwidth_total(days: int = 7) -> Dict[str, Any]:
 
 
 @router.get("/network/bandwidth-top-devices")
-async def get_network_bandwidth_top_devices(days: int = 7, limit: int = 5) -> Dict[str, Any]:
-    """Get top bandwidth consuming devices with daily breakdown for stacked graph.
+async def get_network_bandwidth_top_devices(
+    days: int = 7,
+    limit: int = 5,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, Any]:
+    """Get top bandwidth consuming devices with daily breakdown for stacked graph for a specific network.
 
     Returns the top N devices by total bandwidth (download + upload) over the
     specified period, plus an "Other" category for all remaining devices.
@@ -908,6 +1088,7 @@ async def get_network_bandwidth_top_devices(days: int = 7, limit: int = 5) -> Di
     Args:
         days: Number of days to include (default: 7, max: 90)
         limit: Number of top devices to return (default: 5, max: 20)
+        network: Optional network name to filter by. Defaults to first network.
 
     Returns:
         {
@@ -946,6 +1127,15 @@ async def get_network_bandwidth_top_devices(days: int = 7, limit: int = 5) -> Di
         )
 
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {
+                "period": {"days": days, "start_date": None, "end_date": None},
+                "dates": [],
+                "devices": [],
+                "other": {"name": "Other Devices", "device_count": 0, "total_mb": 0, "daily_download": [], "daily_upload": []}
+            }
+
         from datetime import timedelta
         from sqlalchemy import func
         from src.config import get_settings
@@ -965,14 +1155,17 @@ async def get_network_bandwidth_top_devices(days: int = 7, limit: int = 5) -> Di
             all_dates = [since_date + timedelta(days=i) for i in range(days)]
             date_strings = [d.isoformat() for d in all_dates]
 
-            # Get top N devices by total bandwidth
+            # Get top N devices by total bandwidth in this network
             top_devices_query = (
                 db.query(
                     Device,
                     func.sum(DailyBandwidth.download_mb + DailyBandwidth.upload_mb).label('total_mb')
                 )
                 .join(DailyBandwidth, Device.id == DailyBandwidth.device_id)
-                .filter(DailyBandwidth.date >= since_date)
+                .filter(
+                    Device.network_name == network_name,
+                    DailyBandwidth.date >= since_date
+                )
                 .group_by(Device.id)
                 .order_by(func.sum(DailyBandwidth.download_mb + DailyBandwidth.upload_mb).desc())
                 .limit(limit)
@@ -1073,13 +1266,27 @@ async def get_network_bandwidth_top_devices(days: int = 7, limit: int = 5) -> Di
 
 
 @router.get("/network/bandwidth-hourly")
-async def get_network_bandwidth_hourly() -> Dict[str, Any]:
-    """Get network-wide bandwidth usage aggregated by hour for the current day (in local timezone).
+async def get_network_bandwidth_hourly(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, Any]:
+    """Get network-wide bandwidth usage aggregated by hour for the current day (in local timezone) for a specific network.
 
     Returns hourly bandwidth totals for today based on the configured timezone.
     Includes caching with 5-minute TTL to improve performance for repeat requests.
+
+    Args:
+        network: Optional network name to filter by. Defaults to first network.
     """
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {
+                "period": {"date": None, "timezone": None, "start_time": None, "end_time": None},
+                "totals": {"download_mb": 0, "upload_mb": 0, "total_mb": 0},
+                "hourly_breakdown": []
+            }
+
         from datetime import timedelta
         from sqlalchemy import func, extract, Integer
         from src.config import get_settings
@@ -1088,9 +1295,9 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
         settings = get_settings()
         tz = settings.get_timezone()
 
-        # Check cache first
+        # Check cache first (cache key includes network name)
         now_local = datetime.now(tz)
-        cache_key = now_local.date().isoformat()
+        cache_key = f"{network_name}_{now_local.date().isoformat()}"
         current_time = time.time()
 
         # Clean up expired cache entries
@@ -1111,7 +1318,7 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
         logger.debug(f"Cache miss for {cache_key}, querying database...")
 
         with get_db_context() as db:
-            from src.models.database import DeviceConnection
+            from src.models.database import Device, DeviceConnection
 
             # Get start of today in local timezone, convert to UTC for database query
             today_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -1133,6 +1340,7 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
 
             # Query and aggregate in SQL using timezone-adjusted hour extraction
             # This is MUCH faster than fetching all rows and aggregating in Python
+            # Filter by network
             hourly_query = (
                 db.query(
                     # Extract hour with timezone offset adjustment
@@ -1148,7 +1356,9 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
                     ).label('upload_mb'),
                     func.count(DeviceConnection.id).label('count')
                 )
+                .join(Device, DeviceConnection.device_id == Device.id)
                 .filter(
+                    Device.network_name == network_name,
                     DeviceConnection.timestamp >= today_start_utc,
                     DeviceConnection.timestamp < today_end_utc
                 )
@@ -1218,12 +1428,26 @@ async def get_network_bandwidth_hourly() -> Dict[str, Any]:
 
 
 @router.get("/routing/reservations")
-async def get_ip_reservations(db: Session = Depends(get_db)) -> Dict[str, Any]:
-    """Get all IP address reservations."""
+async def get_ip_reservations(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Get all IP address reservations for a specific network.
+
+    Args:
+        network: Optional network name to filter by. Defaults to first network.
+    """
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {"count": 0, "reservations": []}
+
         from src.models.database import IpReservation
 
-        reservations = db.query(IpReservation).order_by(IpReservation.ip_address).all()
+        reservations = db.query(IpReservation).filter(
+            IpReservation.network_name == network_name
+        ).order_by(IpReservation.ip_address).all()
 
         return {
             "count": len(reservations),
@@ -1244,12 +1468,25 @@ async def get_ip_reservations(db: Session = Depends(get_db)) -> Dict[str, Any]:
 
 
 @router.get("/routing/port-forwards")
-async def get_port_forwards(db: Session = Depends(get_db)) -> Dict[str, Any]:
-    """Get all port forwarding rules."""
+async def get_port_forwards(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Get all port forwarding rules for a specific network.
+
+    Args:
+        network: Optional network name to filter by. Defaults to first network.
+    """
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {"count": 0, "forwards": []}
+
         from src.models.database import PortForward
 
         forwards = db.query(PortForward).filter(
+            PortForward.network_name == network_name,
             PortForward.enabled == True
         ).order_by(PortForward.ip_address, PortForward.gateway_port).all()
 
@@ -1275,16 +1512,31 @@ async def get_port_forwards(db: Session = Depends(get_db)) -> Dict[str, Any]:
 
 
 @router.get("/routing/reservation/{mac_address}")
-async def get_reservation_by_mac(mac_address: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
-    """Get IP reservation for a specific MAC address."""
+async def get_reservation_by_mac(
+    mac_address: str,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Get IP reservation for a specific MAC address in a specific network.
+
+    Args:
+        mac_address: Device MAC address
+        network: Optional network name to filter by. Defaults to first network.
+    """
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {"reserved": False, "mac_address": mac_address}
+
         from src.models.database import IpReservation
 
         # Normalize MAC address (remove colons, convert to uppercase)
         mac_normalized = mac_address.replace(":", "").replace("-", "").upper()
 
-        # Try to find with various formats (original or normalized)
+        # Try to find with various formats (original or normalized) in this network
         reservation = db.query(IpReservation).filter(
+            IpReservation.network_name == network_name,
             (IpReservation.mac_address == mac_address) |
             (IpReservation.mac_address == mac_normalized)
         ).first()
@@ -1306,12 +1558,27 @@ async def get_reservation_by_mac(mac_address: str, db: Session = Depends(get_db)
 
 
 @router.get("/routing/forwards/{ip_address}")
-async def get_forwards_by_ip(ip_address: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
-    """Get port forwards for a specific IP address."""
+async def get_forwards_by_ip(
+    ip_address: str,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Get port forwards for a specific IP address in a specific network.
+
+    Args:
+        ip_address: IP address to query
+        network: Optional network name to filter by. Defaults to first network.
+    """
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {"ip_address": ip_address, "count": 0, "forwards": []}
+
         from src.models.database import PortForward
 
         forwards = db.query(PortForward).filter(
+            PortForward.network_name == network_name,
             PortForward.ip_address == ip_address
         ).all()
 
