@@ -5,7 +5,7 @@
 (No pending features at this time)
 
 ## Completed
-- [x] Multi-Network Support - v1.1.0 (2025-10-23)
+- [x] Multi-Network Support - v2.0.0 (2025-10-23)
   - Full multi-network data collection and filtering across entire application
   - Database schema: Added network_name column to all tables with composite unique constraints
   - Migration system: Created structured migration runner with version tracking
