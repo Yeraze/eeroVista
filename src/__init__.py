@@ -1,3 +1,3 @@
 """eeroVista - Read-only monitoring for Eero mesh networks."""
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
