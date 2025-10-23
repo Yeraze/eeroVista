@@ -58,7 +58,8 @@ def build_device_network_map(eero_client) -> Dict[str, str]:
 
                 device_count = 0
                 for device in devices:
-                    mac = device.mac
+                    # Handle both dict and Pydantic model
+                    mac = device.get('mac') if isinstance(device, dict) else device.mac
                     if mac:
                         mac_to_network[mac.lower()] = network_name
                         device_count += 1
@@ -115,7 +116,11 @@ def build_node_network_map(eero_client) -> Dict[str, str]:
 
                 node_count = 0
                 for eero in eeros:
-                    eero_id = str(eero.id) if hasattr(eero, 'id') else None
+                    # Handle both dict and Pydantic model
+                    if isinstance(eero, dict):
+                        eero_id = str(eero.get('id')) if eero.get('id') else None
+                    else:
+                        eero_id = str(eero.id) if hasattr(eero, 'id') else None
                     if eero_id:
                         eero_id_to_network[eero_id] = network_name
                         node_count += 1
