@@ -15,30 +15,78 @@ class DeviceCollector(BaseCollector):
     """Collects device connection information and metrics."""
 
     def collect(self) -> dict:
-        """Collect device metrics from Eero API."""
+        """Collect device metrics from Eero API for all networks."""
+        total_devices = 0
+        total_errors = 0
+        networks_processed = 0
+
+        try:
+            # Get all networks
+            networks = self.eero_client.get_networks()
+            if not networks:
+                logger.warning("No networks found")
+                return {"items_collected": 0, "errors": 1, "networks": 0}
+
+            logger.info(f"Collecting device data for {len(networks)} network(s)")
+
+            # Process each network
+            for network in networks:
+                # Get network name
+                if isinstance(network, dict):
+                    network_name = network.get('name')
+                else:
+                    network_name = network.name
+
+                if not network_name:
+                    logger.warning("Network has no name, skipping")
+                    continue
+
+                logger.info(f"Processing network: {network_name}")
+
+                try:
+                    result = self._collect_for_network(network_name)
+                    total_devices += result.get("items_collected", 0)
+                    total_errors += result.get("errors", 0)
+                    networks_processed += 1
+                except Exception as e:
+                    logger.error(f"Error collecting for network '{network_name}': {e}")
+                    total_errors += 1
+
+            return {
+                "items_collected": total_devices,
+                "errors": total_errors,
+                "networks": networks_processed
+            }
+
+        except Exception as e:
+            logger.error(f"Error in device collector: {e}")
+            return {"items_collected": 0, "errors": 1, "networks": 0}
+
+    def _collect_for_network(self, network_name: str) -> dict:
+        """Collect device metrics for a specific network."""
         devices_processed = 0
         errors = 0
 
         try:
-            # Get eero nodes first
-            eeros_data = self.eero_client.get_eeros()
+            # Get eero nodes for this network
+            eeros_data = self.eero_client.get_eeros(network_name=network_name)
             if not eeros_data:
-                logger.warning("No eero nodes found")
+                logger.warning(f"No eero nodes found for network '{network_name}'")
                 return {"items_collected": 0, "errors": 1}
 
             # Create/update eero nodes in database
-            eero_node_map = self._process_eero_nodes(eeros_data)
+            eero_node_map = self._process_eero_nodes(eeros_data, network_name)
 
             # Get devices from Eero API (primary source - has all devices)
-            devices_data = self.eero_client.get_devices()
+            devices_data = self.eero_client.get_devices(network_name=network_name)
             if not devices_data:
-                logger.warning("No devices found")
+                logger.info(f"No devices found for network '{network_name}'")
                 return {"items_collected": 0, "errors": 0}
 
             logger.info(f"Retrieved {len(devices_data)} device entries from Eero devices API")
 
             # Get profiles to overlay usage data (profiles contain usage stats when available)
-            profiles_data = self.eero_client.get_profiles()
+            profiles_data = self.eero_client.get_profiles(network_name=network_name)
             usage_map = {}
             if profiles_data:
                 # Build a map of MAC address to usage data
@@ -78,7 +126,7 @@ class DeviceCollector(BaseCollector):
                         logger.debug(f"Skipping non-dict device entry: {type(device_data)}")
                         continue
 
-                    self._process_device(device_data, eero_node_map)
+                    self._process_device(device_data, eero_node_map, network_name)
                     devices_processed += 1
 
                     # Accumulate network-wide bandwidth
@@ -96,6 +144,7 @@ class DeviceCollector(BaseCollector):
 
             # Update network-wide bandwidth accumulation
             self._update_bandwidth_accumulation(
+                network_name=network_name,
                 device_id=None,  # None = network-wide
                 bandwidth_down_mbps=network_bandwidth_down,
                 bandwidth_up_mbps=network_bandwidth_up,
@@ -114,9 +163,13 @@ class DeviceCollector(BaseCollector):
             self.db.rollback()
             raise
 
-    def _process_eero_nodes(self, eeros_data: list) -> Dict[str, int]:
+    def _process_eero_nodes(self, eeros_data: list, network_name: str) -> Dict[str, int]:
         """
         Process eero nodes and return mapping of eero_id to database id.
+
+        Args:
+            eeros_data: List of eero node data from API
+            network_name: Name of the network these nodes belong to
 
         Returns:
             Dict mapping eero API URL to database ID
@@ -201,9 +254,10 @@ class DeviceCollector(BaseCollector):
                     except Exception as e:
                         logger.debug(f"Could not parse last_reboot time: {e}")
 
-                # Check if node exists
+                # Check if node exists (by network + eero_id)
                 node = (
                     self.db.query(EeroNode)
+                    .filter(EeroNode.network_name == network_name)
                     .filter(EeroNode.eero_id == eero_id)
                     .first()
                 )
@@ -211,6 +265,7 @@ class DeviceCollector(BaseCollector):
                 if not node:
                     # Create new node
                     node = EeroNode(
+                        network_name=network_name,
                         eero_id=eero_id,
                         location=location,
                         model=model,
@@ -261,7 +316,7 @@ class DeviceCollector(BaseCollector):
         else:
             return "unknown"
 
-    def _process_device(self, device_data: dict, eero_node_map: Dict[str, int]) -> None:
+    def _process_device(self, device_data: dict, eero_node_map: Dict[str, int], network_name: str) -> None:
         """Process a single device and create connection record."""
         # Get device MAC address
         mac_address = device_data.get("mac")
@@ -269,13 +324,17 @@ class DeviceCollector(BaseCollector):
             logger.warning("Device missing MAC address, skipping")
             return
 
-        # Get or create device
+        # Get or create device (devices can exist across multiple networks)
         device = (
-            self.db.query(Device).filter(Device.mac_address == mac_address).first()
+            self.db.query(Device)
+            .filter(Device.network_name == network_name)
+            .filter(Device.mac_address == mac_address)
+            .first()
         )
 
         if not device:
             device = Device(
+                network_name=network_name,
                 mac_address=mac_address,
                 hostname=device_data.get("hostname"),
                 nickname=device_data.get("nickname"),
@@ -338,6 +397,7 @@ class DeviceCollector(BaseCollector):
         # Create connection record
         timestamp = datetime.utcnow()
         connection = DeviceConnection(
+            network_name=network_name,
             device_id=device.id,
             eero_node_id=eero_node_id,
             timestamp=timestamp,
@@ -353,6 +413,7 @@ class DeviceCollector(BaseCollector):
 
         # Update accumulated bandwidth statistics for this device
         self._update_bandwidth_accumulation(
+            network_name=network_name,
             device_id=device.id,
             bandwidth_down_mbps=bandwidth_down,
             bandwidth_up_mbps=bandwidth_up,
@@ -383,6 +444,7 @@ class DeviceCollector(BaseCollector):
 
     def _update_bandwidth_accumulation(
         self,
+        network_name: str,
         device_id: Optional[int],
         bandwidth_down_mbps: Optional[float],
         bandwidth_up_mbps: Optional[float],
@@ -392,6 +454,7 @@ class DeviceCollector(BaseCollector):
         Update accumulated bandwidth statistics for a device or network-wide.
 
         Args:
+            network_name: Network name
             device_id: Device ID (None for network-wide totals)
             bandwidth_down_mbps: Current download rate in Mbps
             bandwidth_up_mbps: Current upload rate in Mbps
@@ -419,6 +482,7 @@ class DeviceCollector(BaseCollector):
         bandwidth_record = (
             self.db.query(DailyBandwidth)
             .filter(
+                DailyBandwidth.network_name == network_name,
                 DailyBandwidth.device_id == device_id,
                 DailyBandwidth.date == today
             )
@@ -427,6 +491,7 @@ class DeviceCollector(BaseCollector):
 
         if not bandwidth_record:
             bandwidth_record = DailyBandwidth(
+                network_name=network_name,
                 device_id=device_id,
                 date=today,
                 download_mb=0.0,
