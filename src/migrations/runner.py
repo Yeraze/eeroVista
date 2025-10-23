@@ -59,6 +59,7 @@ def run_migrations(session: Session, eero_client) -> None:
         ('001_add_network_name', 'src.migrations.001_add_network_name'),
         ('002_update_unique_constraints', 'src.migrations.002_update_unique_constraints'),
         ('003_fix_routing_constraints', 'src.migrations.003_fix_routing_constraints'),
+        ('004_correct_network_assignments', 'src.migrations.004_correct_network_assignments'),
     ]
 
     for migration_name, module_path in migrations:
