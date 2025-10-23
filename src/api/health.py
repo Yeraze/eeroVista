@@ -1014,24 +1014,30 @@ async def get_network_bandwidth_total(
             # Generate complete date range
             all_dates = [since_date + timedelta(days=i) for i in range(days)]
 
-            # Fetch records from database for this network
-            daily_records = (
-                db.query(DailyBandwidth)
+            # Fetch and aggregate records from database for this network
+            # Sum up all device bandwidth by date (includes both per-device and network-wide totals)
+            from sqlalchemy import func as sql_func
+            daily_aggregates = (
+                db.query(
+                    DailyBandwidth.date,
+                    sql_func.sum(DailyBandwidth.download_mb).label('download_mb'),
+                    sql_func.sum(DailyBandwidth.upload_mb).label('upload_mb')
+                )
                 .filter(
                     DailyBandwidth.network_name == network_name,
-                    DailyBandwidth.device_id.is_(None),
                     DailyBandwidth.date >= since_date
                 )
+                .group_by(DailyBandwidth.date)
                 .order_by(DailyBandwidth.date)
                 .all()
             )
 
             # Create a lookup map for existing records
-            records_by_date = {record.date: record for record in daily_records}
+            records_by_date = {row.date: row for row in daily_aggregates}
 
             # Calculate totals
-            total_download = sum(record.download_mb for record in daily_records)
-            total_upload = sum(record.upload_mb for record in daily_records)
+            total_download = sum(row.download_mb for row in daily_aggregates)
+            total_upload = sum(row.upload_mb for row in daily_aggregates)
 
             # Format daily breakdown with complete date range (fill zeros for missing days)
             daily_breakdown = []
