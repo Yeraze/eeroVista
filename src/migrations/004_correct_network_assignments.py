@@ -179,14 +179,15 @@ def run(session: Session, eero_client) -> None:
 
             logger.info(f"    ✓ Updated {nodes_updated} eero_nodes")
 
-        # Correct devices assignments
+        # Correct devices assignments (skip 'default' - they'll be deleted later)
         if mac_to_network:
             logger.info("  Correcting devices network assignments...")
 
-            # Get all devices that might need correction
+            # Get all devices that might need correction (excluding 'default')
             result = session.execute(text("""
                 SELECT id, mac_address, network_name, hostname
                 FROM devices
+                WHERE network_name != 'default'
             """))
 
             devices_updated = 0
@@ -242,6 +243,25 @@ def run(session: Session, eero_client) -> None:
         # Correct network-level tables (network_metrics, speedtests, port_forwards)
         # These need manual review or API lookup since they don't have device relationships
         logger.info("  Note: network_metrics, speedtests, and port_forwards may need manual correction")
+
+        # Delete any remaining 'default' records to prevent duplicates
+        # These are old devices from before multi-network support
+        # The collector will recreate them with correct network names when they reconnect
+        logger.info("  Cleaning up 'default' records...")
+        default_count = session.execute(text("SELECT COUNT(*) FROM devices WHERE network_name = 'default'")).scalar()
+        logger.info(f"    Found {default_count} devices with network_name='default'")
+
+        if default_count > 0:
+            devices_deleted = session.execute(text("DELETE FROM devices WHERE network_name = 'default'")).rowcount
+            logger.info(f"    ✓ Deleted {devices_deleted} devices with network_name='default'")
+
+        # Clean up related tables
+        session.execute(text("DELETE FROM device_connections WHERE network_name = 'default'"))
+        session.execute(text("DELETE FROM daily_bandwidth WHERE network_name = 'default'"))
+        session.execute(text("DELETE FROM ip_reservations WHERE network_name = 'default'"))
+        session.execute(text("DELETE FROM port_forwards WHERE network_name = 'default'"))
+        session.execute(text("DELETE FROM network_metrics WHERE network_name = 'default'"))
+        session.execute(text("DELETE FROM speedtests WHERE network_name = 'default'"))
 
         session.commit()
         logger.info("Migration 004 completed successfully")
