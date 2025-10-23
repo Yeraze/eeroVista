@@ -125,12 +125,88 @@ class EeroClientWrapper:
             if not account:
                 return None
 
-            # Account is a Pydantic model, access attributes directly
-            networks = account.networks.data
+            # Handle both Pydantic model and dict (from validation fallback)
+            if isinstance(account, dict):
+                # Raw dict from validation error fallback
+                networks = account.get('networks', {}).get('data', [])
+            else:
+                # Pydantic model, access attributes directly
+                networks = account.networks.data
             return networks
 
         except Exception as e:
             logger.error(f"Error getting networks: {e}")
+            return None
+
+    def get_network_client(self, network_name: Optional[str] = None):
+        """
+        Get network client for specified network.
+
+        This method safely creates network clients even when account validation fails,
+        by directly creating NetworkClient instances from dict data.
+
+        Args:
+            network_name: Optional network name. If None, uses first network.
+
+        Returns:
+            NetworkClient instance or None
+        """
+        try:
+            from eero.client.clients import NetworkClient
+            from eero.client.models import NetworkInfo
+
+            eero = self._get_client()
+            if not self.is_authenticated():
+                return None
+
+            # Get networks list
+            networks = self.get_networks()
+            if not networks:
+                return None
+
+            # Find the requested network (or use first)
+            target_network = None
+            if network_name is None:
+                target_network = networks[0]
+            else:
+                for network in networks:
+                    net_name = network.get('name') if isinstance(network, dict) else network.name
+                    if net_name == network_name:
+                        target_network = network
+                        break
+
+            if not target_network:
+                logger.error(f"Network '{network_name}' not found")
+                return None
+
+            # If it's already a Pydantic model, use the standard method
+            if not isinstance(target_network, dict):
+                return eero.network_clients.get(target_network.name)
+
+            # It's a dict - create NetworkClient directly
+            # Manually construct NetworkInfo, bypassing validation
+            try:
+                # Use model_construct to bypass validation
+                network_info = NetworkInfo.model_construct(
+                    url=target_network.get('url'),
+                    name=target_network.get('name'),
+                    created=target_network.get('created'),
+                    nickname_label=target_network.get('nickname_label'),
+                    access_expires_on=target_network.get('access_expires_on'),
+                    amazon_directed_id=target_network.get('amazon_directed_id')  # Can be None
+                )
+                network_client = NetworkClient(
+                    session=eero.session,
+                    network_info=network_info,
+                    client=eero.client
+                )
+                return network_client
+            except Exception as e:
+                logger.error(f"Failed to create network client from dict: {e}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error getting network client: {e}")
             return None
 
     def get_eeros(self, network_name: Optional[str] = None) -> Optional[list]:
@@ -141,20 +217,11 @@ class EeroClientWrapper:
             network_name: Optional network name. If None, uses first network.
         """
         try:
-            eero = self._get_client()
             if not self.is_authenticated():
                 return None
 
-            if network_name is None:
-                # Get first network
-                networks = self.get_networks()
-                if not networks:
-                    return None
-                # Networks are NetworkInfo Pydantic models, access name as attribute
-                network_name = networks[0].name
-
-            # Get eeros for network using network_clients
-            network_client = eero.network_clients.get(network_name)
+            # Get network client using our safe wrapper method
+            network_client = self.get_network_client(network_name)
             if not network_client:
                 logger.error(f"Network '{network_name}' not found")
                 return None
@@ -174,20 +241,11 @@ class EeroClientWrapper:
             network_name: Optional network name. If None, uses first network.
         """
         try:
-            eero = self._get_client()
             if not self.is_authenticated():
                 return None
 
-            if network_name is None:
-                # Get first network
-                networks = self.get_networks()
-                if not networks:
-                    return None
-                # Networks are NetworkInfo Pydantic models, access name as attribute
-                network_name = networks[0].name
-
-            # Get devices for network using network_clients
-            network_client = eero.network_clients.get(network_name)
+            # Get network client using our safe wrapper method
+            network_client = self.get_network_client(network_name)
             if not network_client:
                 logger.error(f"Network '{network_name}' not found")
                 return None
@@ -213,24 +271,17 @@ class EeroClientWrapper:
             We make a direct API call to avoid pydantic marshalling errors in the library.
         """
         try:
-            eero = self._get_client()
             if not self.is_authenticated():
                 return None
 
-            if network_name is None:
-                # Get first network
-                networks = self.get_networks()
-                if not networks:
-                    return None
-                network_name = networks[0].name
-
-            # Get network ID
-            network_client = eero.network_clients.get(network_name)
+            # Get network client using our safe wrapper method
+            network_client = self.get_network_client(network_name)
             if not network_client:
                 logger.error(f"Network '{network_name}' not found")
                 return None
 
             network_id = network_client.network_info.url.split('/')[-1]
+            eero = self._get_client()
 
             # Make direct API call to bypass pydantic marshalling issues
             from eero.client.api_client import APIClient

@@ -2,11 +2,14 @@
 
 ## Pending Features
 
-- [ ] Amazon Account Authentication Support (#31)
-  - Shared admin workaround now works with Pydantic model patch
-  - Full Amazon OAuth support deferred pending user feedback
+(No pending features at this time)
 
 ## Completed
+- [x] Amazon Account Shared Admin Support - v1.0.1 (2025-10-22)
+  - Fixed Pydantic validation errors for shared admin accounts (#31)
+  - Enables "Invite Admin" workaround for Amazon-linked networks
+  - Patched NetworkInfo.amazon_directed_id and PremiumDetails.interval to Optional[str]
+  - Full Amazon OAuth support deferred pending user feedback
 - [x] Guest Network Support (2025-10-21)
   - Added is_guest field to DeviceConnection database model
   - Updated device collector to store guest network status from Eero API

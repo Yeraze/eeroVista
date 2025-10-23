@@ -21,14 +21,19 @@ class SpeedtestCollector(BaseCollector):
                 logger.warning("No networks found")
                 return {"items_collected": 0, "errors": 1}
 
-            network_name = networks[0].name
+            # Networks can be Pydantic models or dicts, handle both
+            first_network = networks[0]
+            if isinstance(first_network, dict):
+                network_name = first_network.get('name')
+            else:
+                network_name = first_network.name
+
             if not network_name:
                 return {"items_collected": 0, "errors": 1}
 
             # Try to get speedtest results from network client
             try:
-                eero = self.eero_client._get_client()
-                network_client = eero.network_clients.get(network_name)
+                network_client = self.eero_client.get_network_client(network_name)
 
                 if not network_client:
                     logger.warning(f"Network '{network_name}' not found")

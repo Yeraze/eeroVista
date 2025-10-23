@@ -69,6 +69,48 @@ async def health_check(client: EeroClientWrapper = Depends(get_eero_client)) -> 
     }
 
 
+@router.get("/networks")
+async def get_networks(client: EeroClientWrapper = Depends(get_eero_client)) -> Dict[str, Any]:
+    """Get list of all networks available to the authenticated user."""
+    try:
+        if not client.is_authenticated():
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        networks = client.get_networks()
+        if not networks:
+            return {"networks": [], "count": 0}
+
+        # Format network data
+        networks_list = []
+        for network in networks:
+            # Handle both dict and Pydantic model types
+            if isinstance(network, dict):
+                networks_list.append({
+                    "url": network.get('url'),
+                    "name": network.get('name'),
+                    "nickname_label": network.get('nickname_label'),
+                    "created": network.get('created'),
+                })
+            else:
+                networks_list.append({
+                    "url": network.url,
+                    "name": network.name,
+                    "nickname_label": network.nickname_label,
+                    "created": network.created,
+                })
+
+        return {
+            "networks": networks_list,
+            "count": len(networks_list),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get networks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/collection-status")
 async def collection_status() -> Dict[str, Any]:
     """Get data collection status and timestamps."""

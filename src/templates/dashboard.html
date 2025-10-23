@@ -8,7 +8,15 @@
 {% endblock %}
 
 {% block content %}
-<h1 class="mt-4 mb-4">Network Dashboard</h1>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; margin-bottom: 1.5rem;">
+    <h1 style="margin: 0;">Network Dashboard</h1>
+    <div style="display: flex; align-items: center; gap: 1rem;">
+        <label for="network-selector" style="font-weight: 600; color: var(--subtext1);">Network:</label>
+        <select id="network-selector" style="padding: 0.5rem 1rem; border: 1px solid var(--surface1); border-radius: 6px; background: var(--base); color: var(--text); font-size: 1rem; min-width: 200px;">
+            <option value="">Loading...</option>
+        </select>
+    </div>
+</div>
 
 <div id="update-banner" style="display: none; background: var(--peach); color: var(--base); padding: 1rem 1.5rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 1rem;">
     <div style="font-size: 1.5rem;">⚠️</div>
@@ -40,7 +48,12 @@
 </div>
 
 <div class="card">
-    <h2 class="card-title">Network: {{ network_name }}</h2>
+    <div style="background: var(--surface0); padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem;">
+        <p style="margin: 0; color: var(--subtext0); font-size: 0.875rem;">
+            <strong>Note:</strong> Currently displaying data from the first network. Multi-network data collection is coming in a future update.
+            Data is collected for <span id="active-network-name" style="font-weight: 600; color: var(--text);">{{ network_name }}</span>.
+        </p>
+    </div>
     <p class="text-muted">Real-time monitoring and historical data collection</p>
 
     <div id="collection-status" style="margin-top: 1rem;">
@@ -664,6 +677,57 @@
         });
     }
 
+    // Load networks and populate dropdown
+    async function loadNetworks() {
+        try {
+            const response = await fetch('/api/networks');
+            const data = await response.json();
+
+            const selector = document.getElementById('network-selector');
+            selector.innerHTML = '';  // Clear existing options
+
+            if (data.networks && data.networks.length > 0) {
+                // Get selected network from localStorage (or default to first)
+                const savedNetwork = localStorage.getItem('selectedNetwork');
+                let selectedIndex = 0;
+
+                data.networks.forEach((network, index) => {
+                    const option = document.createElement('option');
+                    option.value = network.name;
+                    option.textContent = `${network.name} (${network.nickname_label})`;
+
+                    // Check if this is the saved network
+                    if (savedNetwork === network.name) {
+                        selectedIndex = index;
+                        option.selected = true;
+                    } else if (!savedNetwork && index === 0) {
+                        option.selected = true;
+                    }
+
+                    selector.appendChild(option);
+                });
+
+                // Save selected network on change
+                selector.addEventListener('change', function() {
+                    localStorage.setItem('selectedNetwork', this.value);
+                    // Show notice that page reload is needed for now
+                    alert('Network selection saved. Note: Multi-network data collection will be available in a future update. Currently displaying data from the first network.');
+                });
+
+                // Update the active network name display
+                const activeNetworkSpan = document.getElementById('active-network-name');
+                if (activeNetworkSpan && data.networks.length > 0) {
+                    activeNetworkSpan.textContent = data.networks[0].name;
+                }
+            } else {
+                selector.innerHTML = '<option value="">No networks available</option>';
+            }
+        } catch (error) {
+            console.error('Failed to load networks:', error);
+            document.getElementById('network-selector').innerHTML = '<option value="">Error loading networks</option>';
+        }
+    }
+
     // Update all data
     function updateAll() {
         updateDashboardStats();
@@ -681,6 +745,7 @@
     }
 
     // Initial load
+    loadNetworks();  // Load networks first
     updateAll();
 
     // Update every 30 seconds

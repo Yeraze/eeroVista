@@ -19,6 +19,12 @@ from pydantic.errors import PydanticSchemaGenerationError
 
 logger = logging.getLogger(__name__)
 
+# Get version for patch logging
+try:
+    from src import __version__
+except ImportError:
+    __version__ = "unknown"
+
 
 def patch_pydantic_models():
     """
@@ -29,35 +35,60 @@ def patch_pydantic_models():
     are None instead of strings.
     """
     try:
-        from eero.client.models import NetworkInfo, PremiumDetails
+        print(f"[PATCH v{__version__}] Importing eero-client Pydantic models...")
+        from eero.client.models import NetworkInfo
+        from eero.client.models.account import PremiumDetails
+        from pydantic.fields import FieldInfo
 
+        print(f"[PATCH v{__version__}] Patching eero-client Pydantic models for Optional fields")
         logger.info("Patching eero-client Pydantic models for Optional fields")
 
         # Patch NetworkInfo.amazon_directed_id to be Optional
         if hasattr(NetworkInfo, '__annotations__'):
             if 'amazon_directed_id' in NetworkInfo.__annotations__:
                 NetworkInfo.__annotations__['amazon_directed_id'] = Optional[str]
+                # Also update the field info to allow None
+                if hasattr(NetworkInfo, 'model_fields') and 'amazon_directed_id' in NetworkInfo.model_fields:
+                    field_info = NetworkInfo.model_fields['amazon_directed_id']
+                    # Create new FieldInfo that allows None
+                    NetworkInfo.model_fields['amazon_directed_id'] = FieldInfo(
+                        annotation=Optional[str],
+                        default=None,
+                        metadata=field_info.metadata if hasattr(field_info, 'metadata') else []
+                    )
                 logger.debug("Patched NetworkInfo.amazon_directed_id to Optional[str]")
 
         # Patch PremiumDetails.interval to be Optional
         if hasattr(PremiumDetails, '__annotations__'):
             if 'interval' in PremiumDetails.__annotations__:
                 PremiumDetails.__annotations__['interval'] = Optional[str]
+                # Also update the field info to allow None
+                if hasattr(PremiumDetails, 'model_fields') and 'interval' in PremiumDetails.model_fields:
+                    field_info = PremiumDetails.model_fields['interval']
+                    # Create new FieldInfo that allows None
+                    PremiumDetails.model_fields['interval'] = FieldInfo(
+                        annotation=Optional[str],
+                        default=None,
+                        metadata=field_info.metadata if hasattr(field_info, 'metadata') else []
+                    )
                 logger.debug("Patched PremiumDetails.interval to Optional[str]")
 
-        # Rebuild the models with updated annotations
-        NetworkInfo.model_rebuild()
-        PremiumDetails.model_rebuild()
+        # Rebuild the models with updated annotations - force full rebuild
+        NetworkInfo.model_rebuild(force=True)
+        PremiumDetails.model_rebuild(force=True)
 
+        print(f"[PATCH v{__version__}] ✓ Pydantic model patches applied successfully")
         logger.info("Pydantic model patches applied successfully")
 
     except Exception as e:
+        print(f"[PATCH v{__version__}] ✗ Could not patch Pydantic models: {e}")
         logger.warning(f"Could not patch Pydantic models (non-critical): {e}")
 
 
 def patch_eero_client():
     """Apply runtime patch to fix eero-client Pydantic compatibility."""
     try:
+        print(f"[PATCH v{__version__}] Applying eero-client Pydantic 2.8.2 compatibility patch...")
         from eero.client.routes import method_factory
         from eero.client.routes.routes import GET_RESOURCES, POST_RESOURCES, Resource
         from eero.client.models import ErrorMeta
@@ -113,9 +144,11 @@ def patch_eero_client():
         # Apply the patch
         method_factory.make_method = patched_make_method
 
+        print(f"[PATCH v{__version__}] ✓ eero-client patch applied successfully")
         logger.info("eero-client patch applied successfully")
 
     except Exception as e:
+        print(f"[PATCH v{__version__}] ✗ Failed to patch eero-client: {e}")
         logger.error(f"Failed to patch eero-client: {e}")
         raise
 
