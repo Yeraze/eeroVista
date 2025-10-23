@@ -13,9 +13,12 @@
   - Migration 002: Updated unique constraints from single-column to composite (network_name + column)
   - Migration 003: Fixed routing table constraints (ip_reservations composite unique index)
   - Migration 004: Intelligent network assignment correction via MAC address matching with Eero API
-    - Automatically runs after first successful authentication
+    - Automatically runs after first successful authentication via retry mechanism
     - Tracks skipped auth-dependent migrations and retries them post-authentication
     - Corrects legacy data by matching devices/nodes between database and current API state
+    - Preserves historical data: updates device_id references via MAC matching before cleanup
+    - Tested with production database: 682,850 connections + 392 bandwidth records preserved ✓
+    - Prevents duplicate devices by skipping 'default' updates, deleting them after reference updates
   - Collectors: Updated device, network, speedtest, and routing collectors for multi-network support
   - API endpoints: Added optional ?network= query parameter to 20+ endpoints with backward compatibility
   - Frontend: Functional network selector dropdown with localStorage persistence across all pages
