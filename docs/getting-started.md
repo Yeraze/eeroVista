@@ -140,6 +140,22 @@ If authentication fails:
 3. Ensure you're receiving SMS codes
 4. Try clearing browser cache and retrying
 
+**Amazon Login Accounts**: If your Eero account is linked to Amazon for login, direct authentication with eeroVista will not work due to API limitations.
+
+**Workaround**: Create a separate Eero account using email/password authentication and have the account owner invite this new account as an admin to the network. Then use these credentials to authenticate eeroVista.
+
+### I See Devices But No Bandwidth Data
+
+This is **normal behavior**. eeroVista cannot access historical bandwidth data from before it was started. Only data collected **after the container launches** will be tracked and displayed.
+
+**What to expect**:
+- Bandwidth graphs will be empty initially
+- Data will begin appearing within 1-2 minutes of startup
+- Historical graphs will build up over time (hourly, daily, weekly views)
+- Device connection history starts fresh from container launch
+
+**Tip**: Leave the container running continuously to build up historical data over days and weeks.
+
 ### No Data Appearing
 
 1. Check logs for errors:

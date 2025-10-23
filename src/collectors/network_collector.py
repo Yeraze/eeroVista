@@ -13,25 +13,59 @@ class NetworkCollector(BaseCollector):
     """Collects network-wide statistics."""
 
     def collect(self) -> dict:
-        """Collect network metrics from Eero API."""
+        """Collect network metrics from Eero API for all networks."""
+        total_collected = 0
+        total_errors = 0
+        networks_processed = 0
+
         try:
-            # Get network info
+            # Get all networks
             networks = self.eero_client.get_networks()
             if not networks:
                 logger.warning("No networks found")
-                return {"items_collected": 0, "errors": 1}
+                return {"items_collected": 0, "errors": 1, "networks": 0}
 
-            # Use first network
-            network = networks[0]
+            logger.info(f"Collecting network metrics for {len(networks)} network(s)")
 
-            # Networks can be Pydantic models or dicts, handle both
-            if isinstance(network, dict):
-                network_name = network.get('name')
-            else:
-                network_name = network.name
+            # Process each network
+            for network in networks:
+                # Networks can be Pydantic models or dicts, handle both
+                if isinstance(network, dict):
+                    network_name = network.get('name')
+                else:
+                    network_name = network.name
 
-            # Count devices
-            devices_data = self.eero_client.get_devices()
+                if not network_name:
+                    logger.warning("Network has no name, skipping")
+                    continue
+
+                logger.info(f"Processing network: {network_name}")
+
+                try:
+                    result = self._collect_for_network(network_name)
+                    total_collected += result.get("items_collected", 0)
+                    total_errors += result.get("errors", 0)
+                    networks_processed += 1
+                except Exception as e:
+                    logger.error(f"Error collecting for network '{network_name}': {e}")
+                    total_errors += 1
+
+            return {
+                "items_collected": total_collected,
+                "errors": total_errors,
+                "networks": networks_processed
+            }
+
+        except Exception as e:
+            logger.error(f"Error in network collector: {e}")
+            self.db.rollback()
+            return {"items_collected": 0, "errors": 1, "networks": 0}
+
+    def _collect_for_network(self, network_name: str) -> dict:
+        """Collect network metrics for a specific network."""
+        try:
+            # Count devices for this network
+            devices_data = self.eero_client.get_devices(network_name=network_name)
             total_devices = len(devices_data) if devices_data else 0
             online_devices = (
                 sum(1 for d in devices_data if (d.get("connected") if isinstance(d, dict) else d.connected))
@@ -57,10 +91,11 @@ class NetworkCollector(BaseCollector):
             raw_status = network_details.get('status', 'unknown')
 
             wan_status = self._map_wan_status(raw_status)
-            logger.info(f"WAN status: {raw_status} -> {wan_status}")
+            logger.info(f"Network '{network_name}' WAN status: {raw_status} -> {wan_status}")
 
             # Create network metric record
             metric = NetworkMetric(
+                network_name=network_name,
                 timestamp=datetime.utcnow(),
                 total_devices=total_devices,
                 total_devices_online=online_devices,

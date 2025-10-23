@@ -5,6 +5,31 @@
 (No pending features at this time)
 
 ## Completed
+- [x] Multi-Network Support - v2.0.0 (2025-10-23)
+  - Full multi-network data collection and filtering across entire application
+  - Database schema: Added network_name column to all tables with composite unique constraints
+  - Migration system: Created structured migration runner with version tracking
+  - Migration 001: Added network_name to 8 tables with proper indexes
+  - Migration 002: Updated unique constraints from single-column to composite (network_name + column)
+  - Migration 003: Fixed routing table constraints (ip_reservations composite unique index)
+  - Migration 004: Intelligent network assignment correction via MAC address matching with Eero API
+    - Automatically runs after first successful authentication via retry mechanism
+    - Tracks skipped auth-dependent migrations and retries them post-authentication
+    - Corrects legacy data by matching devices/nodes between database and current API state
+    - Preserves historical data: updates device_id references via MAC matching before cleanup
+    - **Preserves aliases**: copies DNS aliases from old devices to new devices before deletion
+    - Tested with production database: 682,850 connections + 392 bandwidth records + 4 devices with aliases preserved ✓
+    - Prevents duplicate devices by skipping 'default' updates, deleting them after reference updates
+  - Collectors: Updated device, network, speedtest, and routing collectors for multi-network support
+  - API endpoints: Added optional ?network= query parameter to 20+ endpoints with backward compatibility
+  - Frontend: Functional network selector dropdown with localStorage persistence across all pages
+    - Fixed race condition: network selector now loads before data requests
+  - Network topology: Updated graph visualization with per-network data
+  - Nodes page: Per-network Eero device listing
+  - Tested with 2 networks: Yoder (100 devices) + GauntletN-5G (71 devices) = 171 total
+    - Migrated production database with 682,850+ historical connection records
+    - Automated migration 004 correctly assigned legacy data to proper networks
+  - SQLite limitations: Handled table recreation for constraint updates (DROP/CREATE pattern)
 - [x] Amazon Account Shared Admin Support - v1.0.1 (2025-10-22)
   - Fixed Pydantic validation errors for shared admin accounts (#31)
   - Enables "Invite Admin" workaround for Amazon-linked networks
@@ -89,4 +114,4 @@
 
 ---
 
-*Last updated: 2025-10-21*
+*Last updated: 2025-10-23*

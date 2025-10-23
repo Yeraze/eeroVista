@@ -21,6 +21,7 @@ class CollectorScheduler:
         """Initialize scheduler."""
         self.scheduler: Optional[AsyncIOScheduler] = None
         self.settings = get_settings()
+        self._migrations_retried = False  # Track if we've retried auth-dependent migrations
 
     def start(self) -> None:
         """Start the scheduler and add collection jobs."""
@@ -116,6 +117,9 @@ class CollectorScheduler:
                         f"Device collection complete: {result.get('items_collected')} devices"
                     )
 
+                    # Retry auth-dependent migrations after first successful authentication
+                    self._retry_auth_migrations_if_needed(client)
+
                     # Update DNS hosts file after successful device collection
                     try:
                         from src.services.dns_service import update_dns_on_device_change
@@ -181,6 +185,25 @@ class CollectorScheduler:
 
         except Exception as e:
             logger.error(f"Routing collector error: {e}", exc_info=True)
+
+    def _retry_auth_migrations_if_needed(self, eero_client) -> None:
+        """Retry auth-dependent migrations if not already done and client is authenticated.
+
+        Args:
+            eero_client: EeroClientWrapper instance
+        """
+        if self._migrations_retried:
+            return
+
+        if not eero_client.is_authenticated():
+            return
+
+        from src.migrations.runner import has_pending_auth_migrations, retry_auth_migrations
+
+        if has_pending_auth_migrations():
+            logger.info("Authenticated - retrying pending migrations")
+            retry_auth_migrations(eero_client)
+            self._migrations_retried = True
 
 
 # Global scheduler instance

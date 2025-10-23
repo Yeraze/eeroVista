@@ -290,7 +290,15 @@
 {% endblock %}
 
 {% block content %}
-<h1 class="mt-4 mb-4">Connected Devices</h1>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; margin-bottom: 1.5rem;">
+    <h1 style="margin: 0;">Connected Devices</h1>
+    <div style="display: flex; align-items: center; gap: 1rem;">
+        <label for="network-selector" style="font-weight: 600; color: var(--subtext1);">Network:</label>
+        <select id="network-selector" style="padding: 0.5rem 1rem; border: 1px solid var(--surface1); border-radius: 6px; background: var(--base); color: var(--text); font-size: 1rem; min-width: 200px;">
+            <option value="">Loading...</option>
+        </select>
+    </div>
+</div>
 
 <!-- Routing data error notification -->
 <div id="routing-error-notification" style="display: none; background: var(--yellow); color: var(--base); padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; display: none;">
@@ -422,10 +430,18 @@
             .join(' ');
     }
 
+    // Get current selected network
+    function getSelectedNetwork() {
+        const selector = document.getElementById('network-selector');
+        return selector ? selector.value : null;
+    }
+
     // Fetch devices from API
     async function loadDevices() {
         try {
-            const response = await fetch('/api/devices');
+            const network = getSelectedNetwork();
+            const url = network ? `/api/devices?network=${encodeURIComponent(network)}` : '/api/devices';
+            const response = await fetch(url);
             const data = await response.json();
 
             devicesData = data.devices || [];
@@ -454,9 +470,13 @@
         try {
             const notification = document.getElementById('routing-error-notification');
             let hasError = false;
+            const network = getSelectedNetwork();
 
             // Load reservations
-            const resResponse = await fetch('/api/routing/reservations');
+            const resUrl = network
+                ? `/api/routing/reservations?network=${encodeURIComponent(network)}`
+                : '/api/routing/reservations';
+            const resResponse = await fetch(resUrl);
             if (resResponse.ok) {
                 const resData = await resResponse.json();
                 reservationsMap.clear();
@@ -468,7 +488,10 @@
             }
 
             // Load port forwards
-            const fwdResponse = await fetch('/api/routing/port-forwards');
+            const fwdUrl = network
+                ? `/api/routing/port-forwards?network=${encodeURIComponent(network)}`
+                : '/api/routing/port-forwards';
+            const fwdResponse = await fetch(fwdUrl);
             if (fwdResponse.ok) {
                 const fwdData = await fwdResponse.json();
                 forwardsMap.clear();
@@ -1275,9 +1298,57 @@
         renderDevices();
     });
 
+    // Load networks and populate dropdown
+    async function loadNetworks() {
+        try {
+            const response = await fetch('/api/networks');
+            const data = await response.json();
+
+            const selector = document.getElementById('network-selector');
+            selector.innerHTML = '';  // Clear existing options
+
+            if (data.networks && data.networks.length > 0) {
+                // Get selected network from localStorage (or default to first)
+                const savedNetwork = localStorage.getItem('selectedNetwork');
+
+                data.networks.forEach((network, index) => {
+                    const option = document.createElement('option');
+                    option.value = network.name;
+                    option.textContent = `${network.name} (${network.nickname_label})`;
+
+                    // Check if this is the saved network
+                    if (savedNetwork === network.name) {
+                        option.selected = true;
+                    } else if (!savedNetwork && index === 0) {
+                        option.selected = true;
+                    }
+
+                    selector.appendChild(option);
+                });
+
+                // Save selected network on change and reload data
+                selector.addEventListener('change', function() {
+                    localStorage.setItem('selectedNetwork', this.value);
+                    // Reload all data for the new network
+                    loadDevices();
+                    loadRoutingData();
+                });
+            } else {
+                selector.innerHTML = '<option value="">No networks available</option>';
+            }
+        } catch (error) {
+            console.error('Failed to load networks:', error);
+            document.getElementById('network-selector').innerHTML = '<option value="">Error loading networks</option>';
+        }
+    }
+
     // Initial load
-    loadDevices();
-    loadRoutingData();
+    async function initialize() {
+        await loadNetworks();  // Wait for networks to load first
+        loadDevices();
+        loadRoutingData();
+    }
+    initialize();
 
     // Refresh every 30 seconds (devices) and every 60 seconds (routing)
     setInterval(loadDevices, 30000);

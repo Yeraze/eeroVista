@@ -50,8 +50,8 @@
 <div class="card">
     <div style="background: var(--surface0); padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem;">
         <p style="margin: 0; color: var(--subtext0); font-size: 0.875rem;">
-            <strong>Note:</strong> Currently displaying data from the first network. Multi-network data collection is coming in a future update.
-            Data is collected for <span id="active-network-name" style="font-weight: 600; color: var(--text);">{{ network_name }}</span>.
+            <strong>📡 Active Network:</strong> <span id="active-network-name" style="font-weight: 600; color: var(--text);">{{ network_name }}</span>
+            <span style="margin-left: 0.5rem;">• Use the network selector above to switch between networks</span>
         </p>
     </div>
     <p class="text-muted">Real-time monitoring and historical data collection</p>
@@ -131,10 +131,18 @@
 </style>
 
 <script>
+    // Get current selected network
+    function getSelectedNetwork() {
+        const selector = document.getElementById('network-selector');
+        return selector ? selector.value : null;
+    }
+
     // Fetch dashboard statistics
     async function updateDashboardStats() {
         try {
-            const response = await fetch('/api/dashboard-stats');
+            const network = getSelectedNetwork();
+            const url = network ? `/api/dashboard-stats?network=${encodeURIComponent(network)}` : '/api/dashboard-stats';
+            const response = await fetch(url);
             const data = await response.json();
 
             // Update stat cards
@@ -224,7 +232,11 @@
     // Load and render network bandwidth chart
     async function loadNetworkBandwidthChart(days) {
         try {
-            const response = await fetch(`/api/network/bandwidth-total?days=${days}`);
+            const network = getSelectedNetwork();
+            const url = network
+                ? `/api/network/bandwidth-total?days=${days}&network=${encodeURIComponent(network)}`
+                : `/api/network/bandwidth-total?days=${days}`;
+            const response = await fetch(url);
             const data = await response.json();
 
             if (!data.daily_breakdown || data.daily_breakdown.length === 0) {
@@ -247,7 +259,11 @@
     // Load and render hourly bandwidth chart
     async function loadNetworkBandwidthHourlyChart() {
         try {
-            const response = await fetch('/api/network/bandwidth-hourly');
+            const network = getSelectedNetwork();
+            const url = network
+                ? `/api/network/bandwidth-hourly?network=${encodeURIComponent(network)}`
+                : '/api/network/bandwidth-hourly';
+            const response = await fetch(url);
             const data = await response.json();
 
             if (!data.hourly_breakdown || data.hourly_breakdown.length === 0) {
@@ -489,7 +505,11 @@
     // Load top bandwidth consuming devices
     async function loadTopDevicesChart() {
         try {
-            const response = await fetch(`/api/network/bandwidth-top-devices?days=${currentDays}&limit=5`);
+            const network = getSelectedNetwork();
+            const url = network
+                ? `/api/network/bandwidth-top-devices?days=${currentDays}&limit=5&network=${encodeURIComponent(network)}`
+                : `/api/network/bandwidth-top-devices?days=${currentDays}&limit=5`;
+            const response = await fetch(url);
             const data = await response.json();
 
             if (data && data.devices && data.devices.length > 0) {
@@ -707,18 +727,17 @@
                     selector.appendChild(option);
                 });
 
-                // Save selected network on change
+                // Save selected network on change and reload data
                 selector.addEventListener('change', function() {
                     localStorage.setItem('selectedNetwork', this.value);
-                    // Show notice that page reload is needed for now
-                    alert('Network selection saved. Note: Multi-network data collection will be available in a future update. Currently displaying data from the first network.');
+                    // Update the active network name display
+                    const activeNetworkSpan = document.getElementById('active-network-name');
+                    if (activeNetworkSpan) {
+                        activeNetworkSpan.textContent = this.value;
+                    }
+                    // Reload all data for the new network
+                    updateAll();
                 });
-
-                // Update the active network name display
-                const activeNetworkSpan = document.getElementById('active-network-name');
-                if (activeNetworkSpan && data.networks.length > 0) {
-                    activeNetworkSpan.textContent = data.networks[0].name;
-                }
             } else {
                 selector.innerHTML = '<option value="">No networks available</option>';
             }
@@ -745,8 +764,11 @@
     }
 
     // Initial load
-    loadNetworks();  // Load networks first
-    updateAll();
+    async function initialize() {
+        await loadNetworks();  // Wait for networks to load first
+        updateAll();
+    }
+    initialize();
 
     // Update every 30 seconds
     setInterval(updateAll, 30000);

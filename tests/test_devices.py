@@ -29,6 +29,7 @@ class TestDeviceModel:
         """Test creating a device with manufacturer field."""
         device = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             hostname="test-device",
             nickname="Test Device",
             manufacturer="Test Manufacturer Inc.",
@@ -49,6 +50,7 @@ class TestDeviceModel:
         """Test creating a device without manufacturer (optional field)."""
         device = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             hostname="test-device",
         )
         db_session.add(device)
@@ -62,6 +64,7 @@ class TestDeviceModel:
         """Test that MAC address must be unique."""
         device1 = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             hostname="device1",
         )
         db_session.add(device1)
@@ -70,6 +73,7 @@ class TestDeviceModel:
         # Try to add another device with same MAC
         device2 = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             hostname="device2",
         )
         db_session.add(device2)
@@ -81,6 +85,7 @@ class TestDeviceModel:
         """Test querying device by MAC address."""
         device = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             hostname="test-device",
             manufacturer="Test Inc.",
         )
@@ -99,6 +104,7 @@ class TestDeviceModel:
         """Test updating manufacturer field on existing device."""
         device = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             hostname="test-device",
             manufacturer=None,
         )
@@ -136,6 +142,7 @@ class TestDeviceConnectionGuest:
         """Test creating device connection with guest network status."""
         device = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             hostname="test-device",
         )
         db_session.add(device)
@@ -143,6 +150,7 @@ class TestDeviceConnectionGuest:
 
         connection = DeviceConnection(
             device_id=device.id,
+            network_name="test-network",
             timestamp=datetime.utcnow(),
             is_connected=True,
             is_guest=True,
@@ -157,6 +165,7 @@ class TestDeviceConnectionGuest:
         """Test creating device connection without guest status (defaults to None/False)."""
         device = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             hostname="test-device",
         )
         db_session.add(device)
@@ -164,6 +173,7 @@ class TestDeviceConnectionGuest:
 
         connection = DeviceConnection(
             device_id=device.id,
+            network_name="test-network",
             timestamp=datetime.utcnow(),
             is_connected=True,
         )
@@ -176,6 +186,7 @@ class TestDeviceConnectionGuest:
         """Test querying connections by guest status."""
         device = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             hostname="test-device",
         )
         db_session.add(device)
@@ -184,6 +195,7 @@ class TestDeviceConnectionGuest:
         # Create guest connection
         guest_connection = DeviceConnection(
             device_id=device.id,
+            network_name="test-network",
             timestamp=datetime.utcnow(),
             is_connected=True,
             is_guest=True,
@@ -193,6 +205,7 @@ class TestDeviceConnectionGuest:
         # Create non-guest connection
         regular_connection = DeviceConnection(
             device_id=device.id,
+            network_name="test-network",
             timestamp=datetime.utcnow(),
             is_connected=True,
             is_guest=False,
@@ -212,6 +225,7 @@ class TestDeviceConnectionGuest:
         """Test updating guest status on existing connection."""
         device = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             hostname="test-device",
         )
         db_session.add(device)
@@ -219,6 +233,7 @@ class TestDeviceConnectionGuest:
 
         connection = DeviceConnection(
             device_id=device.id,
+            network_name="test-network",
             timestamp=datetime.utcnow(),
             is_connected=True,
             is_guest=False,
@@ -257,6 +272,7 @@ class TestDeviceNameFallback:
         """Test that nickname takes priority in name fallback."""
         device = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             nickname="My Device",
             hostname="hostname-123",
             manufacturer="Test Inc.",
@@ -270,6 +286,7 @@ class TestDeviceNameFallback:
         """Test that hostname is used when nickname is None."""
         device = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             nickname=None,
             hostname="hostname-123",
             manufacturer="Test Inc.",
@@ -282,6 +299,7 @@ class TestDeviceNameFallback:
         """Test that manufacturer is used when nickname and hostname are None."""
         device = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             nickname=None,
             hostname=None,
             manufacturer="Oculus VR, LLC",
@@ -294,6 +312,7 @@ class TestDeviceNameFallback:
         """Test that MAC address is used as last resort."""
         device = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             nickname=None,
             hostname=None,
             manufacturer=None,
@@ -306,6 +325,7 @@ class TestDeviceNameFallback:
         """Test that empty strings don't break fallback logic."""
         device = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             nickname="",  # Empty string should be falsy
             hostname="",
             manufacturer="Test Inc.",
@@ -374,6 +394,7 @@ class TestDeviceCollector:
         # Simulate device creation logic from device_collector.py
         device = Device(
             mac_address=mock_device_data["mac"],
+            network_name="test-network",
             hostname=mock_device_data.get("hostname"),
             nickname=mock_device_data.get("nickname"),
             manufacturer=mock_device_data.get("manufacturer"),
@@ -394,6 +415,7 @@ class TestDeviceCollector:
         # Create existing device without manufacturer
         device = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             hostname="old-hostname",
             manufacturer=None,
             first_seen=datetime.utcnow(),
@@ -418,6 +440,7 @@ class TestDeviceCollector:
         # Create device with manufacturer
         device = Device(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             manufacturer="Existing Manufacturer",
             first_seen=datetime.utcnow(),
         )
@@ -442,6 +465,7 @@ class TestDeviceCollector:
         # Create device first
         device = Device(
             mac_address=mock_guest_device_data["mac"],
+            network_name="test-network",
             hostname=mock_guest_device_data.get("hostname"),
             first_seen=datetime.utcnow(),
         )
@@ -452,6 +476,7 @@ class TestDeviceCollector:
         is_guest = mock_guest_device_data.get("is_guest", False)
         connection = DeviceConnection(
             device_id=device.id,
+            network_name="test-network",
             timestamp=datetime.utcnow(),
             is_connected=mock_guest_device_data.get("connected", False),
             connection_type=mock_guest_device_data.get("connection_type", "wireless"),
@@ -472,6 +497,7 @@ class TestDeviceCollector:
         # Create device first
         device = Device(
             mac_address=mock_device_data["mac"],
+            network_name="test-network",
             hostname=mock_device_data.get("hostname"),
             first_seen=datetime.utcnow(),
         )
@@ -482,6 +508,7 @@ class TestDeviceCollector:
         is_guest = mock_device_data.get("is_guest", False)
         connection = DeviceConnection(
             device_id=device.id,
+            network_name="test-network",
             timestamp=datetime.utcnow(),
             is_connected=mock_device_data.get("connected", False),
             connection_type=mock_device_data.get("connection_type", "wireless"),
@@ -502,6 +529,7 @@ class TestDeviceCollector:
         # Create device
         device = Device(
             mac_address="cc:dd:ee:ff:00:11",
+            network_name="test-network",
             hostname="device-without-guest",
             first_seen=datetime.utcnow(),
         )
@@ -519,6 +547,7 @@ class TestDeviceCollector:
         is_guest = mock_data_no_guest.get("is_guest", False)
         connection = DeviceConnection(
             device_id=device.id,
+            network_name="test-network",
             timestamp=datetime.utcnow(),
             is_connected=mock_data_no_guest.get("connected", False),
             connection_type=mock_data_no_guest.get("connection_type", "wireless"),

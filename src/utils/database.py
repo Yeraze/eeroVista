@@ -73,8 +73,38 @@ def init_database() -> None:
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
 
-    # Run migrations
+    # Run old ad-hoc migrations
     _run_migrations(engine)
+
+    # Run new structured migrations
+    _run_structured_migrations()
+
+
+def _run_structured_migrations() -> None:
+    """Run structured database migrations."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        from src.migrations.runner import run_migrations
+
+        # Try to get eero client for network name, but don't fail if not authenticated
+        eero_client = None
+        try:
+            from src.eero_client.client import get_eero_client_instance
+            eero_client = get_eero_client_instance()
+        except Exception:
+            # Not authenticated yet, will use default network name in migration
+            pass
+
+        with get_db_context() as session:
+            run_migrations(session, eero_client)
+
+    except Exception as e:
+        logger.error(f"Failed to run structured migrations: {e}")
+        # Don't raise - migrations might not be critical for startup
+        pass
 
 
 def _run_migrations(engine) -> None:

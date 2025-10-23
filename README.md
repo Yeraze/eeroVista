@@ -122,6 +122,19 @@ Full documentation is available at [https://yeraze.github.io/eeroVista/](https:/
 
 ⚠️ **Local Storage**: All data is stored locally in SQLite. No data is sent to external services.
 
+⚠️ **Amazon Login Limitation**: If your Eero account uses Amazon for login, eeroVista may not work directly due to API limitations. **Workaround**: Have someone in your household create a standard Eero account (with email/password) and invite them as an admin to your network. Then use those credentials to authenticate eeroVista.
+
+## Troubleshooting & FAQ
+
+### I see all my devices but no bandwidth data
+This is normal behavior. eeroVista does not have access to historical data from before it was started. Only bandwidth and connection data collected **after the container launches** will be tracked. You should start seeing bandwidth graphs after data has been collected for a few minutes.
+
+### Authentication fails with "Account linked with Amazon" error
+Your Eero account is linked to Amazon Login, which is not directly supported by the API. See the workaround in the Important Notes section above - create a separate admin account using email/password authentication.
+
+### Data appears to be missing after restart
+If you restart the container without persisting the `/data` directory, all collected data will be lost. Make sure you're using a volume mount (as shown in the Quick Start) to persist your database.
+
 ## Configuration
 
 Configure eeroVista via environment variables in `docker-compose.yml`:

@@ -29,6 +29,7 @@ class TestIpReservationModel:
         """Test creating an IP reservation."""
         reservation = IpReservation(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             ip_address="192.168.1.100",
             description="Test Device",
         )
@@ -46,6 +47,7 @@ class TestIpReservationModel:
         """Test that MAC address must be unique."""
         reservation1 = IpReservation(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             ip_address="192.168.1.100",
         )
         db_session.add(reservation1)
@@ -54,6 +56,7 @@ class TestIpReservationModel:
         # Try to add another reservation with same MAC
         reservation2 = IpReservation(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             ip_address="192.168.1.101",
         )
         db_session.add(reservation2)
@@ -65,6 +68,7 @@ class TestIpReservationModel:
         """Test querying reservation by MAC address."""
         reservation = IpReservation(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             ip_address="192.168.1.100",
             description="Test Device",
         )
@@ -82,6 +86,7 @@ class TestIpReservationModel:
         """Test updating last_seen timestamp."""
         reservation = IpReservation(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="test-network",
             ip_address="192.168.1.100",
         )
         db_session.add(reservation)
@@ -118,6 +123,7 @@ class TestPortForwardModel:
         """Test creating a port forward."""
         forward = PortForward(
             ip_address="192.168.1.100",
+            network_name="test-network",
             gateway_port=8080,
             client_port=80,
             protocol="tcp",
@@ -138,18 +144,21 @@ class TestPortForwardModel:
         """Test querying forwards by IP address."""
         forward1 = PortForward(
             ip_address="192.168.1.100",
+            network_name="test-network",
             gateway_port=8080,
             client_port=80,
             protocol="tcp",
         )
         forward2 = PortForward(
             ip_address="192.168.1.100",
+            network_name="test-network",
             gateway_port=443,
             client_port=443,
             protocol="tcp",
         )
         forward3 = PortForward(
             ip_address="192.168.1.101",
+            network_name="test-network",
             gateway_port=22,
             client_port=22,
             protocol="tcp",
@@ -168,6 +177,7 @@ class TestPortForwardModel:
         """Test filtering by enabled status."""
         forward1 = PortForward(
             ip_address="192.168.1.100",
+            network_name="test-network",
             gateway_port=8080,
             client_port=80,
             protocol="tcp",
@@ -175,6 +185,7 @@ class TestPortForwardModel:
         )
         forward2 = PortForward(
             ip_address="192.168.1.101",
+            network_name="test-network",
             gateway_port=443,
             client_port=443,
             protocol="tcp",
@@ -194,18 +205,21 @@ class TestPortForwardModel:
         """Test port forwards with different protocols."""
         tcp_forward = PortForward(
             ip_address="192.168.1.100",
+            network_name="test-network",
             gateway_port=80,
             client_port=80,
             protocol="tcp",
         )
         udp_forward = PortForward(
             ip_address="192.168.1.100",
+            network_name="test-network",
             gateway_port=53,
             client_port=53,
             protocol="udp",
         )
         both_forward = PortForward(
             ip_address="192.168.1.100",
+            network_name="test-network",
             gateway_port=9000,
             client_port=9000,
             protocol="both",
@@ -241,7 +255,10 @@ class TestRoutingCollector:
         """Create a mock Eero client."""
         client = Mock()
         client.is_authenticated.return_value = True
-        client.get_networks.return_value = [Mock(name="Home")]
+        # Create a mock network with a proper string name
+        mock_network = Mock()
+        mock_network.name = "Home"
+        client.get_networks.return_value = [mock_network]
         return client
 
     @pytest.fixture
@@ -291,7 +308,7 @@ class TestRoutingCollector:
 
         # Run collector
         collector = RoutingCollector(db_session, mock_eero_client)
-        result = collector.collect()
+        result = collector.run()
 
         # Verify results
         assert result["errors"] == 0
@@ -311,9 +328,10 @@ class TestRoutingCollector:
         """Test updating existing routing data."""
         from src.collectors.routing_collector import RoutingCollector
 
-        # Add existing reservation
+        # Add existing reservation (use "Home" to match mock network name)
         existing_reservation = IpReservation(
             mac_address="aa:bb:cc:dd:ee:ff",
+            network_name="Home",
             ip_address="192.168.1.99",  # Different IP
             description="Old Description",
         )
@@ -329,7 +347,7 @@ class TestRoutingCollector:
 
         # Run collector
         collector = RoutingCollector(db_session, mock_eero_client)
-        result = collector.collect()
+        result = collector.run()
 
         # Verify results - should update existing, add new
         assert result["errors"] == 0

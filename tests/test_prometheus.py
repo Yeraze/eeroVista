@@ -37,6 +37,7 @@ def sample_network_data(db_session):
     # Create network metric
     network_metric = NetworkMetric(
         timestamp=datetime.now(timezone.utc),
+        network_name="test-network",
         total_devices=10,
         total_devices_online=7,
         wan_status="online",
@@ -46,6 +47,7 @@ def sample_network_data(db_session):
     # Create speedtest
     speedtest = Speedtest(
         timestamp=datetime.now(timezone.utc),
+        network_name="test-network",
         download_mbps=150.5,
         upload_mbps=50.2,
         latency_ms=12.3,
@@ -55,6 +57,7 @@ def sample_network_data(db_session):
     # Create eero node
     node = EeroNode(
         eero_id="node_123",
+        network_name="test-network",
         location="Living Room",
         model="eero Pro 6E",
         is_gateway=True,
@@ -78,6 +81,7 @@ def sample_network_data(db_session):
     # Create device
     device = Device(
         mac_address="AA:BB:CC:DD:EE:FF",
+        network_name="test-network",
         hostname="Test-iPhone",
         nickname="John's iPhone",
         device_type="phone",
@@ -88,6 +92,7 @@ def sample_network_data(db_session):
     # Create device connection
     connection = DeviceConnection(
         timestamp=datetime.now(timezone.utc),
+        network_name="test-network",
         device_id=device.id,
         is_connected=True,
         connection_type="wireless",
@@ -255,7 +260,8 @@ class TestPrometheusMetricsValues:
         # Create online metric
         metric = NetworkMetric(
             timestamp=datetime.now(timezone.utc),
-            total_devices=10,
+            network_name="test-network",
+        total_devices=10,
             total_devices_online=7,
             wan_status="online",
         )
@@ -290,7 +296,8 @@ class TestPrometheusMetricsValues:
         """Test that node update_available is correctly mapped to 1/0."""
         node = EeroNode(
             eero_id="node_456",
-            location="Bedroom",
+            network_name="test-network",
+        location="Bedroom",
             model="eero Pro",
             is_gateway=False,
             update_available=True,
@@ -311,7 +318,8 @@ class TestPrometheusMetricsValues:
         # Create a device without any connection records
         device = Device(
             mac_address="11:22:33:44:55:66",
-            hostname="Test-Device-No-Conn",
+            network_name="test-network",
+        hostname="Test-Device-No-Conn",
             nickname="Disconnected Device",
             device_type="laptop",
         )

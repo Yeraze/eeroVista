@@ -28,9 +28,13 @@ class EeroNode(Base):
     """Eero mesh network node (eero device)."""
 
     __tablename__ = "eero_nodes"
+    __table_args__ = (
+        UniqueConstraint('network_name', 'eero_id', name='uix_network_eero'),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    eero_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    network_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    eero_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     location: Mapped[Optional[str]] = mapped_column(String)
     model: Mapped[Optional[str]] = mapped_column(String)
     mac_address: Mapped[Optional[str]] = mapped_column(String)
@@ -51,9 +55,13 @@ class Device(Base):
     """Connected client device."""
 
     __tablename__ = "devices"
+    __table_args__ = (
+        UniqueConstraint('network_name', 'mac_address', name='uix_network_mac'),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    mac_address: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    network_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    mac_address: Mapped[str] = mapped_column(String, nullable=False, index=True)
     hostname: Mapped[Optional[str]] = mapped_column(String)
     nickname: Mapped[Optional[str]] = mapped_column(String)
     manufacturer: Mapped[Optional[str]] = mapped_column(String)
@@ -76,6 +84,7 @@ class DeviceConnection(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    network_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     device_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("devices.id"), nullable=False
     )
@@ -106,6 +115,7 @@ class NetworkMetric(Base):
     __tablename__ = "network_metrics"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    network_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, index=True
     )
@@ -121,6 +131,7 @@ class Speedtest(Base):
     __tablename__ = "speedtests"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    network_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, index=True
     )
@@ -160,11 +171,12 @@ class DailyBandwidth(Base):
 
     __tablename__ = "daily_bandwidth"
     __table_args__ = (
-        UniqueConstraint('device_id', 'date', name='uix_device_date'),
+        UniqueConstraint('network_name', 'device_id', 'date', name='uix_network_device_date'),
         {"sqlite_autoincrement": True},
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    network_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     device_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("devices.id")
     )  # NULL = network-wide totals
@@ -191,9 +203,14 @@ class IpReservation(Base):
     """DHCP IP address reservation."""
 
     __tablename__ = "ip_reservations"
+    __table_args__ = (
+        UniqueConstraint('network_name', 'mac_address', name='uix_network_mac'),
+        {"sqlite_autoincrement": True},
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    mac_address: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    network_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    mac_address: Mapped[str] = mapped_column(String, nullable=False, index=True)
     ip_address: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String)
     eero_url: Mapped[Optional[str]] = mapped_column(String)  # URL from Eero API
@@ -209,11 +226,12 @@ class PortForward(Base):
     __tablename__ = "port_forwards"
     __table_args__ = (
         UniqueConstraint(
-            "ip_address", "gateway_port", "protocol", name="uq_port_forward_rule"
+            "network_name", "ip_address", "gateway_port", "protocol", name="uq_network_port_forward_rule"
         ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    network_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     ip_address: Mapped[str] = mapped_column(String, nullable=False, index=True)
     gateway_port: Mapped[int] = mapped_column(Integer, nullable=False)  # External port
     client_port: Mapped[int] = mapped_column(Integer, nullable=False)  # Internal port
