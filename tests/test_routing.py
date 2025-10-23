@@ -286,10 +286,8 @@ class TestRoutingCollector:
         mock_network_client = Mock()
         mock_network_client.routing = mock_routing_data
 
-        mock_eero = Mock()
-        mock_eero.network_clients.get.return_value = mock_network_client
-
-        mock_eero_client._get_client.return_value = mock_eero
+        # Mock the new get_network_client method
+        mock_eero_client.get_network_client.return_value = mock_network_client
 
         # Run collector
         collector = RoutingCollector(db_session, mock_eero_client)
@@ -326,10 +324,8 @@ class TestRoutingCollector:
         mock_network_client = Mock()
         mock_network_client.routing = mock_routing_data
 
-        mock_eero = Mock()
-        mock_eero.network_clients.get.return_value = mock_network_client
-
-        mock_eero_client._get_client.return_value = mock_eero
+        # Mock the new get_network_client method
+        mock_eero_client.get_network_client.return_value = mock_network_client
 
         # Run collector
         collector = RoutingCollector(db_session, mock_eero_client)
