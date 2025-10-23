@@ -189,7 +189,15 @@
 {% endblock %}
 
 {% block content %}
-<h1 class="mt-4 mb-4">Network Topology</h1>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; margin-bottom: 1.5rem;">
+    <h1 style="margin: 0;">Network Topology</h1>
+    <div style="display: flex; align-items: center; gap: 1rem;">
+        <label for="network-selector" style="font-weight: 600; color: var(--subtext1);">Network:</label>
+        <select id="network-selector" style="padding: 0.5rem 1rem; border: 1px solid var(--surface1); border-radius: 6px; background: var(--base); color: var(--text); font-size: 1rem; min-width: 200px;">
+            <option value="">Loading...</option>
+        </select>
+    </div>
+</div>
 
 <div class="card">
     <div class="card-title">
@@ -251,10 +259,20 @@
 <script>
     let topologyData = null;
 
+    // Get current selected network
+    function getSelectedNetwork() {
+        const selector = document.getElementById('network-selector');
+        return selector ? selector.value : null;
+    }
+
     // Fetch topology data
     async function loadTopology() {
         try {
-            const response = await fetch('/api/network-topology');
+            const network = getSelectedNetwork();
+            const url = network
+                ? `/api/network-topology?network=${encodeURIComponent(network)}`
+                : '/api/network-topology';
+            const response = await fetch(url);
             const data = await response.json();
 
             topologyData = data;
@@ -548,7 +566,51 @@
         }
     });
 
+    // Load networks and populate dropdown
+    async function loadNetworks() {
+        try {
+            const response = await fetch('/api/networks');
+            const data = await response.json();
+
+            const selector = document.getElementById('network-selector');
+            selector.innerHTML = '';  // Clear existing options
+
+            if (data.networks && data.networks.length > 0) {
+                // Get selected network from localStorage (or default to first)
+                const savedNetwork = localStorage.getItem('selectedNetwork');
+
+                data.networks.forEach((network, index) => {
+                    const option = document.createElement('option');
+                    option.value = network.name;
+                    option.textContent = `${network.name} (${network.nickname_label})`;
+
+                    // Check if this is the saved network
+                    if (savedNetwork === network.name) {
+                        option.selected = true;
+                    } else if (!savedNetwork && index === 0) {
+                        option.selected = true;
+                    }
+
+                    selector.appendChild(option);
+                });
+
+                // Save selected network on change and reload data
+                selector.addEventListener('change', function() {
+                    localStorage.setItem('selectedNetwork', this.value);
+                    // Reload topology for the new network
+                    loadTopology();
+                });
+            } else {
+                selector.innerHTML = '<option value="">No networks available</option>';
+            }
+        } catch (error) {
+            console.error('Failed to load networks:', error);
+            document.getElementById('network-selector').innerHTML = '<option value="">Error loading networks</option>';
+        }
+    }
+
     // Initial load
+    loadNetworks();  // Load networks first
     loadTopology();
 
     // Refresh every 30 seconds
