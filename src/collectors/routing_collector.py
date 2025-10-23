@@ -33,8 +33,7 @@ class RoutingCollector(BaseCollector):
                 network_name = network.name
 
             # Get network client
-            eero = self.eero_client._get_client()
-            network_client = eero.network_clients.get(network_name)
+            network_client = self.eero_client.get_network_client(network_name)
 
             if not network_client:
                 logger.warning(f"Network client for '{network_name}' not found")

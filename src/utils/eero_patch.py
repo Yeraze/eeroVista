@@ -38,6 +38,7 @@ def patch_pydantic_models():
         print(f"[PATCH v{__version__}] Importing eero-client Pydantic models...")
         from eero.client.models import NetworkInfo
         from eero.client.models.account import PremiumDetails
+        from pydantic.fields import FieldInfo
 
         print(f"[PATCH v{__version__}] Patching eero-client Pydantic models for Optional fields")
         logger.info("Patching eero-client Pydantic models for Optional fields")
@@ -46,17 +47,35 @@ def patch_pydantic_models():
         if hasattr(NetworkInfo, '__annotations__'):
             if 'amazon_directed_id' in NetworkInfo.__annotations__:
                 NetworkInfo.__annotations__['amazon_directed_id'] = Optional[str]
+                # Also update the field info to allow None
+                if hasattr(NetworkInfo, 'model_fields') and 'amazon_directed_id' in NetworkInfo.model_fields:
+                    field_info = NetworkInfo.model_fields['amazon_directed_id']
+                    # Create new FieldInfo that allows None
+                    NetworkInfo.model_fields['amazon_directed_id'] = FieldInfo(
+                        annotation=Optional[str],
+                        default=None,
+                        metadata=field_info.metadata if hasattr(field_info, 'metadata') else []
+                    )
                 logger.debug("Patched NetworkInfo.amazon_directed_id to Optional[str]")
 
         # Patch PremiumDetails.interval to be Optional
         if hasattr(PremiumDetails, '__annotations__'):
             if 'interval' in PremiumDetails.__annotations__:
                 PremiumDetails.__annotations__['interval'] = Optional[str]
+                # Also update the field info to allow None
+                if hasattr(PremiumDetails, 'model_fields') and 'interval' in PremiumDetails.model_fields:
+                    field_info = PremiumDetails.model_fields['interval']
+                    # Create new FieldInfo that allows None
+                    PremiumDetails.model_fields['interval'] = FieldInfo(
+                        annotation=Optional[str],
+                        default=None,
+                        metadata=field_info.metadata if hasattr(field_info, 'metadata') else []
+                    )
                 logger.debug("Patched PremiumDetails.interval to Optional[str]")
 
-        # Rebuild the models with updated annotations
-        NetworkInfo.model_rebuild()
-        PremiumDetails.model_rebuild()
+        # Rebuild the models with updated annotations - force full rebuild
+        NetworkInfo.model_rebuild(force=True)
+        PremiumDetails.model_rebuild(force=True)
 
         print(f"[PATCH v{__version__}] ✓ Pydantic model patches applied successfully")
         logger.info("Pydantic model patches applied successfully")
