@@ -394,6 +394,7 @@ class TestDeviceCollector:
         # Simulate device creation logic from device_collector.py
         device = Device(
             mac_address=mock_device_data["mac"],
+            network_name="test-network",
             hostname=mock_device_data.get("hostname"),
             nickname=mock_device_data.get("nickname"),
             manufacturer=mock_device_data.get("manufacturer"),
@@ -464,6 +465,7 @@ class TestDeviceCollector:
         # Create device first
         device = Device(
             mac_address=mock_guest_device_data["mac"],
+            network_name="test-network",
             hostname=mock_guest_device_data.get("hostname"),
             first_seen=datetime.utcnow(),
         )

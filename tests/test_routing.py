@@ -305,7 +305,7 @@ class TestRoutingCollector:
 
         # Run collector
         collector = RoutingCollector(db_session, mock_eero_client)
-        result = collector.collect()
+        result = collector.run()
 
         # Verify results
         assert result["errors"] == 0
@@ -344,7 +344,7 @@ class TestRoutingCollector:
 
         # Run collector
         collector = RoutingCollector(db_session, mock_eero_client)
-        result = collector.collect()
+        result = collector.run()
 
         # Verify results - should update existing, add new
         assert result["errors"] == 0

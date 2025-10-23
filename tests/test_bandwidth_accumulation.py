@@ -247,7 +247,8 @@ class TestBandwidthAccumulation:
             device_id=None,
             bandwidth_down_mbps=10.0,
             bandwidth_up_mbps=5.0,
-            timestamp=base_time + timedelta(seconds=30),
+            timestamp=base_time + timedelta(seconds=30,
+            network_name="test-network"),
         )
 
         # Third accumulation 30 seconds after that
@@ -255,7 +256,8 @@ class TestBandwidthAccumulation:
             device_id=None,
             bandwidth_down_mbps=10.0,
             bandwidth_up_mbps=5.0,
-            timestamp=base_time + timedelta(seconds=60),
+            timestamp=base_time + timedelta(seconds=60,
+            network_name="test-network"),
         )
 
         record = (
