@@ -85,8 +85,8 @@ def run(session: Session, eero_client) -> None:
             logger.info(f"  Adding network_name to {table_name}...")
             session.execute(text(f"""
                 ALTER TABLE {table_name}
-                ADD COLUMN network_name VARCHAR NOT NULL DEFAULT :default_network
-            """), {"default_network": default_network})
+                ADD COLUMN network_name VARCHAR NOT NULL DEFAULT '{default_network}'
+            """))
 
             # Create index for performance
             session.execute(text(f"""
