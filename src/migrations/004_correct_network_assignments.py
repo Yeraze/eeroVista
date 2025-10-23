@@ -205,26 +205,76 @@ def run(session: Session, eero_client) -> None:
 
             logger.info(f"    ✓ Updated {devices_updated} devices")
 
-        # Correct related tables by following device relationships
+        # Correct related tables by MAC address to preserve historical data
+        # CRITICAL: Update device_id references BEFORE deleting old 'default' devices
         if mac_to_network:
-            logger.info("  Correcting device_connections network assignments...")
+            logger.info("  Updating device_connections to use new device IDs (matching by MAC)...")
+            # First, update device_id to point to new devices (created by collector)
+            # This preserves historical data by linking it to the current device
             connections_updated = session.execute(text("""
                 UPDATE device_connections
-                SET network_name = (SELECT network_name FROM devices WHERE devices.id = device_connections.device_id)
-                WHERE network_name != (SELECT network_name FROM devices WHERE devices.id = device_connections.device_id)
+                SET device_id = (
+                    SELECT new_dev.id
+                    FROM devices AS old_dev
+                    INNER JOIN devices AS new_dev ON LOWER(old_dev.mac_address) = LOWER(new_dev.mac_address)
+                    WHERE old_dev.id = device_connections.device_id
+                      AND old_dev.network_name = 'default'
+                      AND new_dev.network_name != 'default'
+                    LIMIT 1
+                ),
+                network_name = (
+                    SELECT new_dev.network_name
+                    FROM devices AS old_dev
+                    INNER JOIN devices AS new_dev ON LOWER(old_dev.mac_address) = LOWER(new_dev.mac_address)
+                    WHERE old_dev.id = device_connections.device_id
+                      AND old_dev.network_name = 'default'
+                      AND new_dev.network_name != 'default'
+                    LIMIT 1
+                )
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM devices AS old_dev
+                    INNER JOIN devices AS new_dev ON LOWER(old_dev.mac_address) = LOWER(new_dev.mac_address)
+                    WHERE old_dev.id = device_connections.device_id
+                      AND old_dev.network_name = 'default'
+                      AND new_dev.network_name != 'default'
+                )
             """)).rowcount
-            logger.info(f"    ✓ Updated {connections_updated} device_connections")
+            logger.info(f"    ✓ Updated {connections_updated} device_connections to use new device IDs")
 
-            logger.info("  Correcting daily_bandwidth network assignments...")
+            logger.info("  Updating daily_bandwidth to use new device IDs (matching by MAC)...")
             bandwidth_updated = session.execute(text("""
                 UPDATE daily_bandwidth
-                SET network_name = (SELECT network_name FROM devices WHERE devices.id = daily_bandwidth.device_id)
-                WHERE device_id IS NOT NULL
-                  AND network_name != (SELECT network_name FROM devices WHERE devices.id = daily_bandwidth.device_id)
+                SET device_id = (
+                    SELECT new_dev.id
+                    FROM devices AS old_dev
+                    INNER JOIN devices AS new_dev ON LOWER(old_dev.mac_address) = LOWER(new_dev.mac_address)
+                    WHERE old_dev.id = daily_bandwidth.device_id
+                      AND old_dev.network_name = 'default'
+                      AND new_dev.network_name != 'default'
+                    LIMIT 1
+                ),
+                network_name = (
+                    SELECT new_dev.network_name
+                    FROM devices AS old_dev
+                    INNER JOIN devices AS new_dev ON LOWER(old_dev.mac_address) = LOWER(new_dev.mac_address)
+                    WHERE old_dev.id = daily_bandwidth.device_id
+                      AND old_dev.network_name = 'default'
+                      AND new_dev.network_name != 'default'
+                    LIMIT 1
+                )
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM devices AS old_dev
+                    INNER JOIN devices AS new_dev ON LOWER(old_dev.mac_address) = LOWER(new_dev.mac_address)
+                    WHERE old_dev.id = daily_bandwidth.device_id
+                      AND old_dev.network_name = 'default'
+                      AND new_dev.network_name != 'default'
+                )
             """)).rowcount
-            logger.info(f"    ✓ Updated {bandwidth_updated} daily_bandwidth records")
+            logger.info(f"    ✓ Updated {bandwidth_updated} daily_bandwidth records to use new device IDs")
 
-            logger.info("  Correcting ip_reservations network assignments...")
+            logger.info("  Correcting ip_reservations by MAC address...")
             reservations_updated = session.execute(text("""
                 UPDATE ip_reservations
                 SET network_name = (
@@ -232,11 +282,11 @@ def run(session: Session, eero_client) -> None:
                     WHERE LOWER(devices.mac_address) = LOWER(ip_reservations.mac_address)
                     LIMIT 1
                 )
-                WHERE EXISTS (
-                    SELECT 1 FROM devices
-                    WHERE LOWER(devices.mac_address) = LOWER(ip_reservations.mac_address)
-                      AND devices.network_name != ip_reservations.network_name
-                )
+                WHERE network_name = 'default'
+                  AND EXISTS (
+                      SELECT 1 FROM devices
+                      WHERE LOWER(devices.mac_address) = LOWER(ip_reservations.mac_address)
+                  )
             """)).rowcount
             logger.info(f"    ✓ Updated {reservations_updated} ip_reservations")
 
