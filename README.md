@@ -265,7 +265,7 @@ MIT License - See [LICENSE](LICENSE) file for details
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=eeroVista/eeroVista&type=date&legend=top-left)](https://www.star-history.com/#eeroVista/eeroVista&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=yeraze/eeroVista&type=date&legend=top-left)](https://www.star-history.com/#yeraze/eeroVista&type=date&legend=top-left)
 ---
 
 <div align="center">
