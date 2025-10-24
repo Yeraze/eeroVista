@@ -728,21 +728,20 @@ class TestZabbixMultiNetwork:
     def test_discover_devices_filters_by_network(self, multi_network_data):
         """Test that device discovery filters by network parameter."""
         from src.main import app
-        from src.utils.database import get_db
+        from contextlib import contextmanager
 
         # Mock the client to return both networks
         mock_net1 = type('obj', (object,), {'name': 'Network1'})()
         mock_net2 = type('obj', (object,), {'name': 'Network2'})()
 
-        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class:
+        @contextmanager
+        def mock_get_db_context():
+            yield multi_network_data
+
+        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class, \
+             patch('src.api.zabbix.get_db_context', side_effect=mock_get_db_context):
             mock_client = mock_client_class.return_value
             mock_client.get_networks.return_value = [mock_net1, mock_net2]
-
-            # Override the database dependency
-            def override_get_db():
-                yield multi_network_data
-
-            app.dependency_overrides[get_db] = override_get_db
 
             client = TestClient(app)
 
@@ -762,26 +761,23 @@ class TestZabbixMultiNetwork:
             assert data[0]["{#HOSTNAME}"] == "Device1-Net2"
             assert data[0]["{#NETWORK}"] == "Network2"
 
-            # Cleanup override
-            app.dependency_overrides.clear()
-
     def test_discover_nodes_filters_by_network(self, multi_network_data):
         """Test that node discovery filters by network parameter."""
         from src.main import app
-        from src.utils.database import get_db
+        from contextlib import contextmanager
 
         # Mock the client to return both networks
         mock_net1 = type('obj', (object,), {'name': 'Network1'})()
         mock_net2 = type('obj', (object,), {'name': 'Network2'})()
 
-        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class:
+        @contextmanager
+        def mock_get_db_context():
+            yield multi_network_data
+
+        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class, \
+             patch('src.api.zabbix.get_db_context', side_effect=mock_get_db_context):
             mock_client = mock_client_class.return_value
             mock_client.get_networks.return_value = [mock_net1, mock_net2]
-
-            def override_get_db():
-                yield multi_network_data
-
-            app.dependency_overrides[get_db] = override_get_db
 
             client = TestClient(app)
 
@@ -801,25 +797,23 @@ class TestZabbixMultiNetwork:
             assert data[0]["{#NODE_NAME}"] == "Office"
             assert data[0]["{#NETWORK}"] == "Network2"
 
-            app.dependency_overrides.clear()
-
     def test_metrics_filter_by_network(self, multi_network_data):
         """Test that metric data filters by network parameter."""
         from src.main import app
-        from src.utils.database import get_db
+        from contextlib import contextmanager
 
         # Mock the client to return both networks
         mock_net1 = type('obj', (object,), {'name': 'Network1'})()
         mock_net2 = type('obj', (object,), {'name': 'Network2'})()
 
-        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class:
+        @contextmanager
+        def mock_get_db_context():
+            yield multi_network_data
+
+        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class, \
+             patch('src.api.zabbix.get_db_context', side_effect=mock_get_db_context):
             mock_client = mock_client_class.return_value
             mock_client.get_networks.return_value = [mock_net1, mock_net2]
-
-            def override_get_db():
-                yield multi_network_data
-
-            app.dependency_overrides[get_db] = override_get_db
 
             client = TestClient(app)
 
@@ -833,24 +827,22 @@ class TestZabbixMultiNetwork:
             assert response.status_code == 200
             assert response.json()["value"] == 10
 
-            app.dependency_overrides.clear()
-
     def test_defaults_to_first_network_when_parameter_omitted(self, multi_network_data):
         """Test backwards compatibility: defaults to first network when parameter omitted."""
         from src.main import app
-        from src.utils.database import get_db
+        from contextlib import contextmanager
 
         # Mock the client to return Network2 as the first network
         mock_net2 = type('obj', (object,), {'name': 'Network2'})()
 
-        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class:
+        @contextmanager
+        def mock_get_db_context():
+            yield multi_network_data
+
+        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class, \
+             patch('src.api.zabbix.get_db_context', side_effect=mock_get_db_context):
             mock_client = mock_client_class.return_value
             mock_client.get_networks.return_value = [mock_net2]
-
-            def override_get_db():
-                yield multi_network_data
-
-            app.dependency_overrides[get_db] = override_get_db
 
             client = TestClient(app)
 
@@ -861,23 +853,21 @@ class TestZabbixMultiNetwork:
             assert len(data) == 1
             assert data[0]["{#NETWORK}"] == "Network2"
 
-            app.dependency_overrides.clear()
-
     def test_network_macro_included_in_discovery(self, multi_network_data):
         """Test that {#NETWORK} macro is included in all discovery responses."""
         from src.main import app
-        from src.utils.database import get_db
+        from contextlib import contextmanager
 
         mock_net1 = type('obj', (object,), {'name': 'Network1'})()
 
-        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class:
+        @contextmanager
+        def mock_get_db_context():
+            yield multi_network_data
+
+        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class, \
+             patch('src.api.zabbix.get_db_context', side_effect=mock_get_db_context):
             mock_client = mock_client_class.return_value
             mock_client.get_networks.return_value = [mock_net1]
-
-            def override_get_db():
-                yield multi_network_data
-
-            app.dependency_overrides[get_db] = override_get_db
 
             client = TestClient(app)
 
@@ -890,5 +880,3 @@ class TestZabbixMultiNetwork:
             response = client.get("/api/zabbix/discovery/nodes?network=Network1")
             data = response.json()["data"]
             assert all("{#NETWORK}" in item for item in data)
-
-            app.dependency_overrides.clear()
