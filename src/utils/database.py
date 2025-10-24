@@ -23,6 +23,10 @@ def get_engine():
             database_url,
             connect_args={"check_same_thread": False},  # Required for SQLite
             echo=settings.debug,
+            pool_size=20,  # Increased from default 5 for concurrent collectors/API requests
+            max_overflow=30,  # Increased from default 10 for startup surge
+            pool_timeout=60,  # Increased from default 30 for busy periods
+            pool_pre_ping=True,  # Verify connections before use
         )
     return _engine
 
