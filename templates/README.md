@@ -212,6 +212,38 @@ These macros can be used in:
 - **eeroVista Version**: Any version with Zabbix API support
 - **Protocol**: HTTP or HTTPS
 
+## Lifecycle Management
+
+### Automatic Cleanup of Removed Devices/Nodes
+
+Both templates use Zabbix's built-in **Low-Level Discovery (LLD)** lifecycle management to automatically remove devices/nodes that are no longer present.
+
+**How it works**:
+1. When a device/node is removed from Eero, it stops appearing in discovery results
+2. Zabbix marks it as "lost" after the next discovery run
+3. After the configured "Keep lost resources period", Zabbix automatically deletes it
+
+**Default Settings in Templates**:
+- **Devices**: 1 day (24 hours) - Allows for temporary disconnections
+- **Nodes**: 7 days - Infrastructure changes less frequently
+
+**Why This Matters**:
+- Prevents clutter from old/removed devices
+- Keeps your Zabbix host list clean
+- Historical data is preserved (based on history retention)
+- Returning devices are automatically rediscovered
+
+**To Change Settings**:
+1. Configuration → Templates → Your template → Discovery rules
+2. Edit "Device Discovery" or "Node Discovery"
+3. Modify "Keep lost resources period"
+4. Save
+
+**For Auto-Discovery Template**:
+- Lost device/node hosts are also automatically deleted
+- This keeps your `eeroVista/Devices` and `eeroVista/Nodes` host groups clean
+- Host deletion includes all items, triggers, and graphs
+
 ## Troubleshooting
 
 ### Discovery not working

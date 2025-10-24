@@ -534,6 +534,41 @@ If eeroVista is being overloaded:
    - Filter devices by type in discovery rule
    - Remove unused items
 
+## Lifecycle Management
+
+### Automatic Cleanup of Removed Devices/Nodes
+
+Zabbix automatically removes discovered items that no longer appear in discovery results using the **"Keep lost resources period"** setting.
+
+**How it works**:
+1. When a device/node is removed from your Eero network, it stops appearing in eeroVista's discovery endpoint
+2. Zabbix detects the item is "lost" (missing from latest discovery)
+3. After the configured period, Zabbix automatically removes the item, host, and triggers
+
+**Recommended Settings**:
+
+For **Device Discovery** rule:
+- Keep lost resources period: **1 day** (24 hours)
+- Reason: Devices frequently disconnect/reconnect (phones, laptops)
+- Prevents premature cleanup of temporarily offline devices
+
+For **Node Discovery** rule:
+- Keep lost resources period: **7 days** (1 week)
+- Reason: Nodes are infrastructure and rarely removed
+- Allows time to notice and investigate missing nodes before cleanup
+
+**Configuration in Zabbix**:
+1. Go to: Configuration → Templates → eeroVista template → Discovery rules
+2. Click on discovery rule (Devices or Nodes)
+3. Set "Keep lost resources period" field
+4. Save
+
+**Important Notes**:
+- Historical data is preserved even after cleanup (based on your history retention settings)
+- If a device returns, it will be rediscovered automatically
+- For auto-discovery template: Lost hosts are also deleted after the period
+- You can manually delete items immediately via Zabbix UI if needed
+
 ## Best Practices
 
 1. **Update Intervals**:
@@ -554,6 +589,11 @@ If eeroVista is being overloaded:
    - Use Agent items (not external scripts)
    - Batch discovery updates
    - Enable value caching in eeroVista (future feature)
+
+5. **Lifecycle Management**:
+   - Set "Keep lost resources" appropriately (1 day for devices, 7 days for nodes)
+   - Monitor for devices that frequently appear/disappear (may need longer retention)
+   - Review deleted items periodically to ensure cleanup is working as expected
 
 ## Complete Zabbix Templates
 
