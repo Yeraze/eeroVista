@@ -365,33 +365,51 @@ class TestZabbixDataEndpoint:
         """Test that device metrics require MAC address identifier."""
         from src.main import app
 
-        client = TestClient(app)
-        response = client.get("/api/zabbix/data?item=device.connected")
+        # Mock network retrieval
+        mock_network = type('obj', (object,), {'name': 'TestNetwork'})()
+        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class:
+            mock_client = mock_client_class.return_value
+            mock_client.get_networks.return_value = [mock_network]
 
-        # Should return 400 for missing identifier
-        assert response.status_code == 400
-        assert "MAC address" in response.json()["detail"]
+            client = TestClient(app)
+            response = client.get("/api/zabbix/data?item=device.connected")
+
+            # Should return 400 for missing identifier
+            assert response.status_code == 400
+            assert "MAC address" in response.json()["detail"]
 
     def test_node_metric_requires_node_id(self):
         """Test that node metrics require node ID identifier."""
         from src.main import app
 
-        client = TestClient(app)
-        response = client.get("/api/zabbix/data?item=node.status")
+        # Mock network retrieval
+        mock_network = type('obj', (object,), {'name': 'TestNetwork'})()
+        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class:
+            mock_client = mock_client_class.return_value
+            mock_client.get_networks.return_value = [mock_network]
 
-        # Should return 400 for missing identifier
-        assert response.status_code == 400
-        assert "node ID" in response.json()["detail"]
+            client = TestClient(app)
+            response = client.get("/api/zabbix/data?item=node.status")
+
+            # Should return 400 for missing identifier
+            assert response.status_code == 400
+            assert "node ID" in response.json()["detail"]
 
     def test_invalid_item_returns_404(self):
         """Test that invalid item key returns 404."""
         from src.main import app
 
-        client = TestClient(app)
-        response = client.get("/api/zabbix/data?item=invalid.metric.name")
+        # Mock network retrieval
+        mock_network = type('obj', (object,), {'name': 'TestNetwork'})()
+        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class:
+            mock_client = mock_client_class.return_value
+            mock_client.get_networks.return_value = [mock_network]
 
-        assert response.status_code == 404
-        assert "not found or not supported" in response.json()["detail"]
+            client = TestClient(app)
+            response = client.get("/api/zabbix/data?item=invalid.metric.name")
+
+            assert response.status_code == 404
+            assert "not found or not supported" in response.json()["detail"]
 
 
 class TestZabbixItemKeyParsing:
@@ -640,3 +658,237 @@ class TestZabbixDataValues:
                 datetime.fromisoformat(json_data["timestamp"])
             except ValueError:
                 pytest.fail("Timestamp is not in valid ISO format")
+
+
+class TestZabbixMultiNetwork:
+    """Tests for multi-network functionality in Zabbix endpoints."""
+
+    @pytest.fixture
+    def multi_network_data(self, db_session):
+        """Create sample data for two networks."""
+        # Network 1
+        device1_net1 = Device(
+            network_name="Network1",
+            mac_address="AA:BB:CC:DD:EE:F1",
+            hostname="Device1-Net1",
+        )
+        node1_net1 = EeroNode(
+            network_name="Network1",
+            eero_id="node_net1_1",
+            location="Living Room",
+        )
+        db_session.add_all([device1_net1, node1_net1])
+        db_session.commit()
+
+        conn1_net1 = DeviceConnection(
+            network_name="Network1",
+            timestamp=datetime.utcnow(),
+            device_id=device1_net1.id,
+            is_connected=True,
+        )
+        metric1_net1 = NetworkMetric(
+            network_name="Network1",
+            timestamp=datetime.utcnow(),
+            total_devices=5,
+            total_devices_online=4,
+        )
+        db_session.add_all([conn1_net1, metric1_net1])
+
+        # Network 2
+        device1_net2 = Device(
+            network_name="Network2",
+            mac_address="AA:BB:CC:DD:EE:F2",
+            hostname="Device1-Net2",
+        )
+        node1_net2 = EeroNode(
+            network_name="Network2",
+            eero_id="node_net2_1",
+            location="Office",
+        )
+        db_session.add_all([device1_net2, node1_net2])
+        db_session.commit()
+
+        conn1_net2 = DeviceConnection(
+            network_name="Network2",
+            timestamp=datetime.utcnow(),
+            device_id=device1_net2.id,
+            is_connected=True,
+        )
+        metric1_net2 = NetworkMetric(
+            network_name="Network2",
+            timestamp=datetime.utcnow(),
+            total_devices=10,
+            total_devices_online=8,
+        )
+        db_session.add_all([conn1_net2, metric1_net2])
+        db_session.commit()
+
+        return db_session
+
+    def test_discover_devices_filters_by_network(self, multi_network_data):
+        """Test that device discovery filters by network parameter."""
+        from src.main import app
+        from src.utils.database import get_db
+
+        # Mock the client to return both networks
+        mock_net1 = type('obj', (object,), {'name': 'Network1'})()
+        mock_net2 = type('obj', (object,), {'name': 'Network2'})()
+
+        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class:
+            mock_client = mock_client_class.return_value
+            mock_client.get_networks.return_value = [mock_net1, mock_net2]
+
+            # Override the database dependency
+            def override_get_db():
+                yield multi_network_data
+
+            app.dependency_overrides[get_db] = override_get_db
+
+            client = TestClient(app)
+
+            # Request devices for Network1
+            response = client.get("/api/zabbix/discovery/devices?network=Network1")
+            assert response.status_code == 200
+            data = response.json()["data"]
+            assert len(data) == 1
+            assert data[0]["{#HOSTNAME}"] == "Device1-Net1"
+            assert data[0]["{#NETWORK}"] == "Network1"
+
+            # Request devices for Network2
+            response = client.get("/api/zabbix/discovery/devices?network=Network2")
+            assert response.status_code == 200
+            data = response.json()["data"]
+            assert len(data) == 1
+            assert data[0]["{#HOSTNAME}"] == "Device1-Net2"
+            assert data[0]["{#NETWORK}"] == "Network2"
+
+            # Cleanup override
+            app.dependency_overrides.clear()
+
+    def test_discover_nodes_filters_by_network(self, multi_network_data):
+        """Test that node discovery filters by network parameter."""
+        from src.main import app
+        from src.utils.database import get_db
+
+        # Mock the client to return both networks
+        mock_net1 = type('obj', (object,), {'name': 'Network1'})()
+        mock_net2 = type('obj', (object,), {'name': 'Network2'})()
+
+        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class:
+            mock_client = mock_client_class.return_value
+            mock_client.get_networks.return_value = [mock_net1, mock_net2]
+
+            def override_get_db():
+                yield multi_network_data
+
+            app.dependency_overrides[get_db] = override_get_db
+
+            client = TestClient(app)
+
+            # Request nodes for Network1
+            response = client.get("/api/zabbix/discovery/nodes?network=Network1")
+            assert response.status_code == 200
+            data = response.json()["data"]
+            assert len(data) == 1
+            assert data[0]["{#NODE_NAME}"] == "Living Room"
+            assert data[0]["{#NETWORK}"] == "Network1"
+
+            # Request nodes for Network2
+            response = client.get("/api/zabbix/discovery/nodes?network=Network2")
+            assert response.status_code == 200
+            data = response.json()["data"]
+            assert len(data) == 1
+            assert data[0]["{#NODE_NAME}"] == "Office"
+            assert data[0]["{#NETWORK}"] == "Network2"
+
+            app.dependency_overrides.clear()
+
+    def test_metrics_filter_by_network(self, multi_network_data):
+        """Test that metric data filters by network parameter."""
+        from src.main import app
+        from src.utils.database import get_db
+
+        # Mock the client to return both networks
+        mock_net1 = type('obj', (object,), {'name': 'Network1'})()
+        mock_net2 = type('obj', (object,), {'name': 'Network2'})()
+
+        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class:
+            mock_client = mock_client_class.return_value
+            mock_client.get_networks.return_value = [mock_net1, mock_net2]
+
+            def override_get_db():
+                yield multi_network_data
+
+            app.dependency_overrides[get_db] = override_get_db
+
+            client = TestClient(app)
+
+            # Request metrics for Network1
+            response = client.get("/api/zabbix/data?item=network.devices.total&network=Network1")
+            assert response.status_code == 200
+            assert response.json()["value"] == 5
+
+            # Request metrics for Network2
+            response = client.get("/api/zabbix/data?item=network.devices.total&network=Network2")
+            assert response.status_code == 200
+            assert response.json()["value"] == 10
+
+            app.dependency_overrides.clear()
+
+    def test_defaults_to_first_network_when_parameter_omitted(self, multi_network_data):
+        """Test backwards compatibility: defaults to first network when parameter omitted."""
+        from src.main import app
+        from src.utils.database import get_db
+
+        # Mock the client to return Network2 as the first network
+        mock_net2 = type('obj', (object,), {'name': 'Network2'})()
+
+        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class:
+            mock_client = mock_client_class.return_value
+            mock_client.get_networks.return_value = [mock_net2]
+
+            def override_get_db():
+                yield multi_network_data
+
+            app.dependency_overrides[get_db] = override_get_db
+
+            client = TestClient(app)
+
+            # Request without network parameter - should use first network (Network2)
+            response = client.get("/api/zabbix/discovery/devices")
+            assert response.status_code == 200
+            data = response.json()["data"]
+            assert len(data) == 1
+            assert data[0]["{#NETWORK}"] == "Network2"
+
+            app.dependency_overrides.clear()
+
+    def test_network_macro_included_in_discovery(self, multi_network_data):
+        """Test that {#NETWORK} macro is included in all discovery responses."""
+        from src.main import app
+        from src.utils.database import get_db
+
+        mock_net1 = type('obj', (object,), {'name': 'Network1'})()
+
+        with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class:
+            mock_client = mock_client_class.return_value
+            mock_client.get_networks.return_value = [mock_net1]
+
+            def override_get_db():
+                yield multi_network_data
+
+            app.dependency_overrides[get_db] = override_get_db
+
+            client = TestClient(app)
+
+            # Check device discovery
+            response = client.get("/api/zabbix/discovery/devices?network=Network1")
+            data = response.json()["data"]
+            assert all("{#NETWORK}" in item for item in data)
+
+            # Check node discovery
+            response = client.get("/api/zabbix/discovery/nodes?network=Network1")
+            data = response.json()["data"]
+            assert all("{#NETWORK}" in item for item in data)
+
+            app.dependency_overrides.clear()
