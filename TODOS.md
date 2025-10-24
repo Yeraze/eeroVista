@@ -5,6 +5,16 @@
 (No pending features at this time)
 
 ## Completed
+- [x] Zabbix Multi-Network Support - PR #37 (2025-10-24)
+  - Added optional `network` query parameter to all three Zabbix endpoints
+  - Implemented `get_network_name_filter()` helper for consistent network resolution
+  - All database queries now filtered by network_name
+  - Added `{#NETWORK}` macro to device and node discovery responses
+  - Updated test fixtures with network_name field
+  - Comprehensive documentation: docs/zabbix.md and templates/README.md
+  - Backwards compatible: defaults to first network when parameter omitted
+  - Supports both single-host and multi-host Zabbix configurations
+  - Tested with live data: devices, nodes, and metrics properly filtered
 - [x] Multi-Network Support - v2.0.0 (2025-10-23)
   - Full multi-network data collection and filtering across entire application
   - Database schema: Added network_name column to all tables with composite unique constraints
