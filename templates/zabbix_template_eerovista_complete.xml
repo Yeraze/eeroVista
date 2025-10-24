@@ -61,7 +61,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             </parameters>
                         </step>
                     </preprocessing>
-                    <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.connected[{$DEVICE_MAC}]</url>
+                    <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.connected[{$DEVICE_MAC}]&amp;network={$NETWORK_NAME}</url>
                     <triggers>
                         <trigger>
                             <uuid>b7ff4f5b14d14d09bc4cb52f16957660</uuid>
@@ -97,7 +97,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             </parameters>
                         </step>
                     </preprocessing>
-                    <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.signal[{$DEVICE_MAC}]</url>
+                    <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.signal[{$DEVICE_MAC}]&amp;network={$NETWORK_NAME}</url>
                     <triggers>
                         <trigger>
                             <uuid>44020a241d9b4bd2a291f407ecb5156d</uuid>
@@ -140,7 +140,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             </parameters>
                         </step>
                     </preprocessing>
-                    <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.bandwidth.down[{$DEVICE_MAC}]</url>
+                    <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.bandwidth.down[{$DEVICE_MAC}]&amp;network={$NETWORK_NAME}</url>
                 </item>
                 <item>
                     <uuid>b255f07c8d95474f8ffed5e37efd6666</uuid>
@@ -167,7 +167,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             </parameters>
                         </step>
                     </preprocessing>
-                    <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.bandwidth.up[{$DEVICE_MAC}]</url>
+                    <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=device.bandwidth.up[{$DEVICE_MAC}]&amp;network={$NETWORK_NAME}</url>
                 </item>
             </items>
             <macros>
@@ -244,7 +244,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             </parameters>
                         </step>
                     </preprocessing>
-                    <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.status[{$NODE_ID}]</url>
+                    <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.status[{$NODE_ID}]&amp;network={$NETWORK_NAME}</url>
                     <triggers>
                         <trigger>
                             <uuid>b6714401923b4fd8bd41a756b4f640c9</uuid>
@@ -279,7 +279,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             </parameters>
                         </step>
                     </preprocessing>
-                    <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.devices[{$NODE_ID}]</url>
+                    <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.devices[{$NODE_ID}]&amp;network={$NETWORK_NAME}</url>
                 </item>
                 <item>
                     <uuid>62bcfe2c752f4462a1994295c794c685</uuid>
@@ -305,7 +305,7 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                             </parameters>
                         </step>
                     </preprocessing>
-                    <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.mesh_quality[{$NODE_ID}]</url>
+                    <url>{$EEROVISTA_SCHEME}://{$PARENT_HOST}:{$EEROVISTA_PORT}/api/zabbix/data?item=node.mesh_quality[{$NODE_ID}]&amp;network={$NETWORK_NAME}</url>
                     <triggers>
                         <trigger>
                             <uuid>cb23311444464ee48bb6f08dbb313db2</uuid>
@@ -409,6 +409,10 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                     <macro>{$DEVICE_CONNECTION_TYPE}</macro>
                                     <value>{#CONNECTION_TYPE}</value>
                                 </macro>
+                                <macro>
+                                    <macro>{$NETWORK_NAME}</macro>
+                                    <value>{#NETWORK}</value>
+                                </macro>
                             </macros>
                             <inventory_mode>AUTOMATIC</inventory_mode>
                         </host_prototype>
@@ -464,6 +468,10 @@ Documentation: https://github.com/Yeraze/eeroVista</description>
                                 <macro>
                                     <macro>{$NODE_FIRMWARE}</macro>
                                     <value>{#FIRMWARE}</value>
+                                </macro>
+                                <macro>
+                                    <macro>{$NETWORK_NAME}</macro>
+                                    <value>{#NETWORK}</value>
                                 </macro>
                             </macros>
                             <inventory_mode>AUTOMATIC</inventory_mode>
