@@ -37,14 +37,18 @@ def db_session():
 @pytest.fixture
 def sample_zabbix_data(db_session):
     """Create sample data for Zabbix testing."""
+    network_name = "TestNetwork"
+
     # Create devices
     device1 = Device(
+        network_name=network_name,
         mac_address="AA:BB:CC:DD:EE:FF",
         hostname="Test-iPhone",
         nickname="John's iPhone",
         device_type="phone",
     )
     device2 = Device(
+        network_name=network_name,
         mac_address="11:22:33:44:55:66",
         hostname="Test-Laptop",
         nickname="Work Laptop",
@@ -54,12 +58,14 @@ def sample_zabbix_data(db_session):
 
     # Create nodes
     node1 = EeroNode(
+        network_name=network_name,
         eero_id="node_123",
         location="Living Room",
         model="eero Pro 6E",
         is_gateway=True,
     )
     node2 = EeroNode(
+        network_name=network_name,
         eero_id="node_456",
         location="Bedroom",
         model="eero Beacon",
@@ -70,6 +76,7 @@ def sample_zabbix_data(db_session):
 
     # Create network metric
     network_metric = NetworkMetric(
+        network_name=network_name,
         timestamp=datetime.utcnow(),
         total_devices=10,
         total_devices_online=7,
@@ -79,6 +86,7 @@ def sample_zabbix_data(db_session):
 
     # Create speedtest
     speedtest = Speedtest(
+        network_name=network_name,
         timestamp=datetime.utcnow(),
         download_mbps=150.5,
         upload_mbps=50.2,
@@ -88,6 +96,7 @@ def sample_zabbix_data(db_session):
 
     # Create device connections
     conn1 = DeviceConnection(
+        network_name=network_name,
         timestamp=datetime.utcnow(),
         device_id=device1.id,
         is_connected=True,
@@ -97,6 +106,7 @@ def sample_zabbix_data(db_session):
         eero_node_id=node1.id,
     )
     conn2 = DeviceConnection(
+        network_name=network_name,
         timestamp=datetime.utcnow(),
         device_id=device2.id,
         is_connected=False,

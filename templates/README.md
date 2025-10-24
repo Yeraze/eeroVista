@@ -2,6 +2,22 @@
 
 This directory contains Zabbix templates for monitoring Eero mesh networks via eeroVista.
 
+## Multi-Network Support (v2.0+)
+
+**NEW**: Both templates now support multi-network monitoring. If you have multiple Eero networks:
+
+- **Option 1 (Default)**: Use one Zabbix host - all networks monitored together
+  - `{#NETWORK}` macro available in discovery for distinguishing devices/nodes
+  - No configuration changes needed - backwards compatible
+
+- **Option 2 (Recommended for multiple networks)**: Create separate Zabbix hosts per network
+  - Add `{$NETWORK_NAME}` macro to each host (e.g., "Home", "Office")
+  - Update discovery URLs to include: `?network={$NETWORK_NAME}`
+  - Each host monitors only its network's devices/nodes
+  - Better for independent SLA tracking and alerting
+
+See [Multi-Network Configuration](#multi-network-configuration) below for details.
+
 ## Available Templates
 
 ### 1. Single-Host Monitoring (Recommended for Small Networks)
@@ -101,6 +117,64 @@ Customize alert thresholds with macros (apply to single-host or device/node temp
 {$LATENCY_WARN} = 50    # Latency warning (ms)
 ```
 
+## Multi-Network Configuration
+
+### Option 1: Single Host (Default - Backwards Compatible)
+
+No changes needed! The templates work as-is:
+- Discovery will return all devices/nodes from the first network
+- `{#NETWORK}` macro is available in item names to show network name
+- All metrics collected under one Zabbix host
+
+### Option 2: Separate Zabbix Hosts Per Network
+
+For independent monitoring of multiple networks:
+
+1. **Get your network names**:
+   ```bash
+   curl http://eerovista:8080/api/networks
+   ```
+
+2. **Create a Zabbix host for each network**:
+   - Host: "eeroVista-Home"
+     - Macro: `{$NETWORK_NAME}` = `Home`
+   - Host: "eeroVista-Office"
+     - Macro: `{$NETWORK_NAME}` = `Office`
+
+3. **Modify discovery rule URLs** (for both templates):
+
+   Original:
+   ```
+   {$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/devices
+   ```
+
+   Updated:
+   ```
+   {$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/devices?network={$NETWORK_NAME}
+   ```
+
+   Do the same for:
+   - `/api/zabbix/discovery/nodes?network={$NETWORK_NAME}`
+
+4. **Modify data item URLs**:
+
+   Original:
+   ```
+   {$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=network.devices.total
+   ```
+
+   Updated:
+   ```
+   {$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/data?item=network.devices.total&network={$NETWORK_NAME}
+   ```
+
+**Benefits of Option 2**:
+- Independent SLA tracking per network
+- Separate maintenance windows
+- Network-specific dashboards
+- Cleaner problem isolation
+- Better for environments with distinct networks (home/office, prod/dev, etc.)
+
 ## Inventory Fields (Auto-Discovery)
 
 The auto-discovery templates set `inventory_mode=AUTOMATIC` for all created hosts.
@@ -114,6 +188,7 @@ the following information is available via host macros:
 - `{$DEVICE_TYPE}` - Device type (laptop, phone, tablet, etc.)
 - `{$DEVICE_IP}` - Last known IP address
 - `{$DEVICE_CONNECTION_TYPE}` - Connection type (wireless/wired)
+- `{$DEVICE_NETWORK}` - Network name (NEW in v2.0+)
 
 **Node Hosts**:
 - `{$NODE_ID}` - Eero node ID
@@ -122,6 +197,7 @@ the following information is available via host macros:
 - `{$NODE_IS_GATEWAY}` - Gateway flag (1=gateway, 0=leaf node)
 - `{$NODE_MAC}` - Node MAC address
 - `{$NODE_FIRMWARE}` - Firmware/OS version
+- `{$NODE_NETWORK}` - Network name (NEW in v2.0+)
 
 These macros can be used in:
 - Item names and descriptions

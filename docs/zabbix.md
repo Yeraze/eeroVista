@@ -8,6 +8,30 @@ eeroVista provides Zabbix-compatible endpoints for:
 - Low-Level Discovery (LLD) of devices and nodes
 - Metric collection via Zabbix Agent
 - Network topology monitoring
+- **Multi-network support** (filter metrics by network)
+
+## Multi-Network Support
+
+**New in v2.0+**: All Zabbix endpoints now support filtering by network name.
+
+If you have multiple Eero networks (e.g., home and office), you can:
+- Use the `network` query parameter to filter devices, nodes, and metrics by network
+- Create separate Zabbix hosts for each network
+- Monitor all networks independently
+
+**Query Parameter**: Add `?network=NetworkName` to any Zabbix endpoint URL.
+
+**Backwards Compatibility**: If the `network` parameter is not specified, eeroVista defaults to the first available network.
+
+**Example URLs**:
+```
+# Default (first network)
+http://eerovista:8080/api/zabbix/discovery/devices
+
+# Specific network
+http://eerovista:8080/api/zabbix/discovery/devices?network=Home
+http://eerovista:8080/api/zabbix/data?item=network.devices.total&network=Office
+```
 
 ## Architecture
 
@@ -130,6 +154,7 @@ If you prefer to configure everything manually instead of using the template:
 - `{#HOSTNAME}` - Device hostname
 - `{#NICKNAME}` - Device nickname
 - `{#TYPE}` - Device type
+- `{#NETWORK}` - Network name (NEW in v2.0+)
 
 **Item Prototypes**:
 
@@ -159,6 +184,7 @@ If you prefer to configure everything manually instead of using the template:
 - `{#NODE_NAME}` - Node name
 - `{#NODE_MODEL}` - Node model
 - `{#IS_GATEWAY}` - Gateway flag
+- `{#NETWORK}` - Network name (NEW in v2.0+)
 
 **Item Prototypes**:
 
@@ -233,6 +259,55 @@ Define these macros on the host or template:
 | `{$SIGNAL_CRIT}` | `-80` | Signal strength critical threshold |
 | `{$SPEED_WARN}` | `100` | Download speed warning (Mbps) |
 | `{$LATENCY_WARN}` | `50` | Latency warning (ms) |
+
+## Multi-Network Configuration
+
+### Option 1: Monitor All Networks with One Host
+
+Create a single Zabbix host that monitors all networks (default behavior):
+- Omit the `network` parameter from all URLs
+- eeroVista will default to the first network
+- Devices and nodes from all networks will be discovered together
+- Use `{#NETWORK}` macro in item names to distinguish between networks
+
+**When to use**: Simple setups, single network, or when you want all metrics in one place
+
+### Option 2: Separate Hosts Per Network
+
+Create multiple Zabbix hosts, one for each network:
+
+1. **Get your network names**:
+   ```bash
+   curl http://eerovista:8080/api/networks
+   ```
+
+2. **Create a Zabbix host for each network**:
+   - Host 1: "eeroVista-Home"
+     - Set macro: `{$NETWORK_NAME}` = "Home"
+   - Host 2: "eeroVista-Office"
+     - Set macro: `{$NETWORK_NAME}` = "Office"
+
+3. **Update discovery rules** to include network parameter:
+   ```
+   # Device Discovery for Home network
+   web.page.get[{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/devices?network={$NETWORK_NAME}]
+
+   # Node Discovery for Office network
+   web.page.get[{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/nodes?network={$NETWORK_NAME}]
+   ```
+
+4. **Update item URLs** to include network parameter:
+   ```
+   http://{HOST.CONN}:8080/api/zabbix/data?item=network.devices.total&network={$NETWORK_NAME}
+   ```
+
+**When to use**: Multiple networks that need independent monitoring, alerting, and reporting
+
+**Benefits**:
+- Independent SLA tracking per network
+- Separate maintenance windows
+- Network-specific dashboards
+- Cleaner problem isolation
 
 ## Discovery Rules Details
 
