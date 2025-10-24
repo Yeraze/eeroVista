@@ -5,22 +5,58 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
-from src.utils.database import get_db_context
+from src.eero_client import EeroClientWrapper
+from src.utils.database import get_db, get_db_context
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/zabbix", tags=["zabbix"])
 
 
+def get_eero_client(db: Session = Depends(get_db)) -> EeroClientWrapper:
+    """Dependency to get Eero client."""
+    return EeroClientWrapper(db)
+
+
+def get_network_name_filter(network: Optional[str], client: EeroClientWrapper) -> Optional[str]:
+    """
+    Get the network name to filter by.
+
+    If network is specified, use it.
+    If not specified, use the first available network for backwards compatibility.
+    Returns None only if no networks are available.
+    """
+    if network:
+        return network
+
+    # Default to first network for backwards compatibility
+    networks = client.get_networks()
+    if not networks:
+        return None
+
+    first_network = networks[0]
+    if isinstance(first_network, dict):
+        return first_network.get('name')
+    else:
+        return first_network.name
+
+
 @router.get("/discovery/devices")
-async def discover_devices() -> Dict[str, List[Dict[str, str]]]:
+async def discover_devices(
+    network: Optional[str] = Query(None, description="Network name to filter by. Defaults to first network."),
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, List[Dict[str, str]]]:
     """
     Zabbix Low-Level Discovery (LLD) for devices.
 
     Returns a list of all known devices in Zabbix LLD format.
     This endpoint should be configured as a discovery rule in Zabbix.
+
+    **Multi-Network Support**: Use the `network` query parameter to filter devices by network.
+    If not specified, defaults to the first available network for backwards compatibility.
 
     **Update Interval**: Recommended 5-10 minutes
 
@@ -31,6 +67,7 @@ async def discover_devices() -> Dict[str, List[Dict[str, str]]]:
     - `{#TYPE}` - Device type (mobile, computer, iot, etc.)
     - `{#IP}` - Last known IP address
     - `{#CONNECTION_TYPE}` - Connection type (wireless/wired)
+    - `{#NETWORK}` - Network name
 
     **Example Response**:
     ```json
@@ -40,17 +77,22 @@ async def discover_devices() -> Dict[str, List[Dict[str, str]]]:
           "{#MAC}": "AA:BB:CC:DD:EE:FF",
           "{#HOSTNAME}": "Johns-iPhone",
           "{#NICKNAME}": "John's Phone",
-          "{#TYPE}": "mobile"
+          "{#TYPE}": "mobile",
+          "{#NETWORK}": "Home"
         }
       ]
     }
     ```
     """
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {"data": []}
+
         with get_db_context() as db:
             from src.models.database import Device, DeviceConnection
 
-            devices = db.query(Device).all()
+            devices = db.query(Device).filter(Device.network_name == network_name).all()
 
             discovery_data = []
             for device in devices:
@@ -76,6 +118,7 @@ async def discover_devices() -> Dict[str, List[Dict[str, str]]]:
                     "{#TYPE}": device_type,
                     "{#IP}": ip_address,
                     "{#CONNECTION_TYPE}": connection_type,
+                    "{#NETWORK}": network_name,
                 })
 
             return {"data": discovery_data}
@@ -86,12 +129,18 @@ async def discover_devices() -> Dict[str, List[Dict[str, str]]]:
 
 
 @router.get("/discovery/nodes")
-async def discover_nodes() -> Dict[str, List[Dict[str, str]]]:
+async def discover_nodes(
+    network: Optional[str] = Query(None, description="Network name to filter by. Defaults to first network."),
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, List[Dict[str, str]]]:
     """
     Zabbix Low-Level Discovery (LLD) for Eero nodes.
 
     Returns a list of all Eero mesh nodes in Zabbix LLD format.
     This endpoint should be configured as a discovery rule in Zabbix.
+
+    **Multi-Network Support**: Use the `network` query parameter to filter nodes by network.
+    If not specified, defaults to the first available network for backwards compatibility.
 
     **Update Interval**: Recommended 10 minutes (nodes change infrequently)
 
@@ -102,6 +151,7 @@ async def discover_nodes() -> Dict[str, List[Dict[str, str]]]:
     - `{#IS_GATEWAY}` - Gateway flag ("1" or "0")
     - `{#MAC}` - Node MAC address
     - `{#FIRMWARE}` - Firmware/OS version
+    - `{#NETWORK}` - Network name
 
     **Example Response**:
     ```json
@@ -111,17 +161,22 @@ async def discover_nodes() -> Dict[str, List[Dict[str, str]]]:
           "{#NODE_ID}": "node_abc123",
           "{#NODE_NAME}": "Living Room",
           "{#NODE_MODEL}": "eero Pro 6E",
-          "{#IS_GATEWAY}": "1"
+          "{#IS_GATEWAY}": "1",
+          "{#NETWORK}": "Home"
         }
       ]
     }
     ```
     """
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {"data": []}
+
         with get_db_context() as db:
             from src.models.database import EeroNode
 
-            nodes = db.query(EeroNode).all()
+            nodes = db.query(EeroNode).filter(EeroNode.network_name == network_name).all()
 
             discovery_data = []
             for node in nodes:
@@ -138,6 +193,7 @@ async def discover_nodes() -> Dict[str, List[Dict[str, str]]]:
                     "{#IS_GATEWAY}": is_gateway,
                     "{#MAC}": mac_address,
                     "{#FIRMWARE}": firmware,
+                    "{#NETWORK}": network_name,
                 })
 
             return {"data": discovery_data}
@@ -172,13 +228,18 @@ def parse_item_key(item: str) -> tuple[str, Optional[str]]:
 
 @router.get("/data")
 async def get_metric_data(
-    item: str = Query(..., description="Zabbix item key (e.g., 'device.connected[MAC]')")
+    item: str = Query(..., description="Zabbix item key (e.g., 'device.connected[MAC]')"),
+    network: Optional[str] = Query(None, description="Network name to filter by. Defaults to first network."),
+    client: EeroClientWrapper = Depends(get_eero_client)
 ) -> Dict[str, Any]:
     """
     Get metric data for a specific Zabbix item.
 
     This endpoint returns the current value for the requested metric.
     Item keys follow the format: `metric_name` or `metric_name[identifier]`
+
+    **Multi-Network Support**: Use the `network` query parameter to filter metrics by network.
+    If not specified, defaults to the first available network for backwards compatibility.
 
     **Supported Metrics**:
 
@@ -219,6 +280,13 @@ async def get_metric_data(
     ```
     """
     try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(
+                status_code=404,
+                detail="No network available"
+            )
+
         metric_name, identifier = parse_item_key(item)
 
         with get_db_context() as db:
@@ -233,7 +301,12 @@ async def get_metric_data(
 
             # Network metrics
             if metric_name == "network.devices.total":
-                metric = db.query(NetworkMetric).order_by(NetworkMetric.timestamp.desc()).first()
+                metric = (
+                    db.query(NetworkMetric)
+                    .filter(NetworkMetric.network_name == network_name)
+                    .order_by(NetworkMetric.timestamp.desc())
+                    .first()
+                )
                 if metric:
                     return {
                         "value": metric.total_devices or 0,
@@ -241,7 +314,12 @@ async def get_metric_data(
                     }
 
             elif metric_name == "network.devices.online":
-                metric = db.query(NetworkMetric).order_by(NetworkMetric.timestamp.desc()).first()
+                metric = (
+                    db.query(NetworkMetric)
+                    .filter(NetworkMetric.network_name == network_name)
+                    .order_by(NetworkMetric.timestamp.desc())
+                    .first()
+                )
                 if metric:
                     return {
                         "value": metric.total_devices_online or 0,
@@ -249,7 +327,12 @@ async def get_metric_data(
                     }
 
             elif metric_name == "network.status":
-                metric = db.query(NetworkMetric).order_by(NetworkMetric.timestamp.desc()).first()
+                metric = (
+                    db.query(NetworkMetric)
+                    .filter(NetworkMetric.network_name == network_name)
+                    .order_by(NetworkMetric.timestamp.desc())
+                    .first()
+                )
                 if metric:
                     status_val = 1 if metric.wan_status == "online" else 0
                     return {
@@ -259,7 +342,12 @@ async def get_metric_data(
 
             # Speedtest metrics
             elif metric_name == "speedtest.download":
-                speedtest = db.query(Speedtest).order_by(Speedtest.timestamp.desc()).first()
+                speedtest = (
+                    db.query(Speedtest)
+                    .filter(Speedtest.network_name == network_name)
+                    .order_by(Speedtest.timestamp.desc())
+                    .first()
+                )
                 if speedtest and speedtest.download_mbps is not None:
                     return {
                         "value": speedtest.download_mbps,
@@ -267,7 +355,12 @@ async def get_metric_data(
                     }
 
             elif metric_name == "speedtest.upload":
-                speedtest = db.query(Speedtest).order_by(Speedtest.timestamp.desc()).first()
+                speedtest = (
+                    db.query(Speedtest)
+                    .filter(Speedtest.network_name == network_name)
+                    .order_by(Speedtest.timestamp.desc())
+                    .first()
+                )
                 if speedtest and speedtest.upload_mbps is not None:
                     return {
                         "value": speedtest.upload_mbps,
@@ -275,7 +368,12 @@ async def get_metric_data(
                     }
 
             elif metric_name == "speedtest.latency":
-                speedtest = db.query(Speedtest).order_by(Speedtest.timestamp.desc()).first()
+                speedtest = (
+                    db.query(Speedtest)
+                    .filter(Speedtest.network_name == network_name)
+                    .order_by(Speedtest.timestamp.desc())
+                    .first()
+                )
                 if speedtest and speedtest.latency_ms is not None:
                     return {
                         "value": speedtest.latency_ms,
@@ -290,7 +388,14 @@ async def get_metric_data(
                         detail=f"Device metric requires MAC address: {metric_name}[MAC]"
                     )
 
-                device = db.query(Device).filter(Device.mac_address == identifier).first()
+                device = (
+                    db.query(Device)
+                    .filter(
+                        Device.network_name == network_name,
+                        Device.mac_address == identifier
+                    )
+                    .first()
+                )
                 if not device:
                     raise HTTPException(
                         status_code=404,
@@ -353,7 +458,14 @@ async def get_metric_data(
                         detail=f"Node metric requires node ID: {metric_name}[NODE_ID]"
                     )
 
-                node = db.query(EeroNode).filter(EeroNode.eero_id == identifier).first()
+                node = (
+                    db.query(EeroNode)
+                    .filter(
+                        EeroNode.network_name == network_name,
+                        EeroNode.eero_id == identifier
+                    )
+                    .first()
+                )
                 if not node:
                     raise HTTPException(
                         status_code=404,

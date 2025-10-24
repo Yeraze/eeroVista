@@ -84,4 +84,83 @@
         </tr>
     </table>
 </div>
+
+<div class="card">
+    <div class="card-title">Database Maintenance</div>
+    <p class="text-muted">Clean up data from networks you're no longer authorized for</p>
+
+    <div id="cleanupStatus" class="alert" style="display: none;"></div>
+
+    <button id="cleanupButton" class="btn btn-warning" onclick="cleanupDatabase()">
+        <i class="bi bi-trash"></i> Clean Up Unauthorized Networks
+    </button>
+
+    <div class="alert alert-info mt-3">
+        <strong>What this does:</strong> Removes all devices, nodes, connections, and metrics for networks
+        that exist in your database but are not in your current authorized networks list. Useful after
+        testing with multiple networks or changing Eero accounts.
+    </div>
+</div>
+
+<script>
+async function cleanupDatabase() {
+    const button = document.getElementById('cleanupButton');
+    const statusDiv = document.getElementById('cleanupStatus');
+
+    // Confirm with user
+    if (!confirm('This will permanently delete all data for networks you are no longer authorized for. Continue?')) {
+        return;
+    }
+
+    // Disable button and show loading state
+    button.disabled = true;
+    button.innerHTML = '<i class="bi bi-hourglass-split"></i> Cleaning up...';
+    statusDiv.style.display = 'none';
+
+    try {
+        const response = await fetch('/api/database/cleanup', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.detail || 'Cleanup failed');
+        }
+
+        // Show success message
+        statusDiv.className = 'alert alert-success';
+        statusDiv.style.display = 'block';
+
+        if (data.removed_networks && data.removed_networks.length > 0) {
+            let message = `<strong>Success!</strong> Cleaned up ${data.removed_networks.length} network(s): ${data.removed_networks.join(', ')}<br><br>`;
+            message += '<strong>Deleted:</strong><ul>';
+
+            for (const [key, count] of Object.entries(data.deleted_counts)) {
+                if (count > 0) {
+                    message += `<li>${key.replace('_', ' ')}: ${count.toLocaleString()}</li>`;
+                }
+            }
+            message += `</ul><strong>Total records deleted: ${data.total_deleted.toLocaleString()}</strong>`;
+
+            statusDiv.innerHTML = message;
+        } else {
+            statusDiv.innerHTML = '<strong>No cleanup needed.</strong> ' + data.message;
+        }
+
+    } catch (error) {
+        // Show error message
+        statusDiv.className = 'alert alert-danger';
+        statusDiv.style.display = 'block';
+        statusDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
+    } finally {
+        // Re-enable button
+        button.disabled = false;
+        button.innerHTML = '<i class="bi bi-trash"></i> Clean Up Unauthorized Networks';
+    }
+}
+</script>
 {% endblock %}

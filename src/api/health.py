@@ -1607,3 +1607,198 @@ async def get_forwards_by_ip(
     except Exception as e:
         logger.error(f"Failed to get forwards for {ip_address}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/database/cleanup")
+async def cleanup_unauthorized_networks(
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, Any]:
+    """Clean up database records for networks the user is no longer authorized for.
+
+    This endpoint identifies and removes all data (devices, nodes, connections, metrics, etc.)
+    for networks that exist in the database but are not in the user's current authorized networks list.
+
+    **Use Case**: Useful after testing with multiple networks, changing Eero accounts, or losing
+    access to networks. Removes orphaned data to keep the database clean.
+
+    **What Gets Deleted**:
+    - Devices and all their connection history
+    - Eero nodes and their metrics
+    - Network metrics
+    - Speedtest results
+    - Daily bandwidth records
+    - IP reservations
+    - Port forwarding rules
+
+    **Safety**: Only deletes networks not in the current authorized list.
+    Current networks are never touched.
+
+    **Returns**:
+    ```json
+    {
+        "success": true,
+        "authorized_networks": ["Home", "Office"],
+        "removed_networks": ["OldNetwork", "TestNetwork"],
+        "deleted_counts": {
+            "devices": 45,
+            "device_connections": 12340,
+            "eero_nodes": 3,
+            ...
+        }
+    }
+    ```
+    """
+    try:
+        if not client.is_authenticated():
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        # Get currently authorized networks
+        networks = client.get_networks()
+        if not networks:
+            raise HTTPException(
+                status_code=400,
+                detail="No networks available. Cannot determine what to clean up."
+            )
+
+        authorized_networks = set()
+        for network in networks:
+            if isinstance(network, dict):
+                name = network.get('name')
+            else:
+                name = network.name
+            if name:
+                authorized_networks.add(name)
+
+        logger.info(f"Authorized networks: {authorized_networks}")
+
+        with get_db_context() as db:
+            from src.models.database import (
+                DailyBandwidth,
+                Device,
+                DeviceConnection,
+                EeroNode,
+                EeroNodeMetric,
+                IpReservation,
+                NetworkMetric,
+                PortForward,
+                Speedtest,
+            )
+
+            # Find all network names in database
+            all_db_networks = set()
+
+            # Check each table for network_name values
+            for model in [Device, EeroNode, NetworkMetric, Speedtest]:
+                result = db.query(model.network_name).distinct().all()
+                all_db_networks.update(row[0] for row in result if row[0])
+
+            # Find networks to remove (in database but not authorized)
+            networks_to_remove = all_db_networks - authorized_networks
+
+            if not networks_to_remove:
+                return {
+                    "success": True,
+                    "message": "No unauthorized networks found. Database is clean.",
+                    "authorized_networks": sorted(list(authorized_networks)),
+                    "removed_networks": [],
+                    "deleted_counts": {},
+                }
+
+            logger.info(f"Networks to remove: {networks_to_remove}")
+
+            # Track deletion counts
+            deleted_counts = {}
+
+            # Delete data for unauthorized networks
+            # Order matters due to foreign key relationships
+
+            # 1. DeviceConnection (child of Device)
+            count = db.query(DeviceConnection).filter(
+                DeviceConnection.network_name.in_(networks_to_remove)
+            ).delete(synchronize_session=False)
+            deleted_counts["device_connections"] = count
+            logger.info(f"Deleted {count} DeviceConnection records")
+
+            # 2. DailyBandwidth (child of Device)
+            count = db.query(DailyBandwidth).filter(
+                DailyBandwidth.network_name.in_(networks_to_remove)
+            ).delete(synchronize_session=False)
+            deleted_counts["daily_bandwidth"] = count
+            logger.info(f"Deleted {count} DailyBandwidth records")
+
+            # 3. Device
+            count = db.query(Device).filter(
+                Device.network_name.in_(networks_to_remove)
+            ).delete(synchronize_session=False)
+            deleted_counts["devices"] = count
+            logger.info(f"Deleted {count} Device records")
+
+            # 4. EeroNodeMetric (child of EeroNode)
+            # First get node IDs to delete
+            node_ids_to_delete = [
+                node.id for node in db.query(EeroNode.id).filter(
+                    EeroNode.network_name.in_(networks_to_remove)
+                ).all()
+            ]
+            if node_ids_to_delete:
+                count = db.query(EeroNodeMetric).filter(
+                    EeroNodeMetric.eero_node_id.in_(node_ids_to_delete)
+                ).delete(synchronize_session=False)
+                deleted_counts["eero_node_metrics"] = count
+                logger.info(f"Deleted {count} EeroNodeMetric records")
+
+            # 5. EeroNode
+            count = db.query(EeroNode).filter(
+                EeroNode.network_name.in_(networks_to_remove)
+            ).delete(synchronize_session=False)
+            deleted_counts["eero_nodes"] = count
+            logger.info(f"Deleted {count} EeroNode records")
+
+            # 6. NetworkMetric
+            count = db.query(NetworkMetric).filter(
+                NetworkMetric.network_name.in_(networks_to_remove)
+            ).delete(synchronize_session=False)
+            deleted_counts["network_metrics"] = count
+            logger.info(f"Deleted {count} NetworkMetric records")
+
+            # 7. Speedtest
+            count = db.query(Speedtest).filter(
+                Speedtest.network_name.in_(networks_to_remove)
+            ).delete(synchronize_session=False)
+            deleted_counts["speedtests"] = count
+            logger.info(f"Deleted {count} Speedtest records")
+
+            # 8. IpReservation
+            count = db.query(IpReservation).filter(
+                IpReservation.network_name.in_(networks_to_remove)
+            ).delete(synchronize_session=False)
+            deleted_counts["ip_reservations"] = count
+            logger.info(f"Deleted {count} IpReservation records")
+
+            # 9. PortForward
+            count = db.query(PortForward).filter(
+                PortForward.network_name.in_(networks_to_remove)
+            ).delete(synchronize_session=False)
+            deleted_counts["port_forwards"] = count
+            logger.info(f"Deleted {count} PortForward records")
+
+            # Commit all deletions
+            db.commit()
+
+            total_deleted = sum(deleted_counts.values())
+            logger.info(f"Database cleanup complete. Total records deleted: {total_deleted}")
+
+            return {
+                "success": True,
+                "message": f"Cleaned up {len(networks_to_remove)} unauthorized network(s)",
+                "authorized_networks": sorted(list(authorized_networks)),
+                "removed_networks": sorted(list(networks_to_remove)),
+                "deleted_counts": deleted_counts,
+                "total_deleted": total_deleted,
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to cleanup unauthorized networks: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

@@ -8,6 +8,30 @@ eeroVista provides Zabbix-compatible endpoints for:
 - Low-Level Discovery (LLD) of devices and nodes
 - Metric collection via Zabbix Agent
 - Network topology monitoring
+- **Multi-network support** (filter metrics by network)
+
+## Multi-Network Support
+
+**New in v2.0+**: All Zabbix endpoints now support filtering by network name.
+
+If you have multiple Eero networks (e.g., home and office), you can:
+- Use the `network` query parameter to filter devices, nodes, and metrics by network
+- Create separate Zabbix hosts for each network
+- Monitor all networks independently
+
+**Query Parameter**: Add `?network=NetworkName` to any Zabbix endpoint URL.
+
+**Backwards Compatibility**: If the `network` parameter is not specified, eeroVista defaults to the first available network.
+
+**Example URLs**:
+```
+# Default (first network)
+http://eerovista:8080/api/zabbix/discovery/devices
+
+# Specific network
+http://eerovista:8080/api/zabbix/discovery/devices?network=Home
+http://eerovista:8080/api/zabbix/data?item=network.devices.total&network=Office
+```
 
 ## Architecture
 
@@ -130,6 +154,7 @@ If you prefer to configure everything manually instead of using the template:
 - `{#HOSTNAME}` - Device hostname
 - `{#NICKNAME}` - Device nickname
 - `{#TYPE}` - Device type
+- `{#NETWORK}` - Network name (NEW in v2.0+)
 
 **Item Prototypes**:
 
@@ -159,6 +184,7 @@ If you prefer to configure everything manually instead of using the template:
 - `{#NODE_NAME}` - Node name
 - `{#NODE_MODEL}` - Node model
 - `{#IS_GATEWAY}` - Gateway flag
+- `{#NETWORK}` - Network name (NEW in v2.0+)
 
 **Item Prototypes**:
 
@@ -233,6 +259,55 @@ Define these macros on the host or template:
 | `{$SIGNAL_CRIT}` | `-80` | Signal strength critical threshold |
 | `{$SPEED_WARN}` | `100` | Download speed warning (Mbps) |
 | `{$LATENCY_WARN}` | `50` | Latency warning (ms) |
+
+## Multi-Network Configuration
+
+### Option 1: Monitor All Networks with One Host
+
+Create a single Zabbix host that monitors all networks (default behavior):
+- Omit the `network` parameter from all URLs
+- eeroVista will default to the first network
+- Devices and nodes from all networks will be discovered together
+- Use `{#NETWORK}` macro in item names to distinguish between networks
+
+**When to use**: Simple setups, single network, or when you want all metrics in one place
+
+### Option 2: Separate Hosts Per Network
+
+Create multiple Zabbix hosts, one for each network:
+
+1. **Get your network names**:
+   ```bash
+   curl http://eerovista:8080/api/networks
+   ```
+
+2. **Create a Zabbix host for each network**:
+   - Host 1: "eeroVista-Home"
+     - Set macro: `{$NETWORK_NAME}` = "Home"
+   - Host 2: "eeroVista-Office"
+     - Set macro: `{$NETWORK_NAME}` = "Office"
+
+3. **Update discovery rules** to include network parameter:
+   ```
+   # Device Discovery for Home network
+   web.page.get[{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/devices?network={$NETWORK_NAME}]
+
+   # Node Discovery for Office network
+   web.page.get[{$EEROVISTA_SCHEME}://{HOST.CONN}:{$EEROVISTA_PORT}/api/zabbix/discovery/nodes?network={$NETWORK_NAME}]
+   ```
+
+4. **Update item URLs** to include network parameter:
+   ```
+   http://{HOST.CONN}:8080/api/zabbix/data?item=network.devices.total&network={$NETWORK_NAME}
+   ```
+
+**When to use**: Multiple networks that need independent monitoring, alerting, and reporting
+
+**Benefits**:
+- Independent SLA tracking per network
+- Separate maintenance windows
+- Network-specific dashboards
+- Cleaner problem isolation
 
 ## Discovery Rules Details
 
@@ -459,6 +534,41 @@ If eeroVista is being overloaded:
    - Filter devices by type in discovery rule
    - Remove unused items
 
+## Lifecycle Management
+
+### Automatic Cleanup of Removed Devices/Nodes
+
+Zabbix automatically removes discovered items that no longer appear in discovery results using the **"Keep lost resources period"** setting.
+
+**How it works**:
+1. When a device/node is removed from your Eero network, it stops appearing in eeroVista's discovery endpoint
+2. Zabbix detects the item is "lost" (missing from latest discovery)
+3. After the configured period, Zabbix automatically removes the item, host, and triggers
+
+**Recommended Settings**:
+
+For **Device Discovery** rule:
+- Keep lost resources period: **1 day** (24 hours)
+- Reason: Devices frequently disconnect/reconnect (phones, laptops)
+- Prevents premature cleanup of temporarily offline devices
+
+For **Node Discovery** rule:
+- Keep lost resources period: **7 days** (1 week)
+- Reason: Nodes are infrastructure and rarely removed
+- Allows time to notice and investigate missing nodes before cleanup
+
+**Configuration in Zabbix**:
+1. Go to: Configuration → Templates → eeroVista template → Discovery rules
+2. Click on discovery rule (Devices or Nodes)
+3. Set "Keep lost resources period" field
+4. Save
+
+**Important Notes**:
+- Historical data is preserved even after cleanup (based on your history retention settings)
+- If a device returns, it will be rediscovered automatically
+- For auto-discovery template: Lost hosts are also deleted after the period
+- You can manually delete items immediately via Zabbix UI if needed
+
 ## Best Practices
 
 1. **Update Intervals**:
@@ -479,6 +589,11 @@ If eeroVista is being overloaded:
    - Use Agent items (not external scripts)
    - Batch discovery updates
    - Enable value caching in eeroVista (future feature)
+
+5. **Lifecycle Management**:
+   - Set "Keep lost resources" appropriately (1 day for devices, 7 days for nodes)
+   - Monitor for devices that frequently appear/disappear (may need longer retention)
+   - Review deleted items periodically to ensure cleanup is working as expected
 
 ## Complete Zabbix Templates
 
