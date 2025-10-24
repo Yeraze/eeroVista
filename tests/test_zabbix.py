@@ -728,19 +728,16 @@ class TestZabbixMultiNetwork:
     def test_discover_devices_filters_by_network(self, multi_network_data):
         """Test that device discovery filters by network parameter."""
         from src.main import app
-        from unittest.mock import MagicMock
 
         # Mock the client to return both networks
         mock_net1 = type('obj', (object,), {'name': 'Network1'})()
         mock_net2 = type('obj', (object,), {'name': 'Network2'})()
 
-        # Create a mock context manager that yields the db_session
-        mock_cm = MagicMock()
-        mock_cm.__enter__.return_value = multi_network_data
-        mock_cm.__exit__.return_value = False
-
         with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class, \
-             patch('src.api.zabbix.get_db_context', return_value=mock_cm):
+             patch('src.api.zabbix.get_db_context') as mock_db_context:
+            # Configure the mock context manager
+            mock_db_context.return_value.__enter__.return_value = multi_network_data
+            mock_db_context.return_value.__exit__.return_value = None
             mock_client = mock_client_class.return_value
             mock_client.get_networks.return_value = [mock_net1, mock_net2]
 
@@ -765,19 +762,16 @@ class TestZabbixMultiNetwork:
     def test_discover_nodes_filters_by_network(self, multi_network_data):
         """Test that node discovery filters by network parameter."""
         from src.main import app
-        from unittest.mock import MagicMock
 
         # Mock the client to return both networks
         mock_net1 = type('obj', (object,), {'name': 'Network1'})()
         mock_net2 = type('obj', (object,), {'name': 'Network2'})()
 
-        # Create a mock context manager that yields the db_session
-        mock_cm = MagicMock()
-        mock_cm.__enter__.return_value = multi_network_data
-        mock_cm.__exit__.return_value = False
-
         with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class, \
-             patch('src.api.zabbix.get_db_context', return_value=mock_cm):
+             patch('src.api.zabbix.get_db_context') as mock_db_context:
+            # Configure the mock context manager
+            mock_db_context.return_value.__enter__.return_value = multi_network_data
+            mock_db_context.return_value.__exit__.return_value = None
             mock_client = mock_client_class.return_value
             mock_client.get_networks.return_value = [mock_net1, mock_net2]
 
@@ -802,19 +796,16 @@ class TestZabbixMultiNetwork:
     def test_metrics_filter_by_network(self, multi_network_data):
         """Test that metric data filters by network parameter."""
         from src.main import app
-        from unittest.mock import MagicMock
 
         # Mock the client to return both networks
         mock_net1 = type('obj', (object,), {'name': 'Network1'})()
         mock_net2 = type('obj', (object,), {'name': 'Network2'})()
 
-        # Create a mock context manager that yields the db_session
-        mock_cm = MagicMock()
-        mock_cm.__enter__.return_value = multi_network_data
-        mock_cm.__exit__.return_value = False
-
         with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class, \
-             patch('src.api.zabbix.get_db_context', return_value=mock_cm):
+             patch('src.api.zabbix.get_db_context') as mock_db_context:
+            # Configure the mock context manager
+            mock_db_context.return_value.__enter__.return_value = multi_network_data
+            mock_db_context.return_value.__exit__.return_value = None
             mock_client = mock_client_class.return_value
             mock_client.get_networks.return_value = [mock_net1, mock_net2]
 
@@ -833,18 +824,15 @@ class TestZabbixMultiNetwork:
     def test_defaults_to_first_network_when_parameter_omitted(self, multi_network_data):
         """Test backwards compatibility: defaults to first network when parameter omitted."""
         from src.main import app
-        from unittest.mock import MagicMock
 
         # Mock the client to return Network2 as the first network
         mock_net2 = type('obj', (object,), {'name': 'Network2'})()
 
-        # Create a mock context manager that yields the db_session
-        mock_cm = MagicMock()
-        mock_cm.__enter__.return_value = multi_network_data
-        mock_cm.__exit__.return_value = False
-
         with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class, \
-             patch('src.api.zabbix.get_db_context', return_value=mock_cm):
+             patch('src.api.zabbix.get_db_context') as mock_db_context:
+            # Configure the mock context manager
+            mock_db_context.return_value.__enter__.return_value = multi_network_data
+            mock_db_context.return_value.__exit__.return_value = None
             mock_client = mock_client_class.return_value
             mock_client.get_networks.return_value = [mock_net2]
 
@@ -860,17 +848,14 @@ class TestZabbixMultiNetwork:
     def test_network_macro_included_in_discovery(self, multi_network_data):
         """Test that {#NETWORK} macro is included in all discovery responses."""
         from src.main import app
-        from unittest.mock import MagicMock
 
         mock_net1 = type('obj', (object,), {'name': 'Network1'})()
 
-        # Create a mock context manager that yields the db_session
-        mock_cm = MagicMock()
-        mock_cm.__enter__.return_value = multi_network_data
-        mock_cm.__exit__.return_value = False
-
         with patch('src.api.zabbix.EeroClientWrapper') as mock_client_class, \
-             patch('src.api.zabbix.get_db_context', return_value=mock_cm):
+             patch('src.api.zabbix.get_db_context') as mock_db_context:
+            # Configure the mock context manager
+            mock_db_context.return_value.__enter__.return_value = multi_network_data
+            mock_db_context.return_value.__exit__.return_value = None
             mock_client = mock_client_class.return_value
             mock_client.get_networks.return_value = [mock_net1]
 
