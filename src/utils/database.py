@@ -5,6 +5,7 @@ from typing import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from src.config import get_settings
 
@@ -23,10 +24,12 @@ def get_engine():
             database_url,
             connect_args={"check_same_thread": False},  # Required for SQLite
             echo=settings.debug,
-            pool_size=20,  # Increased from default 5 for concurrent collectors/API requests
-            max_overflow=30,  # Increased from default 10 for startup surge
-            pool_timeout=60,  # Increased from default 30 for busy periods
-            pool_pre_ping=True,  # Verify connections before use
+            poolclass=NullPool,  # No connection pooling - creates new connection per request
+            # NullPool is optimal for SQLite because:
+            # 1. SQLite uses database-level locks, not connection-level
+            # 2. Connection pooling doesn't improve SQLite concurrency
+            # 3. Prevents connection pool exhaustion and stale connection issues
+            # 4. Each request gets a fresh connection that's immediately closed
         )
     return _engine
 
