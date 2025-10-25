@@ -732,9 +732,18 @@ async def get_device_bandwidth_history(
             if not device:
                 raise HTTPException(status_code=404, detail="Device not found in this network")
 
-            # Calculate time range
+            # Calculate time range (timezone-aware)
             from datetime import timedelta
-            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            from src.config import get_settings
+            from zoneinfo import ZoneInfo
+
+            settings = get_settings()
+            tz = settings.get_timezone()
+
+            # Get current time in local timezone, then convert to UTC for database query
+            now_local = datetime.now(tz)
+            cutoff_local = now_local - timedelta(hours=hours)
+            cutoff_time = cutoff_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
 
             # Get bandwidth history
             connections = (
@@ -747,11 +756,15 @@ async def get_device_bandwidth_history(
                 .all()
             )
 
-            # Format data for graphing
+            # Format data for graphing (convert timestamps to local timezone)
             history = []
             for conn in connections:
+                # Database stores UTC naive datetime, convert to local timezone
+                timestamp_utc = conn.timestamp.replace(tzinfo=ZoneInfo("UTC"))
+                timestamp_local = timestamp_utc.astimezone(tz)
+
                 history.append({
-                    "timestamp": conn.timestamp.isoformat(),
+                    "timestamp": timestamp_local.isoformat(),
                     "download_mbps": conn.bandwidth_down_mbps,
                     "upload_mbps": conn.bandwidth_up_mbps,
                     "is_connected": conn.is_connected,
@@ -1350,8 +1363,10 @@ async def get_network_bandwidth_hourly(
             hourly_query = (
                 db.query(
                     # Extract hour with timezone offset adjustment
+                    # Cast strftime result to integer BEFORE doing math
+                    # Use ((x % 24) + 24) % 24 to handle negative results correctly in SQLite
                     func.cast(
-                        (func.strftime('%H', DeviceConnection.timestamp) + offset_hours) % 24,
+                        ((func.cast(func.strftime('%H', DeviceConnection.timestamp), Integer) + offset_hours) % 24 + 24) % 24,
                         Integer
                     ).label('hour'),
                     func.sum(
