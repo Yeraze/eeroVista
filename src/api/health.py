@@ -339,44 +339,60 @@ async def get_network_topology(
                     })
 
             # Get all online devices with their connections for this network
-            devices_list = []
-            devices = db.query(Device).filter(
-                Device.network_name == network_name
-            ).all()
-
-            for device in devices:
-                # Get most recent connection
-                latest_connection = (
-                    db.query(DeviceConnection)
-                    .filter(DeviceConnection.device_id == device.id)
-                    .order_by(DeviceConnection.timestamp.desc())
-                    .first()
+            # Use optimized JOIN query to avoid N+1 query problem
+            # Subquery to get latest connection timestamp for each device
+            from sqlalchemy import func
+            latest_conn_subq = (
+                db.query(
+                    DeviceConnection.device_id,
+                    func.max(DeviceConnection.timestamp).label('max_timestamp')
                 )
+                .group_by(DeviceConnection.device_id)
+                .subquery()
+            )
 
-                # Only include online devices
-                if latest_connection and latest_connection.is_connected:
-                    device_name = device.nickname or device.hostname or device.manufacturer or device.mac_address
+            # Main query with JOINs to get all data in one query
+            devices_query = (
+                db.query(Device, DeviceConnection, EeroNode)
+                .join(
+                    latest_conn_subq,
+                    Device.id == latest_conn_subq.c.device_id
+                )
+                .join(
+                    DeviceConnection,
+                    (DeviceConnection.device_id == Device.id) &
+                    (DeviceConnection.timestamp == latest_conn_subq.c.max_timestamp)
+                )
+                .outerjoin(  # LEFT JOIN since device might not be connected to a node
+                    EeroNode,
+                    EeroNode.id == DeviceConnection.eero_node_id
+                )
+                .filter(
+                    Device.network_name == network_name,
+                    DeviceConnection.is_connected == True  # Only online devices
+                )
+                .all()
+            )
 
-                    # Get node name
-                    node_name = None
-                    if latest_connection.eero_node_id:
-                        node = db.query(EeroNode).filter(EeroNode.id == latest_connection.eero_node_id).first()
-                        if node:
-                            node_name = node.location
+            # Build devices list from query results
+            devices_list = []
+            for device, connection, node in devices_query:
+                device_name = device.nickname or device.hostname or device.manufacturer or device.mac_address
+                node_name = node.location if node else None
 
-                    devices_list.append({
-                        "id": f"device_{device.id}",
-                        "name": device_name,
-                        "type": device.device_type or "unknown",
-                        "connection_type": latest_connection.connection_type or "unknown",
-                        "ip_address": latest_connection.ip_address,
-                        "node_id": f"node_{latest_connection.eero_node_id}" if latest_connection.eero_node_id else None,
-                        "node_name": node_name or "N/A",
-                        "mac_address": device.mac_address,
-                        "signal_strength": latest_connection.signal_strength,
-                        "last_seen": device.last_seen.isoformat() if device.last_seen else None,
-                        "is_online": latest_connection.is_connected or False,
-                    })
+                devices_list.append({
+                    "id": f"device_{device.id}",
+                    "name": device_name,
+                    "type": device.device_type or "unknown",
+                    "connection_type": connection.connection_type or "unknown",
+                    "ip_address": connection.ip_address,
+                    "node_id": f"node_{connection.eero_node_id}" if connection.eero_node_id else None,
+                    "node_name": node_name or "N/A",
+                    "mac_address": device.mac_address,
+                    "signal_strength": connection.signal_strength,
+                    "last_seen": device.last_seen.isoformat() if device.last_seen else None,
+                    "is_online": connection.is_connected or False,
+                })
 
             return {
                 "nodes": nodes,
@@ -416,23 +432,45 @@ async def get_devices(
             from src.models.database import Device, DeviceConnection, EeroNode
 
             # Get all devices with their most recent connection for this network
-            devices_list = []
+            # Use optimized JOIN query to avoid N+1 query problem
+            from sqlalchemy import func
 
-            devices = db.query(Device).filter(
-                Device.network_name == network_name
-            ).all()
-
-            for device in devices:
-                # Get most recent connection record
-                latest_connection = (
-                    db.query(DeviceConnection)
-                    .filter(DeviceConnection.device_id == device.id)
-                    .order_by(DeviceConnection.timestamp.desc())
-                    .first()
+            # Subquery to get latest connection timestamp for each device
+            latest_conn_subq = (
+                db.query(
+                    DeviceConnection.device_id,
+                    func.max(DeviceConnection.timestamp).label('max_timestamp')
                 )
+                .group_by(DeviceConnection.device_id)
+                .subquery()
+            )
 
+            # Main query with JOINs to get all data in one query
+            # Use outerjoin for connections and nodes since some devices may not have recent connections
+            devices_query = (
+                db.query(Device, DeviceConnection, EeroNode)
+                .outerjoin(
+                    latest_conn_subq,
+                    Device.id == latest_conn_subq.c.device_id
+                )
+                .outerjoin(
+                    DeviceConnection,
+                    (DeviceConnection.device_id == Device.id) &
+                    (DeviceConnection.timestamp == latest_conn_subq.c.max_timestamp)
+                )
+                .outerjoin(
+                    EeroNode,
+                    EeroNode.id == DeviceConnection.eero_node_id
+                )
+                .filter(Device.network_name == network_name)
+                .all()
+            )
+
+            # Build devices list from query results
+            devices_list = []
+            for device, connection, node in devices_query:
                 # Get eero node name if connected to one
-                node_name = None
+                node_name = node.location if node else None
                 connection_type = "unknown"
                 ip_address = "N/A"
                 is_online = False
@@ -441,19 +479,14 @@ async def get_devices(
                 bandwidth_down = None
                 bandwidth_up = None
 
-                if latest_connection:
-                    if latest_connection.eero_node_id:
-                        node = db.query(EeroNode).filter(EeroNode.id == latest_connection.eero_node_id).first()
-                        if node:
-                            node_name = node.location
-
-                    ip_address = latest_connection.ip_address or "N/A"
-                    is_online = latest_connection.is_connected or False
-                    connection_type = latest_connection.connection_type or "unknown"
-                    is_guest = latest_connection.is_guest or False
-                    signal_strength = latest_connection.signal_strength
-                    bandwidth_down = latest_connection.bandwidth_down_mbps
-                    bandwidth_up = latest_connection.bandwidth_up_mbps
+                if connection:
+                    ip_address = connection.ip_address or "N/A"
+                    is_online = connection.is_connected or False
+                    connection_type = connection.connection_type or "unknown"
+                    is_guest = connection.is_guest or False
+                    signal_strength = connection.signal_strength
+                    bandwidth_down = connection.bandwidth_down_mbps
+                    bandwidth_up = connection.bandwidth_up_mbps
 
                 device_name = device.nickname or device.hostname or device.manufacturer or device.mac_address
 

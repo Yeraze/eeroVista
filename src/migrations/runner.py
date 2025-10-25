@@ -69,6 +69,7 @@ def run_migrations(session: Session, eero_client, retry_skipped: bool = False) -
         ('002_update_unique_constraints', 'src.migrations.002_update_unique_constraints', False),
         ('003_fix_routing_constraints', 'src.migrations.003_fix_routing_constraints', False),
         ('004_correct_network_assignments', 'src.migrations.004_correct_network_assignments', True),  # Requires auth
+        ('005_add_performance_indexes', 'src.migrations.005_add_performance_indexes', False),
     ]
 
     for migration_name, module_path, requires_auth in migrations:
