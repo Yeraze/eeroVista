@@ -4,12 +4,89 @@
 
 {% block extra_css %}
 <style>
+    .network-graph-container {
+        position: relative;
+        width: 100%;
+    }
+
     #network-graph {
         width: 100%;
         height: 600px;
         background-color: var(--mantle);
         border-radius: 8px;
         border: 1px solid var(--surface0);
+    }
+
+    .zoom-control {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background: var(--base);
+        border: 1px solid var(--surface1);
+        border-radius: 8px;
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        align-items: center;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        z-index: 10;
+    }
+
+    .zoom-control label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--subtext1);
+        margin: 0;
+    }
+
+    .zoom-slider {
+        writing-mode: bt-lr;
+        -webkit-appearance: slider-vertical;
+        width: 8px;
+        height: 120px;
+        padding: 0;
+        margin: 0.5rem 0;
+        background: transparent;
+    }
+
+    .zoom-slider::-webkit-slider-runnable-track {
+        width: 8px;
+        height: 120px;
+        background: var(--surface0);
+        border-radius: 4px;
+    }
+
+    .zoom-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--blue);
+        cursor: pointer;
+        margin-left: -4px;
+    }
+
+    .zoom-slider::-moz-range-track {
+        width: 8px;
+        height: 120px;
+        background: var(--surface0);
+        border-radius: 4px;
+    }
+
+    .zoom-slider::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--blue);
+        cursor: pointer;
+        border: none;
+    }
+
+    .zoom-value {
+        font-size: 0.75rem;
+        color: var(--text);
+        font-weight: 500;
     }
 
     .node-eero {
@@ -185,6 +262,15 @@
     .node-cursor {
         cursor: pointer;
     }
+
+    #reset-view-btn:hover {
+        background-color: var(--surface0);
+        border-color: var(--surface2);
+    }
+
+    #reset-view-btn:active {
+        background-color: var(--surface1);
+    }
 </style>
 {% endblock %}
 
@@ -207,6 +293,12 @@
         </span>
     </div>
     <p class="text-muted">Interactive visualization showing devices connected to each eero node. Drag nodes to rearrange.</p>
+
+    <div style="margin-bottom: 1rem;">
+        <button id="reset-view-btn" style="padding: 0.5rem 1rem; border: 1px solid var(--surface1); border-radius: 6px; background: var(--base); color: var(--text); font-size: 0.875rem; cursor: pointer; font-weight: 500;">
+            Reset View
+        </button>
+    </div>
 
     <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
         <div class="legend-item">
@@ -239,7 +331,14 @@
         </div>
     </div>
 
-    <svg id="network-graph"></svg>
+    <div class="network-graph-container">
+        <div class="zoom-control">
+            <label>Zoom</label>
+            <input type="range" id="zoom-slider" class="zoom-slider" min="50" max="300" value="100" step="10" orient="vertical">
+            <span class="zoom-value" id="zoom-value">100%</span>
+        </div>
+        <svg id="network-graph"></svg>
+    </div>
 </div>
 
 <!-- Node Details Modal -->
@@ -258,6 +357,10 @@
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script>
     let topologyData = null;
+    let currentSimulation = null;
+    let currentZoom = null;
+    let currentSvg = null;
+    let currentG = null;
 
     // Get current selected network
     function getSelectedNetwork() {
@@ -289,12 +392,12 @@
         // Clear existing graph
         d3.select('#network-graph').selectAll('*').remove();
 
-        const svg = d3.select('#network-graph');
+        currentSvg = d3.select('#network-graph');
         const container = document.getElementById('network-graph').parentElement;
         const width = container.clientWidth;
         const height = 600;
 
-        svg.attr('width', width).attr('height', height);
+        currentSvg.attr('width', width).attr('height', height);
 
         // Create graph data structure
         const nodes = [
@@ -327,26 +430,28 @@
         ];
 
         // Create force simulation
-        const simulation = d3.forceSimulation(nodes)
+        currentSimulation = d3.forceSimulation(nodes)
             .force('link', d3.forceLink(links).id(d => d.id).distance(100))
             .force('charge', d3.forceManyBody().strength(-300))
             .force('center', d3.forceCenter(width / 2, height / 2))
             .force('collision', d3.forceCollide().radius(d => d.radius + 5));
 
         // Create container group
-        const g = svg.append('g');
+        currentG = currentSvg.append('g');
 
         // Add zoom behavior
-        const zoom = d3.zoom()
+        currentZoom = d3.zoom()
             .scaleExtent([0.5, 3])
             .on('zoom', (event) => {
-                g.attr('transform', event.transform);
+                currentG.attr('transform', event.transform);
+                // Update slider to match zoom level
+                updateZoomSlider(event.transform);
             });
 
-        svg.call(zoom);
+        currentSvg.call(currentZoom);
 
         // Draw links
-        const link = g.append('g')
+        const link = currentG.append('g')
             .selectAll('line')
             .data(links)
             .join('line')
@@ -357,7 +462,7 @@
             });
 
         // Draw nodes
-        const node = g.append('g')
+        const node = currentG.append('g')
             .selectAll('circle')
             .data(nodes)
             .join('circle')
@@ -383,7 +488,7 @@
                 .on('end', dragended));
 
         // Add labels
-        const labels = g.append('g')
+        const labels = currentG.append('g')
             .selectAll('text')
             .data(nodes)
             .join('text')
@@ -409,7 +514,7 @@
             });
 
         // Update positions on simulation tick
-        simulation.on('tick', () => {
+        currentSimulation.on('tick', () => {
             link
                 .attr('x1', d => d.source.x)
                 .attr('y1', d => d.source.y)
@@ -427,7 +532,7 @@
 
         // Drag functions
         function dragstarted(event, d) {
-            if (!event.active) simulation.alphaTarget(0.3).restart();
+            if (!event.active) currentSimulation.alphaTarget(0.3).restart();
             d.fx = d.x;
             d.fy = d.y;
         }
@@ -438,10 +543,35 @@
         }
 
         function dragended(event, d) {
-            if (!event.active) simulation.alphaTarget(0);
+            if (!event.active) currentSimulation.alphaTarget(0);
             d.fx = null;
             d.fy = null;
         }
+    }
+
+    // Reset view function
+    function resetView() {
+        if (!currentSvg || !currentZoom || !currentSimulation) {
+            return;
+        }
+
+        // Reset zoom transform to identity
+        currentSvg.transition()
+            .duration(750)
+            .call(currentZoom.transform, d3.zoomIdentity);
+
+        // Reset zoom slider
+        document.getElementById('zoom-slider').value = 100;
+        document.getElementById('zoom-value').textContent = '100%';
+
+        // Unfix all nodes
+        currentSimulation.nodes().forEach(node => {
+            node.fx = null;
+            node.fy = null;
+        });
+
+        // Restart simulation to recenter
+        currentSimulation.alpha(1).restart();
     }
 
     // Modal functions
@@ -565,6 +695,40 @@
             hideModal();
         }
     });
+
+    // Reset view button event listener
+    document.getElementById('reset-view-btn').addEventListener('click', resetView);
+
+    // Zoom slider event listener
+    const zoomSlider = document.getElementById('zoom-slider');
+    const zoomValue = document.getElementById('zoom-value');
+
+    zoomSlider.addEventListener('input', function() {
+        const scale = this.value / 100;
+        zoomValue.textContent = this.value + '%';
+
+        if (currentSvg && currentZoom) {
+            const container = document.getElementById('network-graph').parentElement;
+            const width = container.clientWidth;
+            const height = 600;
+
+            // Apply zoom transformation centered on the viewport
+            currentSvg.transition()
+                .duration(250)
+                .call(currentZoom.transform, d3.zoomIdentity
+                    .translate(width / 2, height / 2)
+                    .scale(scale)
+                    .translate(-width / 2, -height / 2)
+                );
+        }
+    });
+
+    // Update slider when zoom changes via mouse/touch
+    function updateZoomSlider(transform) {
+        const scale = Math.round(transform.k * 100);
+        zoomSlider.value = scale;
+        zoomValue.textContent = scale + '%';
+    }
 
     // Load networks and populate dropdown
     async function loadNetworks() {
