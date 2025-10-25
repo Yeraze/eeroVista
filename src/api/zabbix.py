@@ -91,25 +91,44 @@ async def discover_devices(
 
         with get_db_context() as db:
             from src.models.database import Device, DeviceConnection
+            from sqlalchemy import func
 
-            devices = db.query(Device).filter(Device.network_name == network_name).all()
+            # Use optimized JOIN query to avoid N+1 query problem
+            # Subquery to get latest connection timestamp for each device
+            latest_conn_subq = (
+                db.query(
+                    DeviceConnection.device_id,
+                    func.max(DeviceConnection.timestamp).label('max_timestamp')
+                )
+                .group_by(DeviceConnection.device_id)
+                .subquery()
+            )
 
+            # Main query with JOINs to get all data in one query
+            devices_query = (
+                db.query(Device, DeviceConnection)
+                .outerjoin(
+                    latest_conn_subq,
+                    Device.id == latest_conn_subq.c.device_id
+                )
+                .outerjoin(
+                    DeviceConnection,
+                    (DeviceConnection.device_id == Device.id) &
+                    (DeviceConnection.timestamp == latest_conn_subq.c.max_timestamp)
+                )
+                .filter(Device.network_name == network_name)
+                .all()
+            )
+
+            # Build discovery data from query results
             discovery_data = []
-            for device in devices:
+            for device, connection in devices_query:
                 hostname = device.hostname or "Unknown"
                 nickname = device.nickname or hostname
                 device_type = device.device_type or "unknown"
 
-                # Get latest connection for IP and connection type
-                latest_conn = (
-                    db.query(DeviceConnection)
-                    .filter(DeviceConnection.device_id == device.id)
-                    .order_by(DeviceConnection.timestamp.desc())
-                    .first()
-                )
-
-                ip_address = latest_conn.ip_address if latest_conn and latest_conn.ip_address else "Unknown"
-                connection_type = latest_conn.connection_type if latest_conn and latest_conn.connection_type else "unknown"
+                ip_address = connection.ip_address if connection and connection.ip_address else "Unknown"
+                connection_type = connection.connection_type if connection and connection.connection_type else "unknown"
 
                 discovery_data.append({
                     "{#MAC}": device.mac_address,

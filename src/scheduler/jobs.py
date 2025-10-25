@@ -4,6 +4,7 @@ import logging
 from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from src.collectors import DeviceCollector, NetworkCollector, RoutingCollector, SpeedtestCollector
@@ -74,12 +75,22 @@ class CollectorScheduler:
             replace_existing=True,
         )
 
+        # Database cleanup - run daily at 3 AM to remove old records
+        self.scheduler.add_job(
+            func=self._run_database_cleanup,
+            trigger=CronTrigger(hour=3, minute=0),
+            id="database_cleanup",
+            name="Database Cleanup",
+            replace_existing=True,
+        )
+
         # Start the scheduler
         self.scheduler.start()
         logger.info(
             f"Scheduler started - device collector: {device_interval}s, "
             f"network/speedtest collectors: {network_interval}s, "
-            f"routing collector: {routing_interval}s"
+            f"routing collector: {routing_interval}s, "
+            f"database cleanup: daily at 3:00 AM"
         )
 
         # Run collectors immediately on startup
@@ -185,6 +196,26 @@ class CollectorScheduler:
 
         except Exception as e:
             logger.error(f"Routing collector error: {e}", exc_info=True)
+
+    def _run_database_cleanup(self) -> None:
+        """Run database cleanup to remove old records."""
+        try:
+            from src.utils.cleanup import run_all_cleanup_tasks
+
+            with get_db_context() as db:
+                # Keep 30 days of data
+                result = run_all_cleanup_tasks(db, retention_days=30)
+
+                if result.get("success"):
+                    logger.info(
+                        f"Database cleanup complete: "
+                        f"{result.get('total_records_deleted', 0)} records deleted"
+                    )
+                else:
+                    logger.error("Database cleanup failed")
+
+        except Exception as e:
+            logger.error(f"Database cleanup error: {e}", exc_info=True)
 
     def _retry_auth_migrations_if_needed(self, eero_client) -> None:
         """Retry auth-dependent migrations if not already done and client is authenticated.
