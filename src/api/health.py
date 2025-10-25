@@ -548,21 +548,38 @@ async def get_nodes(
 
         with get_db_context() as db:
             from src.models.database import EeroNode, EeroNodeMetric
+            from sqlalchemy import func
 
-            nodes_list = []
-            nodes = db.query(EeroNode).filter(
-                EeroNode.network_name == network_name
-            ).all()
-
-            for node in nodes:
-                # Get most recent metrics
-                latest_metric = (
-                    db.query(EeroNodeMetric)
-                    .filter(EeroNodeMetric.eero_node_id == node.id)
-                    .order_by(EeroNodeMetric.timestamp.desc())
-                    .first()
+            # Use optimized JOIN query to avoid N+1 query problem
+            # Subquery to get latest metric timestamp for each node
+            latest_metric_subq = (
+                db.query(
+                    EeroNodeMetric.eero_node_id,
+                    func.max(EeroNodeMetric.timestamp).label('max_timestamp')
                 )
+                .group_by(EeroNodeMetric.eero_node_id)
+                .subquery()
+            )
 
+            # Main query with JOINs to get all data in one query
+            nodes_query = (
+                db.query(EeroNode, EeroNodeMetric)
+                .outerjoin(
+                    latest_metric_subq,
+                    EeroNode.id == latest_metric_subq.c.eero_node_id
+                )
+                .outerjoin(
+                    EeroNodeMetric,
+                    (EeroNodeMetric.eero_node_id == EeroNode.id) &
+                    (EeroNodeMetric.timestamp == latest_metric_subq.c.max_timestamp)
+                )
+                .filter(EeroNode.network_name == network_name)
+                .all()
+            )
+
+            # Build nodes list from query results
+            nodes_list = []
+            for node, metric in nodes_query:
                 status = "unknown"
                 connected_devices = 0
                 connected_wired = 0
@@ -570,17 +587,17 @@ async def get_nodes(
                 uptime = None
                 mesh_quality = None
 
-                if latest_metric:
-                    status = latest_metric.status or "unknown"
+                if metric:
+                    status = metric.status or "unknown"
                     # Use wired + wireless for total, fallback to connected_device_count
-                    connected_wired = latest_metric.connected_wired_count or 0
-                    connected_wireless = latest_metric.connected_wireless_count or 0
+                    connected_wired = metric.connected_wired_count or 0
+                    connected_wireless = metric.connected_wireless_count or 0
                     connected_devices = connected_wired + connected_wireless
                     # Fallback to total count if breakdown not available
                     if connected_devices == 0:
-                        connected_devices = latest_metric.connected_device_count or 0
-                    uptime = latest_metric.uptime_seconds
-                    mesh_quality = latest_metric.mesh_quality_bars
+                        connected_devices = metric.connected_device_count or 0
+                    uptime = metric.uptime_seconds
+                    mesh_quality = metric.mesh_quality_bars
 
                 nodes_list.append({
                     "eero_id": node.eero_id,
