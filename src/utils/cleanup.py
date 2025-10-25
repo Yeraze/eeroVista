@@ -1,7 +1,7 @@
 """Database cleanup utilities for maintaining optimal performance."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -25,38 +25,29 @@ def cleanup_old_connection_records(
         dict with cleanup statistics
     """
     try:
-        cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
+        # Use timezone-aware datetime (Python 3.12+ compatible)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        # Remove timezone for comparison with naive datetime in database
+        cutoff_date_naive = cutoff_date.replace(tzinfo=None)
 
-        # Count records to be deleted
-        count_query = session.query(func.count(DeviceConnection.id)).filter(
-            DeviceConnection.timestamp < cutoff_date
-        )
-        records_to_delete = count_query.scalar()
-
-        if records_to_delete == 0:
-            logger.info(f"No connection records older than {retention_days} days found")
-            return {
-                "success": True,
-                "records_deleted": 0,
-                "retention_days": retention_days,
-                "cutoff_date": cutoff_date.isoformat(),
-            }
-
-        # Delete old records
+        # Delete old records and get actual count deleted
         delete_query = session.query(DeviceConnection).filter(
-            DeviceConnection.timestamp < cutoff_date
+            DeviceConnection.timestamp < cutoff_date_naive
         )
-        delete_query.delete(synchronize_session=False)
+        records_deleted = delete_query.delete(synchronize_session=False)
         session.commit()
 
-        logger.info(
-            f"Cleaned up {records_to_delete} connection records older than "
-            f"{retention_days} days (before {cutoff_date.date()})"
-        )
+        if records_deleted == 0:
+            logger.info(f"No connection records older than {retention_days} days found")
+        else:
+            logger.info(
+                f"Cleaned up {records_deleted} connection records older than "
+                f"{retention_days} days (before {cutoff_date_naive.date()})"
+            )
 
         return {
             "success": True,
-            "records_deleted": records_to_delete,
+            "records_deleted": records_deleted,
             "retention_days": retention_days,
             "cutoff_date": cutoff_date.isoformat(),
         }
@@ -86,38 +77,29 @@ def cleanup_old_node_metrics(
         dict with cleanup statistics
     """
     try:
-        cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
+        # Use timezone-aware datetime (Python 3.12+ compatible)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        # Remove timezone for comparison with naive datetime in database
+        cutoff_date_naive = cutoff_date.replace(tzinfo=None)
 
-        # Count records to be deleted
-        count_query = session.query(func.count(EeroNodeMetric.id)).filter(
-            EeroNodeMetric.timestamp < cutoff_date
-        )
-        records_to_delete = count_query.scalar()
-
-        if records_to_delete == 0:
-            logger.info(f"No node metric records older than {retention_days} days found")
-            return {
-                "success": True,
-                "records_deleted": 0,
-                "retention_days": retention_days,
-                "cutoff_date": cutoff_date.isoformat(),
-            }
-
-        # Delete old records
+        # Delete old records and get actual count deleted
         delete_query = session.query(EeroNodeMetric).filter(
-            EeroNodeMetric.timestamp < cutoff_date
+            EeroNodeMetric.timestamp < cutoff_date_naive
         )
-        delete_query.delete(synchronize_session=False)
+        records_deleted = delete_query.delete(synchronize_session=False)
         session.commit()
 
-        logger.info(
-            f"Cleaned up {records_to_delete} node metric records older than "
-            f"{retention_days} days (before {cutoff_date.date()})"
-        )
+        if records_deleted == 0:
+            logger.info(f"No node metric records older than {retention_days} days found")
+        else:
+            logger.info(
+                f"Cleaned up {records_deleted} node metric records older than "
+                f"{retention_days} days (before {cutoff_date_naive.date()})"
+            )
 
         return {
             "success": True,
-            "records_deleted": records_to_delete,
+            "records_deleted": records_deleted,
             "retention_days": retention_days,
             "cutoff_date": cutoff_date.isoformat(),
         }

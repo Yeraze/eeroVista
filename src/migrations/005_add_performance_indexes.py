@@ -15,7 +15,7 @@ devices, connections, and nodes.
 
 import logging
 
-from sqlalchemy import inspect, text
+from sqlalchemy import Column, Index, MetaData, Table, inspect
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -64,13 +64,18 @@ def run(session: Session, eero_client) -> None:
                 logger.info(f"  ✓ Index {index_name} already exists on {table_name}")
                 continue
 
-            # Create index
-            columns_str = ', '.join(columns)
-            unique_str = 'UNIQUE ' if unique else ''
-            sql = f"CREATE {unique_str}INDEX {index_name} ON {table_name} ({columns_str})"
+            # Create index using SQLAlchemy DDL (safer than raw SQL)
+            metadata = MetaData()
+            table = Table(table_name, metadata, autoload_with=engine)
 
-            session.execute(text(sql))
-            session.commit()
+            # Get column objects for the index
+            index_columns = [table.c[col_name] for col_name in columns]
+
+            # Create index using SQLAlchemy Index
+            idx = Index(index_name, *index_columns, unique=unique)
+            idx.create(engine)
+
+            columns_str = ', '.join(columns)
             logger.info(f"  ✓ Created index {index_name} on {table_name}({columns_str})")
 
         except Exception as e:

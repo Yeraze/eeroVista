@@ -369,7 +369,7 @@ async def get_network_topology(
                 )
                 .filter(
                     Device.network_name == network_name,
-                    DeviceConnection.is_connected == True  # Only online devices
+                    DeviceConnection.is_connected.is_(True)  # Only online devices, explicit NULL handling
                 )
                 .all()
             )
