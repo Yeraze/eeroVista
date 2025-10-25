@@ -1363,8 +1363,10 @@ async def get_network_bandwidth_hourly(
             hourly_query = (
                 db.query(
                     # Extract hour with timezone offset adjustment
+                    # Cast strftime result to integer BEFORE doing math
+                    # Use ((x % 24) + 24) % 24 to handle negative results correctly in SQLite
                     func.cast(
-                        (func.strftime('%H', DeviceConnection.timestamp) + offset_hours) % 24,
+                        ((func.cast(func.strftime('%H', DeviceConnection.timestamp), Integer) + offset_hours) % 24 + 24) % 24,
                         Integer
                     ).label('hour'),
                     func.sum(

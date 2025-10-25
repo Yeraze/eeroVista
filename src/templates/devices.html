@@ -1146,9 +1146,8 @@
             // Only include data from today (local timezone)
             const secondsPerDataPoint = 30; // 30-second collection intervals
             data.history.forEach(point => {
-                // Parse UTC timestamp correctly (API timestamps are UTC but lack 'Z' suffix)
-                // Adding 'Z' tells JavaScript to parse as UTC
-                const timestamp = new Date(point.timestamp.endsWith('Z') ? point.timestamp : point.timestamp + 'Z');
+                // Parse timezone-aware timestamp (API returns ISO timestamps with timezone offset)
+                const timestamp = new Date(point.timestamp);
 
                 // Filter: only include timestamps >= today at midnight
                 if (timestamp >= todayMidnight) {
