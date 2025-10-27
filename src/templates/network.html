@@ -318,16 +318,16 @@
             <span style="font-size: 0.875rem;">Device</span>
         </div>
         <div class="legend-item">
-            <div class="legend-line" style="background: var(--peach);"></div>
-            <span style="font-size: 0.875rem;">Mesh</span>
-        </div>
-        <div class="legend-item">
             <div class="legend-line"></div>
-            <span style="font-size: 0.875rem;">Wired</span>
+            <span style="font-size: 0.875rem;">Wired Connection</span>
         </div>
         <div class="legend-item">
             <div class="legend-line dotted"></div>
-            <span style="font-size: 0.875rem;">Wireless</span>
+            <span style="font-size: 0.875rem;">Wireless Connection</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-line" style="background: var(--peach); width: 40px; height: 3px;"></div>
+            <span style="font-size: 0.875rem;">Mesh Backbone</span>
         </div>
     </div>
 
@@ -418,7 +418,9 @@
             ...(data.mesh_links || []).map(l => ({
                 source: l.source,
                 target: l.target,
-                connection_type: 'mesh',
+                connection_type: l.connection_type || 'mesh',
+                line_style: l.line_style || 'solid',
+                is_wired: l.is_wired !== undefined ? l.is_wired : true,
             })),
             ...data.devices
                 .filter(d => d.node_id)
@@ -426,6 +428,7 @@
                     source: d.node_id,
                     target: d.id,
                     connection_type: d.connection_type,
+                    line_style: d.connection_type === 'wired' ? 'solid' : 'dashed',
                 }))
         ];
 
@@ -456,6 +459,13 @@
             .data(links)
             .join('line')
             .attr('class', d => {
+                // Use line_style if available, otherwise fall back to connection_type logic
+                if (d.line_style === 'solid') {
+                    return d.connection_type === 'mesh' ? 'link-mesh' : 'link-wired';
+                } else if (d.line_style === 'dashed') {
+                    return 'link-wireless';
+                }
+                // Fallback for old data without line_style
                 if (d.connection_type === 'mesh') return 'link-mesh';
                 if (d.connection_type === 'wired') return 'link-wired';
                 return 'link-wireless';

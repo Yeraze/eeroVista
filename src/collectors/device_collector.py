@@ -199,6 +199,26 @@ class DeviceCollector(BaseCollector):
                     connected_wireless_count = eero_data.get("connected_wireless_clients_count", 0)
                     mesh_quality_bars = eero_data.get("mesh_quality_bars")
                     last_reboot = eero_data.get("last_reboot")
+
+                    # Extract connection type information
+                    connection_type = eero_data.get("connection_type")  # 'WIRED' or 'WIRELESS'
+                    wireless_upstream = eero_data.get("wireless_upstream_node")
+                    upstream_node_name = None
+
+                    # Get upstream name from wireless_upstream_node or ethernet neighbor
+                    if wireless_upstream and isinstance(wireless_upstream, dict):
+                        upstream_node_name = wireless_upstream.get("name")
+                    elif connection_type == 'WIRED' and not is_gateway:
+                        # For wired nodes, check ethernet_status for neighbor info
+                        ethernet_status = eero_data.get("ethernet_status", {})
+                        statuses = ethernet_status.get("statuses", [])
+                        for status in statuses:
+                            neighbor = status.get("neighbor")
+                            if neighbor and isinstance(neighbor, dict) and neighbor.get("type") == "EERO":
+                                metadata = neighbor.get("metadata", {})
+                                upstream_node_name = metadata.get("location")
+                                if upstream_node_name:
+                                    break
                 else:
                     # Pydantic model - use attribute access
                     eero_url = eero_data.url
@@ -214,6 +234,26 @@ class DeviceCollector(BaseCollector):
                     connected_wireless_count = eero_data.connected_wireless_clients_count if hasattr(eero_data, 'connected_wireless_clients_count') else 0
                     mesh_quality_bars = eero_data.mesh_quality_bars if hasattr(eero_data, 'mesh_quality_bars') else None
                     last_reboot = eero_data.last_reboot if hasattr(eero_data, 'last_reboot') else None
+
+                    # Extract connection type information
+                    connection_type = eero_data.connection_type if hasattr(eero_data, 'connection_type') else None
+                    wireless_upstream = eero_data.wireless_upstream_node if hasattr(eero_data, 'wireless_upstream_node') else None
+                    upstream_node_name = None
+
+                    # Get upstream name from wireless_upstream_node or ethernet neighbor
+                    if wireless_upstream and hasattr(wireless_upstream, 'name'):
+                        upstream_node_name = wireless_upstream.name
+                    elif connection_type == 'WIRED' and not is_gateway:
+                        # For wired nodes, check ethernet_status for neighbor info
+                        ethernet_status = eero_data.ethernet_status if hasattr(eero_data, 'ethernet_status') else None
+                        if ethernet_status and hasattr(ethernet_status, 'statuses'):
+                            for status in ethernet_status.statuses:
+                                neighbor = status.neighbor if hasattr(status, 'neighbor') else None
+                                if neighbor and hasattr(neighbor, 'type') and neighbor.type == "EERO":
+                                    metadata = neighbor.metadata if hasattr(neighbor, 'metadata') else {}
+                                    if hasattr(metadata, 'location'):
+                                        upstream_node_name = metadata.location
+                                        break
 
                 # Validate mesh_quality_bars is in valid range (1-5) or None
                 if mesh_quality_bars is not None:
@@ -273,6 +313,8 @@ class DeviceCollector(BaseCollector):
                         is_gateway=is_gateway,
                         os_version=os_version,
                         update_available=update_available,
+                        connection_type=connection_type,
+                        upstream_node_name=upstream_node_name,
                     )
                     self.db.add(node)
                     self.db.flush()  # Get the ID
@@ -285,6 +327,8 @@ class DeviceCollector(BaseCollector):
                     node.os_version = os_version
                     node.update_available = update_available
                     node.last_seen = timestamp
+                    node.connection_type = connection_type
+                    node.upstream_node_name = upstream_node_name
 
                 # Create node metric record
                 metric = EeroNodeMetric(
@@ -303,6 +347,24 @@ class DeviceCollector(BaseCollector):
 
             except Exception as e:
                 logger.error(f"Error processing eero node: {e}")
+
+        # Second pass: Resolve upstream_node_id foreign keys now that all nodes are created
+        # Build location-to-id lookup for efficient resolution
+        location_map = {
+            n.location: n.id
+            for n in self.db.query(EeroNode).filter(EeroNode.network_name == network_name).all()
+            if n.location
+        }
+
+        # Resolve upstream references
+        for node in self.db.query(EeroNode).filter(EeroNode.network_name == network_name).all():
+            if node.upstream_node_name:
+                # Always resolve to handle updates (remove 'not node.upstream_node_id' check)
+                if node.upstream_node_name in location_map:
+                    node.upstream_node_id = location_map[node.upstream_node_name]
+                    logger.debug(f"Linked node {node.location} to upstream {node.upstream_node_name}")
+                else:
+                    logger.warning(f"Could not find upstream node '{node.upstream_node_name}' for node {node.location}")
 
         return eero_node_map
 
