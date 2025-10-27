@@ -41,7 +41,6 @@ def run(session: Session, eero_client) -> None:
     # Format: (column_name, column_type, nullable, default)
     columns_to_add = [
         ('connection_type', 'VARCHAR', True, None),  # 'WIRED', 'WIRELESS', or NULL (for gateway)
-        ('is_wired', 'BOOLEAN', True, None),  # True for wired backhaul, False for wireless
         ('upstream_node_name', 'VARCHAR', True, None),  # Name of upstream node (for display)
         ('upstream_node_id', 'INTEGER', True, None),  # Foreign key to eero_nodes.id
     ]

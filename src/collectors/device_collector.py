@@ -1,6 +1,5 @@
 """Device collector for tracking connected devices."""
 
-import json
 import logging
 from datetime import datetime, date
 from typing import Dict, Optional
@@ -203,14 +202,13 @@ class DeviceCollector(BaseCollector):
 
                     # Extract connection type information
                     connection_type = eero_data.get("connection_type")  # 'WIRED' or 'WIRELESS'
-                    is_wired = eero_data.get("wired", False)
                     wireless_upstream = eero_data.get("wireless_upstream_node")
                     upstream_node_name = None
 
                     # Get upstream name from wireless_upstream_node or ethernet neighbor
                     if wireless_upstream and isinstance(wireless_upstream, dict):
                         upstream_node_name = wireless_upstream.get("name")
-                    elif is_wired and not is_gateway:
+                    elif connection_type == 'WIRED' and not is_gateway:
                         # For wired nodes, check ethernet_status for neighbor info
                         ethernet_status = eero_data.get("ethernet_status", {})
                         statuses = ethernet_status.get("statuses", [])
@@ -239,14 +237,13 @@ class DeviceCollector(BaseCollector):
 
                     # Extract connection type information
                     connection_type = eero_data.connection_type if hasattr(eero_data, 'connection_type') else None
-                    is_wired = eero_data.wired if hasattr(eero_data, 'wired') else False
                     wireless_upstream = eero_data.wireless_upstream_node if hasattr(eero_data, 'wireless_upstream_node') else None
                     upstream_node_name = None
 
                     # Get upstream name from wireless_upstream_node or ethernet neighbor
                     if wireless_upstream and hasattr(wireless_upstream, 'name'):
                         upstream_node_name = wireless_upstream.name
-                    elif is_wired and not is_gateway:
+                    elif connection_type == 'WIRED' and not is_gateway:
                         # For wired nodes, check ethernet_status for neighbor info
                         ethernet_status = eero_data.ethernet_status if hasattr(eero_data, 'ethernet_status') else None
                         if ethernet_status and hasattr(ethernet_status, 'statuses'):
@@ -317,7 +314,6 @@ class DeviceCollector(BaseCollector):
                         os_version=os_version,
                         update_available=update_available,
                         connection_type=connection_type,
-                        is_wired=is_wired,
                         upstream_node_name=upstream_node_name,
                     )
                     self.db.add(node)
@@ -332,7 +328,6 @@ class DeviceCollector(BaseCollector):
                     node.update_available = update_available
                     node.last_seen = timestamp
                     node.connection_type = connection_type
-                    node.is_wired = is_wired
                     node.upstream_node_name = upstream_node_name
 
                 # Create node metric record
@@ -354,18 +349,22 @@ class DeviceCollector(BaseCollector):
                 logger.error(f"Error processing eero node: {e}")
 
         # Second pass: Resolve upstream_node_id foreign keys now that all nodes are created
+        # Build location-to-id lookup for efficient resolution
+        location_map = {
+            n.location: n.id
+            for n in self.db.query(EeroNode).filter(EeroNode.network_name == network_name).all()
+            if n.location
+        }
+
+        # Resolve upstream references
         for node in self.db.query(EeroNode).filter(EeroNode.network_name == network_name).all():
-            if node.upstream_node_name and not node.upstream_node_id:
-                # Find the upstream node by location name
-                upstream = (
-                    self.db.query(EeroNode)
-                    .filter(EeroNode.network_name == network_name)
-                    .filter(EeroNode.location == node.upstream_node_name)
-                    .first()
-                )
-                if upstream:
-                    node.upstream_node_id = upstream.id
-                    logger.debug(f"Linked node {node.location} to upstream {upstream.location}")
+            if node.upstream_node_name:
+                # Always resolve to handle updates (remove 'not node.upstream_node_id' check)
+                if node.upstream_node_name in location_map:
+                    node.upstream_node_id = location_map[node.upstream_node_name]
+                    logger.debug(f"Linked node {node.location} to upstream {node.upstream_node_name}")
+                else:
+                    logger.warning(f"Could not find upstream node '{node.upstream_node_name}' for node {node.location}")
 
         return eero_node_map
 

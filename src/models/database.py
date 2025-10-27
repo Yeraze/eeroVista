@@ -46,9 +46,13 @@ class EeroNode(Base):
 
     # Connection type fields (how this node connects to upstream)
     connection_type: Mapped[Optional[str]] = mapped_column(String)  # 'WIRED' or 'WIRELESS'
-    is_wired: Mapped[Optional[bool]] = mapped_column(Boolean)  # True if wired backhaul
     upstream_node_name: Mapped[Optional[str]] = mapped_column(String)  # Upstream node location
     upstream_node_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('eero_nodes.id'))
+
+    @property
+    def is_wired(self) -> bool:
+        """Check if this node has a wired backhaul connection."""
+        return self.connection_type == 'WIRED' if self.connection_type else False
 
     # Relationships
     metrics: Mapped[list["EeroNodeMetric"]] = relationship(back_populates="eero_node")
