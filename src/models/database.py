@@ -44,10 +44,19 @@ class EeroNode(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
+    # Connection type fields (how this node connects to upstream)
+    connection_type: Mapped[Optional[str]] = mapped_column(String)  # 'WIRED' or 'WIRELESS'
+    is_wired: Mapped[Optional[bool]] = mapped_column(Boolean)  # True if wired backhaul
+    upstream_node_name: Mapped[Optional[str]] = mapped_column(String)  # Upstream node location
+    upstream_node_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('eero_nodes.id'))
+
     # Relationships
     metrics: Mapped[list["EeroNodeMetric"]] = relationship(back_populates="eero_node")
     device_connections: Mapped[list["DeviceConnection"]] = relationship(
         back_populates="eero_node"
+    )
+    upstream_node: Mapped[Optional["EeroNode"]] = relationship(
+        "EeroNode", remote_side=[id], foreign_keys=[upstream_node_id]
     )
 
 

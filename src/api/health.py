@@ -310,32 +310,38 @@ async def get_network_topology(
                     "eero_id": node.eero_id,
                     "mac_address": node.mac_address,
                     "last_seen": node.last_seen.isoformat() if node.last_seen else None,
+                    "connection_type": node.connection_type,
+                    "is_wired": node.is_wired,
                 })
 
                 if node.is_gateway:
                     gateway_node_id = node_id
 
             # Create mesh connections between eero nodes
-            # In a mesh network, nodes connect to each other
             mesh_links = []
-            node_ids = [f"node_{n.id}" for n in eero_nodes]
 
             # Connect gateway to Internet
             if gateway_node_id:
                 mesh_links.append({
                     "source": "internet",
                     "target": gateway_node_id,
-                    "connection_type": "mesh",
+                    "connection_type": "wired",  # Gateway to internet is always wired
+                    "line_style": "solid",
                 })
 
-            # Create mesh connections between nodes
-            # For simplicity, connect each non-gateway node to the gateway
-            for i, node in enumerate(eero_nodes):
-                if not node.is_gateway and gateway_node_id:
+            # Create mesh connections based on actual upstream relationships
+            for node in eero_nodes:
+                if not node.is_gateway and node.upstream_node_id:
+                    # Determine line style based on connection type
+                    line_style = "solid" if node.is_wired else "dashed"
+                    connection_label = node.connection_type or "unknown"
+
                     mesh_links.append({
-                        "source": gateway_node_id,
+                        "source": f"node_{node.upstream_node_id}",
                         "target": f"node_{node.id}",
-                        "connection_type": "mesh",
+                        "connection_type": connection_label.lower(),
+                        "line_style": line_style,
+                        "is_wired": node.is_wired,
                     })
 
             # Get all online devices with their connections for this network

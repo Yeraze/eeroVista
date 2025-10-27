@@ -20,9 +20,12 @@ from src.config import ensure_data_directory, get_settings
 from src.scheduler.jobs import get_scheduler
 from src.utils.database import init_database
 
+# Get settings to configure logging level
+settings = get_settings()
+
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
 )
@@ -84,7 +87,6 @@ async def favicon():
 if __name__ == "__main__":
     import uvicorn
 
-    settings = get_settings()
     log_level = settings.log_level.lower()
 
     uvicorn.run(
