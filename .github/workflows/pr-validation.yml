@@ -128,7 +128,7 @@ jobs:
           for i in {1..30}; do
             if docker compose ps | grep eerovista | grep -q "Up"; then
               echo "Container is up, checking health endpoint..."
-              if curl -f -s http://localhost:8081/api/health > /dev/null 2>&1; then
+              if curl -f -s http://localhost:9080/api/health > /dev/null 2>&1; then
                 echo "✅ Container is healthy!"
                 break
               fi
