@@ -107,6 +107,24 @@
     </div>
 </div>
 
+<div class="card">
+    <div class="card-title">Support & Diagnostics</div>
+    <p class="text-muted">Generate a diagnostic package with raw device and node data</p>
+
+    <div id="supportStatus" class="alert" style="display: none;"></div>
+
+    <button id="supportButton" class="btn btn-primary" onclick="generateSupportPackage()">
+        <i class="bi bi-download"></i> Generate Support Package
+    </button>
+
+    <div class="alert alert-info mt-3">
+        <strong>What this does:</strong> Downloads a JSON file containing all raw data from the Eero API
+        including network information, eero nodes, connected devices, and profiles. This is useful for
+        diagnosing unexpected configurations or reporting issues. The file contains no authentication
+        credentials but may include network names and device information.
+    </div>
+</div>
+
 <script>
 async function cleanupDatabase() {
     const button = document.getElementById('cleanupButton');
@@ -165,6 +183,60 @@ async function cleanupDatabase() {
         // Re-enable button
         button.disabled = false;
         button.innerHTML = '<i class="bi bi-trash"></i> Clean Up Unauthorized Networks';
+    }
+}
+
+async function generateSupportPackage() {
+    const button = document.getElementById('supportButton');
+    const statusDiv = document.getElementById('supportStatus');
+
+    // Disable button and show loading state
+    button.disabled = true;
+    button.innerHTML = '<i class="bi bi-hourglass-split"></i> Generating package...';
+    statusDiv.style.display = 'none';
+
+    try {
+        const response = await fetch('/api/support/package', {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.detail || 'Failed to generate support package');
+        }
+
+        const data = await response.json();
+
+        // Create a blob from the JSON data
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+
+        // Create a download link and trigger it
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `eerovista-support-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        // Show success message
+        statusDiv.className = 'alert alert-success';
+        statusDiv.style.display = 'block';
+        statusDiv.innerHTML = '<strong>Success!</strong> Support package downloaded successfully. The file contains raw data for ' + data.networks.length + ' network(s).';
+
+    } catch (error) {
+        // Show error message
+        statusDiv.className = 'alert alert-danger';
+        statusDiv.style.display = 'block';
+        statusDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
+    } finally {
+        // Re-enable button
+        button.disabled = false;
+        button.innerHTML = '<i class="bi bi-download"></i> Generate Support Package';
     }
 }
 </script>
