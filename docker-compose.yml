@@ -4,7 +4,7 @@ services:
     container_name: eerovista
     restart: unless-stopped
     ports:
-      - "8081:8080"
+      - "9080:8080"
       - "5353:53/udp"  # DNS server (exposed on host port 5353)
       - "5353:53/tcp"  # DNS server TCP
     volumes:

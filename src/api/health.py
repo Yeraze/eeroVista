@@ -1873,3 +1873,129 @@ async def cleanup_unauthorized_networks(
     except Exception as e:
         logger.error(f"Failed to cleanup unauthorized networks: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/support/package")
+async def generate_support_package(
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, Any]:
+    """Generate a support package containing all raw device and node data.
+
+    This endpoint dumps all raw data from the Eero API including devices, nodes,
+    and profiles for all authorized networks. The data is returned in JSON format
+    for diagnostic purposes.
+
+    **Use Case**: Helps diagnose unexpected configurations or issues by providing
+    complete raw data from the Eero API that may not be visible in the UI.
+
+    **What's Included**:
+    - All networks the user is authorized for
+    - Raw eero node data for each network
+    - Raw device data for each network
+    - Raw profile data for each network
+    - Timestamp of when the package was generated
+    - eeroVista version information
+
+    **Returns**:
+    ```json
+    {
+        "generated_at": "2025-01-15T10:30:00Z",
+        "version": "1.0.0",
+        "networks": [
+            {
+                "network_name": "Home",
+                "network_id": "123456",
+                "eeros": [...],
+                "devices": [...],
+                "profiles": [...]
+            }
+        ]
+    }
+    ```
+    """
+    try:
+        if not client.is_authenticated():
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        # Get all networks
+        networks = client.get_networks()
+        if not networks:
+            raise HTTPException(
+                status_code=400,
+                detail="No networks found. Please ensure you have access to at least one Eero network."
+            )
+
+        package_data = {
+            "generated_at": datetime.utcnow().isoformat(),
+            "version": __version__,
+            "networks": []
+        }
+
+        # Collect data for each network
+        for network in networks:
+            # Handle both dict and Pydantic model
+            if isinstance(network, dict):
+                network_name = network.get('name', 'Unknown')
+                network_id = network.get('url', {}).get('network_id', 'Unknown') if network.get('url') else 'Unknown'
+                # Convert to dict for JSON serialization
+                network_info = network
+            else:
+                # Pydantic model - access attributes
+                network_name = network.name
+                network_id = network.url.network_id if hasattr(network, 'url') and hasattr(network.url, 'network_id') else 'Unknown'
+                # Convert Pydantic model to dict
+                network_info = network.model_dump() if hasattr(network, 'model_dump') else network.dict()
+
+            logger.info(f"Collecting support data for network: {network_name}")
+
+            network_data = {
+                "network_name": network_name,
+                "network_id": network_id,
+                "network_info": network_info,  # Include full network object as dict
+                "eeros": None,
+                "devices": None,
+                "profiles": None,
+                "errors": []
+            }
+
+            # Get eero nodes
+            try:
+                eeros = client.get_eeros(network_name=network_name)
+                network_data["eeros"] = eeros
+                logger.info(f"Collected {len(eeros) if eeros else 0} eero nodes for {network_name}")
+            except Exception as e:
+                error_msg = f"Failed to get eero nodes: {str(e)}"
+                logger.error(error_msg)
+                network_data["errors"].append(error_msg)
+
+            # Get devices
+            try:
+                devices = client.get_devices(network_name=network_name)
+                network_data["devices"] = devices
+                logger.info(f"Collected {len(devices) if devices else 0} devices for {network_name}")
+            except Exception as e:
+                error_msg = f"Failed to get devices: {str(e)}"
+                logger.error(error_msg)
+                network_data["errors"].append(error_msg)
+
+            # Get profiles
+            try:
+                profiles = client.get_profiles(network_name=network_name)
+                network_data["profiles"] = profiles
+                logger.info(f"Collected {len(profiles) if profiles else 0} profiles for {network_name}")
+            except Exception as e:
+                error_msg = f"Failed to get profiles: {str(e)}"
+                logger.error(error_msg)
+                network_data["errors"].append(error_msg)
+
+            package_data["networks"].append(network_data)
+
+        logger.info(f"Support package generated successfully for {len(networks)} network(s)")
+
+        return package_data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to generate support package: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
