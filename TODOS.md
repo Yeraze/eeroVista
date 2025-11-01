@@ -5,6 +5,18 @@
 (No pending features at this time)
 
 ## Completed
+- [x] Bridge Mode Detection - PR #51 (2025-11-01)
+  - Automatically detects when Eero network is in bridge mode (DHCP/routing handled by upstream router)
+  - Added migration 007: connection_mode field to network_metrics table
+  - Dashboard indicator: Shows "🌉 Bridge Mode" badge in network header when detected
+  - Smart UI adaptation: Replaces bandwidth charts with informative message in bridge mode
+  - Device details popup: Shows bridge mode message instead of bandwidth graphs
+  - Prometheus metric: `eero_network_bridge_mode` (1=bridge, 0=router)
+  - Zabbix metric: `network.bridge_mode` for monitoring integration
+  - Fixed duplicate CSS `display` property bug in firmware update banner
+  - Fixed migration runner: Added migration 007 to hardcoded list
+  - Tested with production database: Migration runs successfully on existing installations
+  - All 85 tests passing
 - [x] Zabbix Multi-Network Support - PR #37 (2025-10-24)
   - Added optional `network` query parameter to all three Zabbix endpoints
   - Implemented `get_network_name_filter()` helper for consistent network resolution
@@ -129,4 +141,4 @@
 
 ---
 
-*Last updated: 2025-10-23*
+*Last updated: 2025-11-01*
