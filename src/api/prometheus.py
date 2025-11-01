@@ -35,6 +35,12 @@ network_status = Gauge(
     registry=registry
 )
 
+network_bridge_mode = Gauge(
+    "eero_network_bridge_mode",
+    "Network is in bridge mode (1=bridge mode, 0=router mode)",
+    registry=registry
+)
+
 # Speedtest metrics
 speedtest_download_mbps = Gauge(
     "eero_speedtest_download_mbps",
@@ -175,6 +181,9 @@ def update_metrics() -> None:
                 network_devices_total.set(latest_network.total_devices or 0)
                 network_devices_online.set(latest_network.total_devices_online or 0)
                 network_status.set(1 if latest_network.wan_status == "online" else 0)
+                # Set bridge mode metric (1 if bridge mode, 0 otherwise)
+                is_bridge = latest_network.connection_mode and latest_network.connection_mode.lower() == 'bridge'
+                network_bridge_mode.set(1 if is_bridge else 0)
 
             # Get latest speedtest
             latest_speedtest = (

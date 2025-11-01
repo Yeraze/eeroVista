@@ -136,6 +136,7 @@ class NetworkMetric(Base):
     total_devices_online: Mapped[Optional[int]] = mapped_column(Integer)
     guest_network_enabled: Mapped[Optional[bool]] = mapped_column(Boolean)
     wan_status: Mapped[Optional[str]] = mapped_column(String)
+    connection_mode: Mapped[Optional[str]] = mapped_column(String)  # 'automatic', 'bridge', etc.
 
 
 class Speedtest(Base):

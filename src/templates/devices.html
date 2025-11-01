@@ -682,6 +682,20 @@
         // Set title
         modalTitle.textContent = device.name;
 
+        // Check if network is in bridge mode
+        let isBridgeMode = false;
+        try {
+            const network = getSelectedNetwork();
+            const statsUrl = network ? `/api/dashboard-stats?network=${encodeURIComponent(network)}` : '/api/dashboard-stats';
+            const statsResponse = await fetch(statsUrl);
+            if (statsResponse.ok) {
+                const stats = await statsResponse.json();
+                isBridgeMode = stats.connection_mode && stats.connection_mode.toLowerCase() === 'bridge';
+            }
+        } catch (error) {
+            console.error('Failed to check bridge mode:', error);
+        }
+
         // Fetch reservation and forward data
         let reservationInfo = null;
         let forwardInfo = [];
@@ -703,8 +717,24 @@
             console.error('Failed to load routing info:', error);
         }
 
-        // Build the details HTML - start with bandwidth graph at the top (full width)
-        let detailsHtml = `
+        // Build the details HTML - start with bandwidth section
+        let bandwidthSectionHtml = '';
+        if (isBridgeMode) {
+            // Bridge mode: show message instead of bandwidth
+            bandwidthSectionHtml = `
+            <div class="bandwidth-section" style="margin-top: 0; padding-top: 0; border-top: none;">
+                <div class="bandwidth-header">
+                    <div class="bandwidth-title">Bandwidth Usage</div>
+                </div>
+                <div style="padding: 2rem; text-align: center; background: var(--surface0); border-radius: 8px; color: var(--subtext0);">
+                    <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🌉</div>
+                    <div style="font-weight: 600; color: var(--text); margin-bottom: 0.5rem;">Bridge Mode Active</div>
+                    <div>Bandwidth calculations are not available in bridge mode</div>
+                </div>
+            </div>`;
+        } else {
+            // Router mode: show bandwidth chart
+            bandwidthSectionHtml = `
             <div class="bandwidth-section" style="margin-top: 0; padding-top: 0; border-top: none;">
                 <div class="bandwidth-header">
                     <div class="bandwidth-title">Bandwidth Usage</div>
@@ -727,8 +757,11 @@
                 <div class="chart-container">
                     <canvas id="bandwidth-chart"></canvas>
                 </div>
-            </div>
-        `;
+            </div>`;
+        }
+
+        // Start building the full details HTML with the bandwidth section
+        let detailsHtml = bandwidthSectionHtml;
 
         // Add two-column layout for device details and aliases
         const aliasesValue = device.aliases ? device.aliases.join('\n') : '';
@@ -843,8 +876,10 @@
         // Add event listener for save button
         document.getElementById('save-aliases-btn').addEventListener('click', () => saveAliases(device.mac_address));
 
-        // Load bandwidth data
-        loadBandwidthChart(device.mac_address, 7);
+        // Load bandwidth data (only if not in bridge mode)
+        if (!isBridgeMode) {
+            loadBandwidthChart(device.mac_address, 7);
+        }
     }
 
     function hideModal() {
