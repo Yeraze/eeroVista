@@ -266,6 +266,7 @@ async def get_metric_data(
     - `network.devices.total` - Total number of devices
     - `network.devices.online` - Number of online devices
     - `network.status` - WAN status (1=online, 0=offline)
+    - `network.bridge_mode` - Bridge mode status (1=bridge mode, 0=router mode)
 
     **Speedtest Metrics** (no identifier):
     - `speedtest.download` - Latest download speed (Mbps)
@@ -356,6 +357,21 @@ async def get_metric_data(
                     status_val = 1 if metric.wan_status == "online" else 0
                     return {
                         "value": status_val,
+                        "timestamp": metric.timestamp.isoformat()
+                    }
+
+            elif metric_name == "network.bridge_mode":
+                metric = (
+                    db.query(NetworkMetric)
+                    .filter(NetworkMetric.network_name == network_name)
+                    .order_by(NetworkMetric.timestamp.desc())
+                    .first()
+                )
+                if metric:
+                    is_bridge = metric.connection_mode and metric.connection_mode.lower() == 'bridge'
+                    bridge_val = 1 if is_bridge else 0
+                    return {
+                        "value": bridge_val,
                         "timestamp": metric.timestamp.isoformat()
                     }
 

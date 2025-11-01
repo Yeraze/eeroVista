@@ -18,7 +18,7 @@
     </div>
 </div>
 
-<div id="update-banner" style="display: none; background: var(--peach); color: var(--base); padding: 1rem 1.5rem; border-radius: 8px; margin-bottom: 1.5rem; align-items: center; gap: 1rem;">
+<div id="update-banner" style="background: var(--peach); color: var(--base); padding: 1rem 1.5rem; border-radius: 8px; margin-bottom: 1.5rem; align-items: center; gap: 1rem; display: none;">
     <div style="font-size: 1.5rem;">⚠️</div>
     <div style="flex: 1;">
         <div style="font-weight: 600; font-size: 1rem;">Firmware Update Available</div>
@@ -52,6 +52,7 @@
         <p style="margin: 0; color: var(--subtext0); font-size: 0.875rem;">
             <strong>📡 Active Network:</strong> <span id="active-network-name" style="font-weight: 600; color: var(--text);">{{ network_name }}</span>
             <span style="margin-left: 0.5rem;">• Use the network selector above to switch between networks</span>
+            <span id="connection-mode-indicator" style="margin-left: 1rem; display: none;"></span>
         </p>
     </div>
     <p class="text-muted">Real-time monitoring and historical data collection</p>
@@ -75,11 +76,16 @@
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
         <h2 class="card-title" style="margin: 0;">Bandwidth Usage</h2>
-        <div style="display: flex; gap: 0.5rem;">
+        <div id="bandwidth-controls" style="display: flex; gap: 0.5rem;">
             <button class="interval-btn" data-mode="hourly" onclick="updateNetworkBandwidthMode('hourly')">Hourly</button>
             <button class="interval-btn active" data-days="7" onclick="updateNetworkBandwidthDays(7)">7 Days</button>
             <button class="interval-btn" data-days="30" onclick="updateNetworkBandwidthDays(30)">30 Days</button>
         </div>
+    </div>
+    <div id="bridge-mode-bandwidth-message" style="display: none; padding: 2rem; text-align: center; background: var(--surface0); border-radius: 8px; color: var(--subtext0);">
+        <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🌉</div>
+        <div style="font-weight: 600; color: var(--text); margin-bottom: 0.5rem;">Bridge Mode Active</div>
+        <div>Bandwidth calculations are not available in bridge mode</div>
     </div>
     <div id="bandwidth-summary" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
         <div style="text-align: center; padding: 0.75rem; background: var(--surface0); border-radius: 8px;">
@@ -95,7 +101,7 @@
             <div style="font-size: 0.875rem; color: var(--subtext0);" id="period-label">7 Day Total</div>
         </div>
     </div>
-    <div style="height: 300px; position: relative;">
+    <div id="bandwidth-chart-container" style="height: 300px; position: relative;">
         <canvas id="network-bandwidth-chart"></canvas>
     </div>
 </div>
@@ -103,7 +109,12 @@
 <!-- Top Bandwidth Consumers Section -->
 <div class="card">
     <h2 style="margin-bottom: 1rem; color: var(--text);">Top Bandwidth Consumers</h2>
-    <div style="height: 350px; position: relative;">
+    <div id="bridge-mode-devices-message" style="display: none; padding: 2rem; text-align: center; background: var(--surface0); border-radius: 8px; color: var(--subtext0);">
+        <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🌉</div>
+        <div style="font-weight: 600; color: var(--text); margin-bottom: 0.5rem;">Bridge Mode Active</div>
+        <div>Bandwidth calculations are not available in bridge mode</div>
+    </div>
+    <div id="top-devices-chart-container" style="height: 350px; position: relative;">
         <canvas id="top-devices-chart"></canvas>
     </div>
 </div>
@@ -156,6 +167,45 @@
                                data.wan_status === 'offline' ? 'badge-danger' : 'badge-warning';
             const statusText = data.wan_status || 'Unknown';
             statusElement.innerHTML = `<span class="badge ${statusClass}">${statusText}</span>`;
+
+            // Update connection mode indicator (bridge mode detection)
+            const modeIndicator = document.getElementById('connection-mode-indicator');
+            const isBridge = data.connection_mode && data.connection_mode.toLowerCase() === 'bridge';
+
+            if (data.connection_mode) {
+                const modeText = isBridge ? '🌉 Bridge Mode' : `Mode: ${data.connection_mode}`;
+                const modeColor = isBridge ? 'var(--peach)' : 'var(--blue)';
+                modeIndicator.innerHTML = `• <span style="font-weight: 600; color: ${modeColor};">${modeText}</span>`;
+                modeIndicator.style.display = 'inline';
+            } else {
+                modeIndicator.style.display = 'none';
+            }
+
+            // Show/hide bandwidth charts based on bridge mode
+            const bridgeModeMessage = document.getElementById('bridge-mode-bandwidth-message');
+            const bridgeModeDevicesMessage = document.getElementById('bridge-mode-devices-message');
+            const bandwidthSummary = document.getElementById('bandwidth-summary');
+            const bandwidthChartContainer = document.getElementById('bandwidth-chart-container');
+            const topDevicesChartContainer = document.getElementById('top-devices-chart-container');
+            const bandwidthControls = document.getElementById('bandwidth-controls');
+
+            if (isBridge) {
+                // Bridge mode: show message, hide charts
+                bridgeModeMessage.style.display = 'block';
+                bridgeModeDevicesMessage.style.display = 'block';
+                bandwidthSummary.style.display = 'none';
+                bandwidthChartContainer.style.display = 'none';
+                topDevicesChartContainer.style.display = 'none';
+                bandwidthControls.style.display = 'none';
+            } else {
+                // Router mode: hide message, show charts
+                bridgeModeMessage.style.display = 'none';
+                bridgeModeDevicesMessage.style.display = 'none';
+                bandwidthSummary.style.display = 'grid';
+                bandwidthChartContainer.style.display = 'block';
+                topDevicesChartContainer.style.display = 'block';
+                bandwidthControls.style.display = 'flex';
+            }
 
             // Show/hide update banner
             const updateBanner = document.getElementById('update-banner');

@@ -93,6 +93,12 @@ class NetworkCollector(BaseCollector):
             wan_status = self._map_wan_status(raw_status)
             logger.info(f"Network '{network_name}' WAN status: {raw_status} -> {wan_status}")
 
+            # Get connection mode (bridge mode detection)
+            connection = network_details.get('connection', {})
+            connection_mode = connection.get('mode', None) if isinstance(connection, dict) else None
+            if connection_mode:
+                logger.info(f"Network '{network_name}' connection mode: {connection_mode}")
+
             # Create network metric record
             metric = NetworkMetric(
                 network_name=network_name,
@@ -101,6 +107,7 @@ class NetworkCollector(BaseCollector):
                 total_devices_online=online_devices,
                 guest_network_enabled=guest_enabled,
                 wan_status=wan_status,
+                connection_mode=connection_mode,
             )
             self.db.add(metric)
             self.db.commit()

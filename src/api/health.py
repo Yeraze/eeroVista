@@ -233,6 +233,7 @@ async def dashboard_stats(
                     "eero_nodes": eero_count,
                     "wan_status": latest_metric.wan_status or "unknown",
                     "guest_network_enabled": latest_metric.guest_network_enabled or False,
+                    "connection_mode": latest_metric.connection_mode,
                     "updates_available": updates_available,
                     "last_update": latest_metric.timestamp.isoformat(),
                 }
@@ -244,6 +245,7 @@ async def dashboard_stats(
                     "eero_nodes": eero_count,
                     "wan_status": "unknown",
                     "guest_network_enabled": False,
+                    "connection_mode": None,
                     "updates_available": updates_available,
                     "last_update": None,
                 }
