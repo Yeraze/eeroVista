@@ -23,6 +23,13 @@ class CollectorScheduler:
         self.scheduler: Optional[AsyncIOScheduler] = None
         self.settings = get_settings()
         self._migrations_retried = False  # Track if we've retried auth-dependent migrations
+        self._consecutive_failures = {
+            "device_collector": 0,
+            "network_collector": 0,
+            "speedtest_collector": 0,
+            "routing_collector": 0,
+        }
+        self._max_consecutive_failures = 3  # Threshold for health alerts
 
     def start(self) -> None:
         """Start the scheduler and add collection jobs."""
@@ -117,6 +124,7 @@ class CollectorScheduler:
 
     def _run_device_collector(self) -> None:
         """Run the device collector."""
+        collector_id = "device_collector"
         try:
             with get_db_context() as db:
                 client = EeroClientWrapper(db)
@@ -127,6 +135,7 @@ class CollectorScheduler:
                     logger.info(
                         f"Device collection complete: {result.get('items_collected')} devices"
                     )
+                    self._record_success(collector_id)
 
                     # Retry auth-dependent migrations after first successful authentication
                     self._retry_auth_migrations_if_needed(client)
@@ -139,12 +148,15 @@ class CollectorScheduler:
                         logger.error(f"DNS update failed: {dns_error}", exc_info=True)
                 else:
                     logger.error(f"Device collection failed: {result.get('error')}")
+                    self._record_failure(collector_id, result.get('error', 'Unknown error'))
 
         except Exception as e:
             logger.error(f"Device collector error: {e}", exc_info=True)
+            self._record_failure(collector_id, str(e))
 
     def _run_network_collector(self) -> None:
         """Run the network collector."""
+        collector_id = "network_collector"
         try:
             with get_db_context() as db:
                 client = EeroClientWrapper(db)
@@ -153,14 +165,18 @@ class CollectorScheduler:
 
                 if result.get("success"):
                     logger.info("Network collection complete")
+                    self._record_success(collector_id)
                 else:
                     logger.error(f"Network collection failed: {result.get('error')}")
+                    self._record_failure(collector_id, result.get('error', 'Unknown error'))
 
         except Exception as e:
             logger.error(f"Network collector error: {e}", exc_info=True)
+            self._record_failure(collector_id, str(e))
 
     def _run_speedtest_collector(self) -> None:
         """Run the speedtest collector."""
+        collector_id = "speedtest_collector"
         try:
             with get_db_context() as db:
                 client = EeroClientWrapper(db)
@@ -171,12 +187,17 @@ class CollectorScheduler:
                     items = result.get("items_collected", 0)
                     if items > 0:
                         logger.info(f"Speedtest collection complete: {items} new results")
+                    self._record_success(collector_id)
+                else:
+                    self._record_failure(collector_id, result.get('error', 'Unknown error'))
 
         except Exception as e:
             logger.error(f"Speedtest collector error: {e}", exc_info=True)
+            self._record_failure(collector_id, str(e))
 
     def _run_routing_collector(self) -> None:
         """Run the routing collector."""
+        collector_id = "routing_collector"
         try:
             with get_db_context() as db:
                 client = EeroClientWrapper(db)
@@ -191,11 +212,14 @@ class CollectorScheduler:
                         f"{result.get('forwards_added', 0)} forwards added, "
                         f"{result.get('forwards_updated', 0)} updated"
                     )
+                    self._record_success(collector_id)
                 else:
                     logger.error(f"Routing collection failed: {result.get('error')}")
+                    self._record_failure(collector_id, result.get('error', 'Unknown error'))
 
         except Exception as e:
             logger.error(f"Routing collector error: {e}", exc_info=True)
+            self._record_failure(collector_id, str(e))
 
     def _run_database_cleanup(self) -> None:
         """Run database cleanup to remove old records."""
@@ -235,6 +259,69 @@ class CollectorScheduler:
             logger.info("Authenticated - retrying pending migrations")
             retry_auth_migrations(eero_client)
             self._migrations_retried = True
+
+    def _record_success(self, collector_id: str) -> None:
+        """Record successful collector run and reset failure counter.
+
+        Args:
+            collector_id: The collector identifier
+        """
+        if collector_id in self._consecutive_failures:
+            # Reset consecutive failure count on success
+            previous_failures = self._consecutive_failures[collector_id]
+            self._consecutive_failures[collector_id] = 0
+
+            # Log recovery if there were previous failures
+            if previous_failures > 0:
+                logger.info(
+                    f"{collector_id} recovered after {previous_failures} consecutive failure(s)"
+                )
+
+    def _record_failure(self, collector_id: str, error_msg: str) -> None:
+        """Record collector failure and check health status.
+
+        Args:
+            collector_id: The collector identifier
+            error_msg: The error message from the failure
+        """
+        if collector_id not in self._consecutive_failures:
+            self._consecutive_failures[collector_id] = 0
+
+        self._consecutive_failures[collector_id] += 1
+        failure_count = self._consecutive_failures[collector_id]
+
+        logger.warning(
+            f"{collector_id} failed {failure_count} consecutive time(s): {error_msg}"
+        )
+
+        # Alert on reaching threshold
+        if failure_count == self._max_consecutive_failures:
+            logger.error(
+                f"HEALTH ALERT: {collector_id} has failed {failure_count} consecutive times! "
+                f"Collector may be stuck. Last error: {error_msg}"
+            )
+        elif failure_count > self._max_consecutive_failures:
+            # Log periodic reminders for prolonged failures
+            if failure_count % 5 == 0:
+                logger.error(
+                    f"HEALTH ALERT: {collector_id} still failing after {failure_count} attempts"
+                )
+
+    def get_health_status(self) -> dict:
+        """Get current health status of all collectors.
+
+        Returns:
+            dict with health status for each collector
+        """
+        status = {}
+        for collector_id, failures in self._consecutive_failures.items():
+            is_healthy = failures < self._max_consecutive_failures
+            status[collector_id] = {
+                "healthy": is_healthy,
+                "consecutive_failures": failures,
+                "status": "healthy" if is_healthy else "degraded" if failures < self._max_consecutive_failures * 2 else "critical"
+            }
+        return status
 
 
 # Global scheduler instance
