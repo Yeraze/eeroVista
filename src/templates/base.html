@@ -36,7 +36,14 @@
     </div>
 
     <footer style="text-align: center; padding: 2rem 0; margin-top: 4rem; color: var(--subtext1); font-size: 0.875rem; border-top: 1px solid var(--surface0);">
-        <p>eeroVista v{{ version }} &copy; 2025</p>
+        <p>
+            eeroVista v{{ version }} &copy; 2025
+            <span id="update-notification" style="display: none; margin-left: 0.5rem;">
+                <a href="#" id="update-link" target="_blank" style="display: inline-block; background-color: var(--peach); color: var(--base); padding: 0.25rem 0.75rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 600; text-decoration: none; transition: opacity 0.2s;">
+                    Update is available!
+                </a>
+            </span>
+        </p>
         <p style="font-size: 0.75rem; margin-top: 0.5rem;">Read-only monitoring for Eero mesh networks</p>
     </footer>
 
@@ -51,6 +58,40 @@
             container.insertBefore(alertDiv, container.firstChild);
 
             setTimeout(() => alertDiv.remove(), 5000);
+        }
+
+        // Check for updates on page load
+        async function checkForUpdates() {
+            try {
+                const response = await fetch('/api/check-update');
+                const data = await response.json();
+
+                if (data.update_available && data.release_url) {
+                    const notification = document.getElementById('update-notification');
+                    const link = document.getElementById('update-link');
+
+                    link.href = data.release_url;
+                    link.title = `Version ${data.latest_version} is available`;
+                    notification.style.display = 'inline';
+
+                    // Add hover effect
+                    link.addEventListener('mouseenter', function() {
+                        this.style.opacity = '0.8';
+                    });
+                    link.addEventListener('mouseleave', function() {
+                        this.style.opacity = '1';
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to check for updates:', error);
+            }
+        }
+
+        // Run update check on page load
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', checkForUpdates);
+        } else {
+            checkForUpdates();
         }
     </script>
     {% block extra_js %}{% endblock %}
