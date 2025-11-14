@@ -80,7 +80,21 @@ async def health_check(client: EeroClientWrapper = Depends(get_eero_client)) -> 
     # Check Eero API auth
     eero_status = "authenticated" if client.is_authenticated() else "not_authenticated"
 
-    overall_status = "healthy" if db_status == "connected" else "degraded"
+    # Get collector health status
+    from src.scheduler.jobs import get_scheduler
+    scheduler = get_scheduler()
+    collector_health = scheduler.get_health_status()
+
+    # Determine if any collectors are unhealthy
+    all_collectors_healthy = all(c["healthy"] for c in collector_health.values())
+
+    # Overall status considers database, and collector health
+    if db_status != "connected":
+        overall_status = "degraded"
+    elif not all_collectors_healthy:
+        overall_status = "degraded"
+    else:
+        overall_status = "healthy"
 
     return {
         "status": overall_status,
@@ -88,6 +102,7 @@ async def health_check(client: EeroClientWrapper = Depends(get_eero_client)) -> 
         "uptime_seconds": int(uptime),
         "database": db_status,
         "eero_api": eero_status,
+        "collectors": collector_health,
         "timestamp": datetime.utcnow().isoformat(),
     }
 

@@ -109,8 +109,43 @@ class BaseCollector(ABC):
             duration = (datetime.utcnow() - start_time).total_seconds()
             logger.error(f"{self.name} failed after {duration:.2f}s: {e}", exc_info=True)
 
+            # Attempt session refresh on API failures
+            if self._should_refresh_session(e):
+                logger.warning(f"{self.name} attempting session refresh due to API error")
+                try:
+                    if self.eero_client.refresh_session():
+                        logger.info(f"{self.name} session refresh successful")
+                    else:
+                        logger.warning(f"{self.name} session refresh failed")
+                except Exception as refresh_error:
+                    logger.error(f"{self.name} session refresh error: {refresh_error}")
+
             return {
                 "success": False,
                 "error": str(e),
                 "duration_seconds": duration,
             }
+
+    def _should_refresh_session(self, error: Exception) -> bool:
+        """
+        Determine if session refresh should be attempted based on error type.
+
+        Args:
+            error: The exception that occurred
+
+        Returns:
+            bool: True if session refresh should be attempted
+        """
+        error_str = str(error).lower()
+        # Refresh on common API/network errors
+        refresh_indicators = [
+            "connection",
+            "timeout",
+            "unauthorized",
+            "401",
+            "403",
+            "network",
+            "unreachable",
+            "refused",
+        ]
+        return any(indicator in error_str for indicator in refresh_indicators)
