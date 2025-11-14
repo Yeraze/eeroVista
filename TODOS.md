@@ -5,6 +5,17 @@
 (No pending features at this time)
 
 ## Completed
+- [x] Update Notification Feature (2025-11-14)
+  - Added GitHub release checking API endpoint at `/api/check-update`
+  - Hourly rate limiting to prevent spamming GitHub API (1-hour cache)
+  - Orange "Update is available!" notification bubble next to version number in footer
+  - Uses Catppuccin Latte peach color (#fe640b) with hover effects
+  - Links directly to GitHub release notes page
+  - Frontend JavaScript checks for updates on page load
+  - Semantic version comparison (e.g., 2.5.0 > 2.4.4)
+  - Graceful error handling with console logging
+  - No new dependencies (uses existing httpx)
+  - All 94 tests passing
 - [x] Bridge Mode Detection - PR #51 (2025-11-01)
   - Automatically detects when Eero network is in bridge mode (DHCP/routing handled by upstream router)
   - Added migration 007: connection_mode field to network_metrics table
