@@ -16,9 +16,19 @@ def read_requirements():
         ]
 
 
+def get_version():
+    """Read version from src/__init__.py."""
+    init_file = Path(__file__).parent / "src" / "__init__.py"
+    with init_file.open() as f:
+        for line in f:
+            if line.startswith("__version__"):
+                return line.split('"')[1]
+    return "0.0.0"
+
+
 setup(
     name="eerovista",
-    version="0.9.0",
+    version=get_version(),
     description="Read-only monitoring for Eero mesh networks",
     author="eeroVista Contributors",
     packages=find_packages(),

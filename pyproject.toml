@@ -1,8 +1,11 @@
 [project]
 name = "eerovista"
-version = "0.7.0"
+dynamic = ["version"]
 description = "Read-only monitoring for Eero mesh networks"
 requires-python = ">=3.11"
+
+[tool.setuptools.dynamic]
+version = {attr = "src.__version__"}
 
 [tool.ruff]
 line-length = 100
