@@ -224,11 +224,14 @@ class CollectorScheduler:
     def _run_database_cleanup(self) -> None:
         """Run database cleanup to remove old records."""
         try:
+            from src.config import get_settings
             from src.utils.cleanup import run_all_cleanup_tasks
 
+            settings = get_settings()
+
             with get_db_context() as db:
-                # Keep 30 days of data
-                result = run_all_cleanup_tasks(db, retention_days=30)
+                # Use configured retention days
+                result = run_all_cleanup_tasks(db, retention_days=settings.data_retention_raw_days)
 
                 if result.get("success"):
                     logger.info(

@@ -110,12 +110,15 @@ async def health_check(client: EeroClientWrapper = Depends(get_eero_client)) -> 
 @router.get("/networks")
 async def get_networks(client: EeroClientWrapper = Depends(get_eero_client)) -> Dict[str, Any]:
     """Get list of all networks available to the authenticated user."""
+    start_time = time.time()
     try:
         if not client.is_authenticated():
+            logger.info(f"GET /api/networks - not authenticated - {(time.time() - start_time)*1000:.1f}ms")
             raise HTTPException(status_code=401, detail="Not authenticated")
 
         networks = client.get_networks()
         if not networks:
+            logger.info(f"GET /api/networks - no networks - {(time.time() - start_time)*1000:.1f}ms")
             return {"networks": [], "count": 0}
 
         # Format network data
@@ -137,6 +140,9 @@ async def get_networks(client: EeroClientWrapper = Depends(get_eero_client)) -> 
                     "created": network.created,
                 })
 
+        total_time = (time.time() - start_time) * 1000
+        logger.info(f"GET /api/networks - {len(networks_list)} networks - {total_time:.1f}ms")
+
         return {
             "networks": networks_list,
             "count": len(networks_list),
@@ -145,7 +151,8 @@ async def get_networks(client: EeroClientWrapper = Depends(get_eero_client)) -> 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get networks: {e}")
+        total_time = (time.time() - start_time) * 1000
+        logger.error(f"Failed to get networks: {e} (took {total_time:.1f}ms)")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -446,9 +453,11 @@ async def get_devices(
     Args:
         network: Optional network name to filter by. Defaults to first network.
     """
+    start_time = time.time()
     try:
         network_name = get_network_name_filter(network, client)
         if not network_name:
+            logger.info(f"GET /api/devices - no network found - {(time.time() - start_time)*1000:.1f}ms")
             return {"devices": [], "total": 0}
 
         with get_db_context() as db:
@@ -458,38 +467,66 @@ async def get_devices(
             # Use optimized JOIN query to avoid N+1 query problem
             from sqlalchemy import func
 
-            # Subquery to get latest connection timestamp for each device
-            latest_conn_subq = (
-                db.query(
-                    DeviceConnection.device_id,
-                    func.max(DeviceConnection.timestamp).label('max_timestamp')
-                )
-                .group_by(DeviceConnection.device_id)
-                .subquery()
-            )
+            query_start = time.time()
 
-            # Main query with JOINs to get all data in one query
-            # Use outerjoin for connections and nodes since some devices may not have recent connections
-            devices_query = (
-                db.query(Device, DeviceConnection, EeroNode)
-                .outerjoin(
-                    latest_conn_subq,
-                    Device.id == latest_conn_subq.c.device_id
+            # Alternative approach: Query devices first, then get latest connection for each
+            # This is actually faster with 6M+ connection records
+            devices = db.query(Device).filter(Device.network_name == network_name).all()
+            query_time_devices = (time.time() - query_start) * 1000
+            logger.info(f"GET /api/devices - fetched {len(devices)} devices in {query_time_devices:.1f}ms")
+
+            # Build a map of device_id -> latest connection using a single query per device
+            # Actually, let's do this smarter - fetch all latest connections in one query
+            latest_connections_start = time.time()
+
+            # Get latest connection for each device using DISTINCT ON equivalent for SQLite
+            # We'll use GROUP BY on device_id and MAX(timestamp)
+            device_ids = [d.id for d in devices]
+
+            # Use a subquery approach that SQLite can optimize better
+            # This leverages the composite index (device_id, timestamp)
+            from sqlalchemy import and_, tuple_
+
+            # Create the subquery to get max timestamp per device
+            latest_subq = db.query(
+                DeviceConnection.device_id,
+                func.max(DeviceConnection.timestamp).label('max_timestamp')
+            ).filter(
+                DeviceConnection.device_id.in_(device_ids)
+            ).group_by(DeviceConnection.device_id).subquery()
+
+            # Join back to get the full connection records
+            # This uses the composite index efficiently
+            connections = db.query(DeviceConnection, EeroNode).join(
+                latest_subq,
+                and_(
+                    DeviceConnection.device_id == latest_subq.c.device_id,
+                    DeviceConnection.timestamp == latest_subq.c.max_timestamp
                 )
-                .outerjoin(
-                    DeviceConnection,
-                    (DeviceConnection.device_id == Device.id) &
-                    (DeviceConnection.timestamp == latest_conn_subq.c.max_timestamp)
-                )
-                .outerjoin(
-                    EeroNode,
-                    EeroNode.id == DeviceConnection.eero_node_id
-                )
-                .filter(Device.network_name == network_name)
-                .all()
-            )
+            ).outerjoin(
+                EeroNode,
+                EeroNode.id == DeviceConnection.eero_node_id
+            ).all()
+
+            # Build a map of device_id -> (connection, node)
+            connection_map = {}
+            for conn, node in connections:
+                connection_map[conn.device_id] = (conn, node)
+
+            latest_connections_time = (time.time() - latest_connections_start) * 1000
+            logger.info(f"GET /api/devices - fetched connections in {latest_connections_time:.1f}ms")
+
+            # Build devices_query as list of tuples (device, connection, node)
+            devices_query = []
+            for device in devices:
+                conn, node = connection_map.get(device.id, (None, None))
+                devices_query.append((device, conn, node))
+
+            query_time = (time.time() - query_start) * 1000
+            logger.info(f"GET /api/devices - total query time: {query_time:.1f}ms for {len(devices_query)} devices")
 
             # Build devices list from query results
+            serial_start = time.time()
             devices_list = []
             for device, connection, node in devices_query:
                 # Get eero node name if connected to one
@@ -540,13 +577,18 @@ async def get_devices(
                     "aliases": aliases,
                 })
 
+            serial_time = (time.time() - serial_start) * 1000
+            total_time = (time.time() - start_time) * 1000
+            logger.info(f"GET /api/devices - serialization: {serial_time:.1f}ms, total: {total_time:.1f}ms")
+
             return {
                 "devices": devices_list,
                 "total": len(devices_list),
             }
 
     except Exception as e:
-        logger.error(f"Failed to get devices: {e}")
+        total_time = (time.time() - start_time) * 1000
+        logger.error(f"Failed to get devices: {e} (took {total_time:.1f}ms)")
         return {
             "devices": [],
             "total": 0,
@@ -1532,9 +1574,11 @@ async def get_ip_reservations(
     Args:
         network: Optional network name to filter by. Defaults to first network.
     """
+    start_time = time.time()
     try:
         network_name = get_network_name_filter(network, client)
         if not network_name:
+            logger.info(f"GET /api/routing/reservations - no network - {(time.time() - start_time)*1000:.1f}ms")
             return {"count": 0, "reservations": []}
 
         from src.models.database import IpReservation
@@ -1543,7 +1587,7 @@ async def get_ip_reservations(
             IpReservation.network_name == network_name
         ).order_by(IpReservation.ip_address).all()
 
-        return {
+        result = {
             "count": len(reservations),
             "reservations": [
                 {
@@ -1556,8 +1600,13 @@ async def get_ip_reservations(
             ],
         }
 
+        total_time = (time.time() - start_time) * 1000
+        logger.info(f"GET /api/routing/reservations - {len(reservations)} reservations - {total_time:.1f}ms")
+        return result
+
     except Exception as e:
-        logger.error(f"Failed to get IP reservations: {e}")
+        total_time = (time.time() - start_time) * 1000
+        logger.error(f"Failed to get IP reservations: {e} (took {total_time:.1f}ms)")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1572,9 +1621,11 @@ async def get_port_forwards(
     Args:
         network: Optional network name to filter by. Defaults to first network.
     """
+    start_time = time.time()
     try:
         network_name = get_network_name_filter(network, client)
         if not network_name:
+            logger.info(f"GET /api/routing/port-forwards - no network - {(time.time() - start_time)*1000:.1f}ms")
             return {"count": 0, "forwards": []}
 
         from src.models.database import PortForward
@@ -1584,7 +1635,7 @@ async def get_port_forwards(
             PortForward.enabled == True
         ).order_by(PortForward.ip_address, PortForward.gateway_port).all()
 
-        return {
+        result = {
             "count": len(forwards),
             "forwards": [
                 {
@@ -1600,8 +1651,13 @@ async def get_port_forwards(
             ],
         }
 
+        total_time = (time.time() - start_time) * 1000
+        logger.info(f"GET /api/routing/port-forwards - {len(forwards)} forwards - {total_time:.1f}ms")
+        return result
+
     except Exception as e:
-        logger.error(f"Failed to get port forwards: {e}")
+        total_time = (time.time() - start_time) * 1000
+        logger.error(f"Failed to get port forwards: {e} (took {total_time:.1f}ms)")
         raise HTTPException(status_code=500, detail=str(e))
 
 
