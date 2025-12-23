@@ -284,6 +284,68 @@ async def dashboard_stats(
         }
 
 
+@router.get("/firmware-update")
+async def get_firmware_update(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, Any]:
+    """Get firmware update information for a network.
+
+    Returns:
+        Dict with update info including target_firmware, release_date, and manifest_resource
+    """
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {"has_update": False, "error": "No network found"}
+
+        update_info = client.get_firmware_update_info(network_name)
+        if not update_info:
+            return {"has_update": False}
+
+        return update_info
+
+    except Exception as e:
+        logger.error(f"Failed to get firmware update info: {e}")
+        return {"has_update": False, "error": str(e)}
+
+
+@router.get("/firmware-manifest")
+async def get_firmware_manifest(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, Any]:
+    """Fetch firmware release notes manifest (proxied to avoid CORS issues).
+
+    Returns:
+        Dict with manifest data including target info and release notes
+    """
+    import httpx
+
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {"error": "No network found"}
+
+        update_info = client.get_firmware_update_info(network_name)
+        if not update_info or not update_info.get("manifest_resource"):
+            return {"error": "No manifest available"}
+
+        manifest_url = update_info["manifest_resource"]
+
+        async with httpx.AsyncClient() as http_client:
+            response = await http_client.get(manifest_url, timeout=10.0)
+            response.raise_for_status()
+            return response.json()
+
+    except httpx.HTTPError as e:
+        logger.error(f"Failed to fetch firmware manifest: {e}")
+        return {"error": f"Failed to fetch manifest: {e}"}
+    except Exception as e:
+        logger.error(f"Failed to get firmware manifest: {e}")
+        return {"error": str(e)}
+
+
 @router.get("/network-topology")
 async def get_network_topology(
     network: Optional[str] = None,

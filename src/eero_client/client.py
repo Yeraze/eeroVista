@@ -305,3 +305,39 @@ class EeroClientWrapper:
         except Exception as e:
             logger.error(f"Session refresh failed: {e}")
             return False
+
+    def get_firmware_update_info(self, network_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Get firmware update information for a network.
+
+        Args:
+            network_name: Optional network name. If None, uses first network.
+
+        Returns:
+            Dict with update info including target_firmware, has_update, manifest_resource
+        """
+        try:
+            if not self.is_authenticated():
+                return None
+
+            network_client = self.get_network_client(network_name)
+            if not network_client:
+                return None
+
+            # Get full network details which includes updates object
+            network_details = network_client.networks
+
+            updates = network_details.get('updates', {})
+            if not updates:
+                return {"has_update": False}
+
+            return {
+                "has_update": updates.get('has_update', False),
+                "target_firmware": updates.get('target_firmware'),
+                "update_to_firmware": updates.get('update_to_firmware'),
+                "manifest_resource": updates.get('manifest_resource'),
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting firmware update info: {e}")
+            return None

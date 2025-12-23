@@ -18,11 +18,28 @@
     </div>
 </div>
 
-<div id="update-banner" style="background: var(--peach); color: var(--base); padding: 1rem 1.5rem; border-radius: 8px; margin-bottom: 1.5rem; align-items: center; gap: 1rem; display: none;">
-    <div style="font-size: 1.5rem;">⚠️</div>
+<div id="update-banner" style="background: var(--peach); color: var(--base); padding: 1rem 1.5rem; border-radius: 8px; margin-bottom: 1.5rem; align-items: center; gap: 1rem; display: none; cursor: pointer;" onclick="showReleaseNotesModal()">
+    <div style="font-size: 1.5rem;">⬆️</div>
     <div style="flex: 1;">
         <div style="font-weight: 600; font-size: 1rem;">Firmware Update Available</div>
-        <div style="font-size: 0.875rem; margin-top: 0.25rem;">One or more eero nodes have firmware updates available. Visit the <a href="/nodes" style="color: var(--base); text-decoration: underline;">Nodes page</a> for details.</div>
+        <div style="font-size: 0.875rem; margin-top: 0.25rem;">
+            <span id="update-version"></span>
+            <span id="update-date" style="margin-left: 0.5rem;"></span>
+            <span style="margin-left: 0.5rem; text-decoration: underline;">Click for details</span>
+        </div>
+    </div>
+</div>
+
+<!-- Firmware Release Notes Modal -->
+<div id="release-notes-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: var(--base); border-radius: 12px; max-width: 600px; width: 90%; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,0,0,0.2);">
+        <div style="padding: 1.5rem; border-bottom: 1px solid var(--surface1); display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="margin: 0; color: var(--text);" id="modal-title">eeroOS Update</h2>
+            <button onclick="closeReleaseNotesModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--subtext0); padding: 0.25rem;">&times;</button>
+        </div>
+        <div id="modal-content" style="padding: 1.5rem; overflow-y: auto; flex: 1;">
+            <p style="color: var(--subtext0);">Loading release notes...</p>
+        </div>
     </div>
 </div>
 
@@ -207,18 +224,166 @@
                 bandwidthControls.style.display = 'flex';
             }
 
-            // Show/hide update banner
-            const updateBanner = document.getElementById('update-banner');
-            if (data.updates_available) {
-                updateBanner.style.display = 'flex';
-            } else {
-                updateBanner.style.display = 'none';
-            }
+            // Firmware update handling is done separately via loadFirmwareUpdateInfo()
 
         } catch (error) {
             console.error('Failed to fetch dashboard stats:', error);
         }
     }
+
+    // Firmware update state
+    let firmwareManifestUrl = null;
+    let firmwareManifestData = null;
+
+    // Load firmware update information
+    async function loadFirmwareUpdateInfo() {
+        try {
+            const network = getSelectedNetwork();
+            const url = network
+                ? `/api/firmware-update?network=${encodeURIComponent(network)}`
+                : '/api/firmware-update';
+            const response = await fetch(url);
+            const data = await response.json();
+
+            const updateBanner = document.getElementById('update-banner');
+            const updateVersion = document.getElementById('update-version');
+            const updateDate = document.getElementById('update-date');
+
+            if (data.has_update && data.target_firmware) {
+                // Show the banner
+                updateBanner.style.display = 'flex';
+                updateVersion.textContent = `Version: ${data.target_firmware}`;
+
+                // Store manifest URL for modal
+                firmwareManifestUrl = data.manifest_resource;
+
+                // Fetch release date from manifest via proxy
+                fetchReleaseDate();
+            } else {
+                updateBanner.style.display = 'none';
+                firmwareManifestUrl = null;
+                firmwareManifestData = null;
+            }
+
+        } catch (error) {
+            console.error('Failed to fetch firmware update info:', error);
+            document.getElementById('update-banner').style.display = 'none';
+        }
+    }
+
+    // Fetch release date from manifest via proxy
+    async function fetchReleaseDate() {
+        try {
+            const network = getSelectedNetwork();
+            const url = network
+                ? `/api/firmware-manifest?network=${encodeURIComponent(network)}`
+                : '/api/firmware-manifest';
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Failed to fetch manifest');
+            const manifest = await response.json();
+
+            if (manifest.error) {
+                console.error('Manifest error:', manifest.error);
+                return;
+            }
+
+            firmwareManifestData = manifest;
+
+            const updateDate = document.getElementById('update-date');
+            if (manifest.target && manifest.target.release_date) {
+                const date = new Date(manifest.target.release_date);
+                const formattedDate = date.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                });
+                updateDate.textContent = `• Released ${formattedDate}`;
+            }
+        } catch (error) {
+            console.error('Failed to fetch manifest:', error);
+        }
+    }
+
+    // Show release notes modal
+    function showReleaseNotesModal() {
+        const modal = document.getElementById('release-notes-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalContent = document.getElementById('modal-content');
+
+        modal.style.display = 'flex';
+
+        if (firmwareManifestData && firmwareManifestData.target) {
+            const target = firmwareManifestData.target;
+            modalTitle.textContent = target.title || 'eeroOS Update';
+
+            let html = '';
+
+            // Release date
+            if (target.release_date) {
+                const date = new Date(target.release_date);
+                const formattedDate = date.toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    month: 'long',
+                    day: 'numeric',
+                    year: 'numeric'
+                });
+                html += `<p style="color: var(--subtext0); margin-bottom: 1.5rem;">Released: ${formattedDate}</p>`;
+            }
+
+            // Features/Release Notes
+            if (target.features && target.features.length > 0) {
+                html += '<h3 style="margin-bottom: 0.75rem; color: var(--text);">Release Notes</h3>';
+                html += '<ul style="padding-left: 1.5rem; margin-bottom: 1rem; color: var(--text);">';
+                target.features.forEach(feature => {
+                    html += `<li style="margin-bottom: 0.5rem;">${feature}</li>`;
+                });
+                html += '</ul>';
+            }
+
+            modalContent.innerHTML = html || '<p style="color: var(--subtext0);">No release notes available.</p>';
+        } else if (firmwareManifestUrl) {
+            // Still loading or failed to load - try fetching via proxy
+            modalContent.innerHTML = '<p style="color: var(--subtext0);">Loading release notes...</p>';
+            const network = getSelectedNetwork();
+            const url = network
+                ? `/api/firmware-manifest?network=${encodeURIComponent(network)}`
+                : '/api/firmware-manifest';
+            fetch(url)
+                .then(r => r.json())
+                .then(manifest => {
+                    if (manifest.error) {
+                        modalContent.innerHTML = '<p style="color: var(--subtext0);">Unable to load release notes.</p>';
+                        return;
+                    }
+                    firmwareManifestData = manifest;
+                    showReleaseNotesModal();
+                })
+                .catch(() => {
+                    modalContent.innerHTML = '<p style="color: var(--subtext0);">Unable to load release notes.</p>';
+                });
+        } else {
+            modalContent.innerHTML = '<p style="color: var(--subtext0);">No release notes available.</p>';
+        }
+    }
+
+    // Close release notes modal
+    function closeReleaseNotesModal() {
+        document.getElementById('release-notes-modal').style.display = 'none';
+    }
+
+    // Close modal when clicking outside
+    document.getElementById('release-notes-modal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeReleaseNotesModal();
+        }
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeReleaseNotesModal();
+        }
+    });
 
     // Fetch collection status
     async function updateCollectionStatus() {
@@ -801,6 +966,7 @@
     function updateAll() {
         updateDashboardStats();
         updateCollectionStatus();
+        loadFirmwareUpdateInfo();
 
         // Load appropriate chart based on current mode
         if (currentMode === 'hourly') {
