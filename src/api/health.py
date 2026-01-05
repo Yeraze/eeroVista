@@ -284,6 +284,99 @@ async def dashboard_stats(
         }
 
 
+@router.get("/network/summary")
+async def get_network_summary(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client)
+) -> Dict[str, Any]:
+    """Get network summary with node details.
+
+    Returns summary of the network including device counts, status, and detailed node information.
+
+    Args:
+        network: Optional network name to filter by. Defaults to first network.
+    """
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {
+                "timestamp": None,
+                "total_devices": 0,
+                "devices_online": 0,
+                "guest_network_enabled": False,
+                "wan_status": "unknown",
+                "nodes": [],
+            }
+
+        with get_db_context() as db:
+            from src.models.database import EeroNode, EeroNodeMetric, NetworkMetric
+
+            # Get latest network metric for this network
+            latest_metric = (
+                db.query(NetworkMetric)
+                .filter(NetworkMetric.network_name == network_name)
+                .order_by(NetworkMetric.timestamp.desc())
+                .first()
+            )
+
+            # Get all nodes for this network with their latest metrics
+            eero_nodes = db.query(EeroNode).filter(
+                EeroNode.network_name == network_name
+            ).all()
+
+            nodes_data = []
+            for node in eero_nodes:
+                # Get latest metric for this node
+                latest_node_metric = (
+                    db.query(EeroNodeMetric)
+                    .filter(EeroNodeMetric.eero_node_id == node.id)
+                    .order_by(EeroNodeMetric.timestamp.desc())
+                    .first()
+                )
+
+                node_info = {
+                    "eero_id": node.eero_id,
+                    "location": node.location,
+                    "model": node.model,
+                    "is_gateway": node.is_gateway or False,
+                    "status": latest_node_metric.status if latest_node_metric else "unknown",
+                    "connected_devices": latest_node_metric.connected_device_count if latest_node_metric else 0,
+                    "uptime_seconds": latest_node_metric.uptime_seconds if latest_node_metric else None,
+                }
+                nodes_data.append(node_info)
+
+            if latest_metric:
+                return {
+                    "timestamp": latest_metric.timestamp.isoformat(),
+                    "total_devices": latest_metric.total_devices or 0,
+                    "devices_online": latest_metric.total_devices_online or 0,
+                    "guest_network_enabled": latest_metric.guest_network_enabled or False,
+                    "wan_status": latest_metric.wan_status or "unknown",
+                    "nodes": nodes_data,
+                }
+            else:
+                return {
+                    "timestamp": None,
+                    "total_devices": 0,
+                    "devices_online": 0,
+                    "guest_network_enabled": False,
+                    "wan_status": "unknown",
+                    "nodes": nodes_data,
+                }
+
+    except Exception as e:
+        logger.error(f"Failed to get network summary: {e}")
+        return {
+            "timestamp": None,
+            "total_devices": 0,
+            "devices_online": 0,
+            "guest_network_enabled": False,
+            "wan_status": "error",
+            "nodes": [],
+            "error": str(e),
+        }
+
+
 @router.get("/firmware-update")
 async def get_firmware_update(
     network: Optional[str] = None,
