@@ -4,12 +4,14 @@ import json
 import logging
 import os
 import re
-import signal
-from typing import List, Tuple
+import tempfile
+from datetime import datetime, timedelta
+from typing import Tuple
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from src.models.database import Device, DeviceConnection, EeroNode
+from src.models.database import Device, DeviceConnection
 from src.utils.database import get_db_context
 
 logger = logging.getLogger(__name__)
@@ -17,6 +19,7 @@ logger = logging.getLogger(__name__)
 # Path to dnsmasq hosts file
 HOSTS_FILE_PATH = os.getenv("DNSMASQ_HOSTS_PATH", "/etc/dnsmasq.d/eerovista.hosts")
 DNS_DOMAIN = os.getenv("DNS_DOMAIN", "eero.local")
+OFFLINE_INCLUSION_HOURS = int(os.getenv("DNS_OFFLINE_HOURS", "24"))
 
 
 def sanitize_hostname(name: str) -> str:
@@ -53,62 +56,65 @@ def generate_hosts_file() -> Tuple[int, int]:
 
     Includes:
     - All online devices (priority)
-    - Offline devices seen within last 24 hours (if no IP/hostname conflict)
+    - Offline devices seen within configured hours (if no IP/hostname conflict)
 
     Returns:
-        Tuple of (total_entries, devices_with_ip)
+        Tuple of (total_entries, unique_devices_added)
     """
-    from datetime import datetime, timedelta
-
     try:
         with get_db_context() as db:
             hosts_entries = []
             used_ips = set()
             used_hostnames = set()
+            devices_added = 0
 
-            # Get all eero nodes
-            nodes = db.query(EeroNode).all()
+            offline_cutoff = datetime.utcnow() - timedelta(hours=OFFLINE_INCLUSION_HOURS)
 
-            for node in nodes:
-                # Get node name and sanitize
-                node_name = sanitize_hostname(node.location or f"eero_{node.id}")
+            # Get latest connection for each device in ONE query (fixes N+1 problem)
+            latest_connections_subq = (
+                db.query(
+                    DeviceConnection.device_id,
+                    func.max(DeviceConnection.timestamp).label('max_timestamp')
+                )
+                .group_by(DeviceConnection.device_id)
+                .subquery()
+            )
 
-                # Eero nodes don't have IPs in our data, so we skip them
-                # unless we can get their management IP somehow
-
-            # Get all devices with their latest connection
-            devices = db.query(Device).all()
-            devices_with_ip = 0
-            offline_cutoff = datetime.utcnow() - timedelta(hours=24)
+            # Join to get full connection records with device info
+            results = (
+                db.query(Device, DeviceConnection)
+                .join(
+                    latest_connections_subq,
+                    Device.id == latest_connections_subq.c.device_id
+                )
+                .join(
+                    DeviceConnection,
+                    (DeviceConnection.device_id == latest_connections_subq.c.device_id) &
+                    (DeviceConnection.timestamp == latest_connections_subq.c.max_timestamp)
+                )
+                .all()
+            )
 
             # Separate online and offline devices
             online_devices = []
             offline_devices = []
 
-            for device in devices:
-                # Get most recent connection
-                latest_connection = (
-                    db.query(DeviceConnection)
-                    .filter(DeviceConnection.device_id == device.id)
-                    .order_by(DeviceConnection.timestamp.desc())
-                    .first()
-                )
-
-                if not latest_connection or not latest_connection.ip_address:
+            for device, connection in results:
+                if not connection.ip_address:
                     continue
 
                 # Skip IPv6 addresses
-                if ":" in latest_connection.ip_address:
+                if ":" in connection.ip_address:
                     continue
 
-                if latest_connection.is_connected:
-                    online_devices.append((device, latest_connection))
-                elif latest_connection.timestamp >= offline_cutoff:
-                    offline_devices.append((device, latest_connection))
+                if connection.is_connected:
+                    online_devices.append((device, connection))
+                elif connection.timestamp >= offline_cutoff:
+                    offline_devices.append((device, connection))
 
-            def add_device_entry(device, connection):
+            def add_device_entry(device, connection, is_offline=False):
                 """Add a device entry if no conflict exists."""
-                nonlocal devices_with_ip
+                nonlocal devices_added
 
                 ip_address = connection.ip_address
                 device_name = device.nickname or device.hostname or device.mac_address
@@ -118,14 +124,21 @@ def generate_hosts_file() -> Tuple[int, int]:
                     hostname = f"device_{device.id}"
 
                 # Check for conflicts
-                if ip_address in used_ips or hostname in used_hostnames:
+                if ip_address in used_ips:
+                    if is_offline:
+                        logger.debug(f"Skipping offline device '{device_name}': IP {ip_address} conflict")
+                    return False
+
+                if hostname in used_hostnames:
+                    if is_offline:
+                        logger.debug(f"Skipping offline device '{device_name}': hostname '{hostname}' conflict")
                     return False
 
                 # Add entry
                 hosts_entries.append(f"{ip_address}\t{hostname}.{DNS_DOMAIN}\t{hostname}")
                 used_ips.add(ip_address)
                 used_hostnames.add(hostname)
-                devices_with_ip += 1
+                devices_added += 1
 
                 # Add aliases if they exist
                 if device.aliases:
@@ -143,23 +156,31 @@ def generate_hosts_file() -> Tuple[int, int]:
 
             # Process online devices first (they get priority)
             for device, connection in online_devices:
-                add_device_entry(device, connection)
+                add_device_entry(device, connection, is_offline=False)
 
             # Process offline devices (only if no conflict)
             offline_added = 0
             for device, connection in offline_devices:
-                if add_device_entry(device, connection):
+                if add_device_entry(device, connection, is_offline=True):
                     offline_added += 1
 
-            # Write to hosts file
+            # Build file content
             hosts_content = "\n".join(hosts_entries) + "\n"
+            file_content = (
+                "# Generated by eeroVista\n"
+                "# Do not edit manually - changes will be overwritten\n"
+                f"# Total entries: {len(hosts_entries)}\n"
+                f"# Online devices: {len(online_devices)}, Offline (recent): {offline_added}\n\n"
+                + hosts_content
+            )
 
-            with open(HOSTS_FILE_PATH, "w") as f:
-                f.write("# Generated by eeroVista\n")
-                f.write("# Do not edit manually - changes will be overwritten\n")
-                f.write(f"# Total entries: {len(hosts_entries)}\n")
-                f.write(f"# Online devices: {len(online_devices)}, Offline (recent): {offline_added}\n\n")
-                f.write(hosts_content)
+            # Atomic write: write to temp file, then rename
+            dir_path = os.path.dirname(HOSTS_FILE_PATH)
+            with tempfile.NamedTemporaryFile(mode='w', dir=dir_path, delete=False) as f:
+                f.write(file_content)
+                temp_path = f.name
+
+            os.replace(temp_path, HOSTS_FILE_PATH)
 
             logger.info(
                 f"DNS hosts file updated: {len(hosts_entries)} entries, "
@@ -169,7 +190,7 @@ def generate_hosts_file() -> Tuple[int, int]:
             # Signal dnsmasq to reload
             reload_dnsmasq()
 
-            return len(hosts_entries), devices_with_ip
+            return len(hosts_entries), devices_added
 
     except Exception as e:
         logger.error(f"Failed to generate DNS hosts file: {e}", exc_info=True)
