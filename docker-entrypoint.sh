@@ -6,7 +6,8 @@ DNS_DOMAIN=${DNS_DOMAIN:-eero.local}
 
 cat > /etc/dnsmasq.conf <<EOF
 # dnsmasq configuration for eeroVista
-# Provides DNS resolution for devices managed by eeroVista
+# LOCAL-ONLY DNS resolution for devices managed by eeroVista
+# No upstream forwarding - only answers queries from local hosts file
 # Domain: ${DNS_DOMAIN}
 
 # Don't read /etc/resolv.conf or /etc/hosts
@@ -19,9 +20,8 @@ listen-address=0.0.0.0
 # Don't bind to specific interfaces
 bind-interfaces
 
-# Use Google DNS as upstream
-server=8.8.8.8
-server=8.8.4.4
+# NO UPSTREAM SERVERS - local resolution only
+# Any query not in our hosts file returns NXDOMAIN
 
 # Read additional hosts from our generated file
 addn-hosts=/etc/dnsmasq.d/eerovista.hosts
@@ -36,6 +36,15 @@ log-facility=/var/log/dnsmasq.log
 # Domain for local devices
 domain=${DNS_DOMAIN}
 local=/${DNS_DOMAIN}/
+
+# Handle all queries locally - never forward anything
+local=//
+
+# Block DNS-SD and mDNS queries
+local=/_dns-sd._udp/
+local=/_tcp.local/
+local=/_udp.local/
+local=/local/
 
 # Never forward plain names (without a dot or domain part)
 domain-needed
