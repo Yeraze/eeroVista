@@ -4,6 +4,15 @@
 
 (No pending features at this time)
 
+## In Progress
+
+- [ ] Database Performance Optimization (2026-01-17)
+  - Added VACUUM to database cleanup routine to reclaim disk space after deletions
+  - Added NetworkMetric cleanup (previously only DeviceConnection and EeroNodeMetric were cleaned)
+  - VACUUM only runs if fragmentation exceeds 10% threshold
+  - Logs space reclaimed (before/after sizes)
+  - Tested: 1.6GB fragmented database reduced to 376MB after VACUUM
+
 ## Completed
 - [x] Update Notification Feature (2025-11-14)
   - Added GitHub release checking API endpoint at `/api/check-update`
