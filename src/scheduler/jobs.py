@@ -37,7 +37,13 @@ class CollectorScheduler:
         self._max_consecutive_failures = 3  # Threshold for health alerts
         # Use 8 workers (2x collectors) for resilience if threads hang
         self._executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="collector")
-        self._running_collectors: dict[str, bool] = {}  # Track running state
+        # Explicit initialization for all collectors
+        self._running_collectors: dict[str, bool] = {
+            "device_collector": False,
+            "network_collector": False,
+            "speedtest_collector": False,
+            "routing_collector": False,
+        }
         self._lock = threading.Lock()
 
     def start(self) -> None:
@@ -189,8 +195,8 @@ class CollectorScheduler:
         # Shutdown the thread pool executor, waiting for in-flight operations
         # to complete to avoid data corruption from interrupted transactions
         if hasattr(self, '_executor'):
-            logger.info("Shutting down collector thread pool (waiting up to 30s for completion)")
-            self._executor.shutdown(wait=True, cancel_futures=True)
+            logger.info("Shutting down collector thread pool (waiting for in-flight tasks)")
+            self._executor.shutdown(wait=True)
 
     def run_all_collectors_now(self) -> None:
         """Trigger immediate collection run for all collectors."""
@@ -208,20 +214,7 @@ class CollectorScheduler:
             with get_db_context() as db:
                 client = EeroClientWrapper(db)
                 collector = DeviceCollector(db, client)
-                result = collector.run()
-
-                if result.get("success"):
-                    # Retry auth-dependent migrations after first successful authentication
-                    self._retry_auth_migrations_if_needed(client)
-
-                    # Update DNS hosts file after successful device collection
-                    try:
-                        from src.services.dns_service import update_dns_on_device_change
-                        update_dns_on_device_change()
-                    except Exception as dns_error:
-                        logger.error(f"DNS update failed: {dns_error}", exc_info=True)
-
-                return result
+                return collector.run()
 
         try:
             result = self._run_with_timeout(collector_id, _do_collect)
@@ -235,6 +228,20 @@ class CollectorScheduler:
                     f"Device collection complete: {result.get('items_collected')} devices"
                 )
                 self._record_success(collector_id)
+
+                # Only run side effects if collection completed successfully (not timed out)
+                # These run outside the timeout wrapper to avoid background execution on timeout
+                with get_db_context() as db:
+                    client = EeroClientWrapper(db)
+                    # Retry auth-dependent migrations after first successful authentication
+                    self._retry_auth_migrations_if_needed(client)
+
+                # Update DNS hosts file after successful device collection
+                try:
+                    from src.services.dns_service import update_dns_on_device_change
+                    update_dns_on_device_change()
+                except Exception as dns_error:
+                    logger.error(f"DNS update failed: {dns_error}", exc_info=True)
             else:
                 error = result.get('error', 'Unknown error')
                 if result.get("timeout"):
