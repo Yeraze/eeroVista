@@ -123,9 +123,28 @@
     </div>
 </div>
 
-<!-- Top Bandwidth Consumers Section -->
+<!-- Current Bandwidth Usage Section -->
 <div class="card">
-    <h2 style="margin-bottom: 1rem; color: var(--text);">Top Bandwidth Consumers</h2>
+    <h2 style="margin-bottom: 1rem; color: var(--text);">Current Bandwidth Usage</h2>
+    <p style="color: var(--subtext0); font-size: 0.875rem; margin-bottom: 1rem;">Top 5 devices by current bandwidth from the latest poll</p>
+    <div id="bridge-mode-current-message" style="display: none; padding: 2rem; text-align: center; background: var(--surface0); border-radius: 8px; color: var(--subtext0);">
+        <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🌉</div>
+        <div style="font-weight: 600; color: var(--text); margin-bottom: 0.5rem;">Bridge Mode Active</div>
+        <div>Bandwidth calculations are not available in bridge mode</div>
+    </div>
+    <div id="current-bandwidth-container">
+        <div id="current-bandwidth-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <!-- Dynamically populated -->
+        </div>
+        <div id="current-bandwidth-empty" style="display: none; padding: 2rem; text-align: center; color: var(--subtext0);">
+            No devices currently using bandwidth
+        </div>
+    </div>
+</div>
+
+<!-- Top Bandwidth Consumers Section (Historical) -->
+<div class="card">
+    <h2 style="margin-bottom: 1rem; color: var(--text);">Top Bandwidth Consumers (Historical)</h2>
     <div id="bridge-mode-devices-message" style="display: none; padding: 2rem; text-align: center; background: var(--surface0); border-radius: 8px; color: var(--subtext0);">
         <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🌉</div>
         <div style="font-weight: 600; color: var(--text); margin-bottom: 0.5rem;">Bridge Mode Active</div>
@@ -201,26 +220,32 @@
             // Show/hide bandwidth charts based on bridge mode
             const bridgeModeMessage = document.getElementById('bridge-mode-bandwidth-message');
             const bridgeModeDevicesMessage = document.getElementById('bridge-mode-devices-message');
+            const bridgeModeCurrentMessage = document.getElementById('bridge-mode-current-message');
             const bandwidthSummary = document.getElementById('bandwidth-summary');
             const bandwidthChartContainer = document.getElementById('bandwidth-chart-container');
             const topDevicesChartContainer = document.getElementById('top-devices-chart-container');
+            const currentBandwidthContainer = document.getElementById('current-bandwidth-container');
             const bandwidthControls = document.getElementById('bandwidth-controls');
 
             if (isBridge) {
                 // Bridge mode: show message, hide charts
                 bridgeModeMessage.style.display = 'block';
                 bridgeModeDevicesMessage.style.display = 'block';
+                bridgeModeCurrentMessage.style.display = 'block';
                 bandwidthSummary.style.display = 'none';
                 bandwidthChartContainer.style.display = 'none';
                 topDevicesChartContainer.style.display = 'none';
+                currentBandwidthContainer.style.display = 'none';
                 bandwidthControls.style.display = 'none';
             } else {
                 // Router mode: hide message, show charts
                 bridgeModeMessage.style.display = 'none';
                 bridgeModeDevicesMessage.style.display = 'none';
+                bridgeModeCurrentMessage.style.display = 'none';
                 bandwidthSummary.style.display = 'grid';
                 bandwidthChartContainer.style.display = 'block';
                 topDevicesChartContainer.style.display = 'block';
+                currentBandwidthContainer.style.display = 'block';
                 bandwidthControls.style.display = 'flex';
             }
 
@@ -912,6 +937,97 @@
         });
     }
 
+    // Load and render current bandwidth usage (top 5 from latest poll)
+    async function loadCurrentBandwidth() {
+        try {
+            const network = getSelectedNetwork();
+            const url = network
+                ? `/api/devices?network=${encodeURIComponent(network)}`
+                : '/api/devices';
+            const response = await fetch(url);
+            const data = await response.json();
+
+            const listContainer = document.getElementById('current-bandwidth-list');
+            const emptyMessage = document.getElementById('current-bandwidth-empty');
+
+            if (!data.devices || data.devices.length === 0) {
+                listContainer.innerHTML = '';
+                emptyMessage.style.display = 'block';
+                return;
+            }
+
+            // Filter to online devices with bandwidth data and sort by total bandwidth
+            const devicesWithBandwidth = data.devices
+                .filter(d => d.is_online && (d.bandwidth_down_mbps > 0 || d.bandwidth_up_mbps > 0))
+                .map(d => ({
+                    name: d.name || d.hostname || d.mac_address,
+                    down: d.bandwidth_down_mbps || 0,
+                    up: d.bandwidth_up_mbps || 0,
+                    total: (d.bandwidth_down_mbps || 0) + (d.bandwidth_up_mbps || 0),
+                    type: d.type || 'unknown'
+                }))
+                .sort((a, b) => b.total - a.total)
+                .slice(0, 5);
+
+            if (devicesWithBandwidth.length === 0) {
+                listContainer.innerHTML = '';
+                emptyMessage.style.display = 'block';
+                return;
+            }
+
+            emptyMessage.style.display = 'none';
+
+            // Find max total for bar scaling
+            const maxTotal = devicesWithBandwidth[0].total;
+
+            // Render the list with horizontal bars
+            listContainer.innerHTML = devicesWithBandwidth.map((device, index) => {
+                const barWidth = maxTotal > 0 ? (device.total / maxTotal * 100) : 0;
+                const downPercent = device.total > 0 ? (device.down / device.total * 100) : 0;
+
+                return `
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 24px; text-align: center; font-weight: 600; color: var(--subtext0);">${index + 1}</div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                                <span style="font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(device.name)}</span>
+                                <span style="font-size: 0.875rem; color: var(--subtext0); white-space: nowrap; margin-left: 0.5rem;">
+                                    ↓${device.down.toFixed(1)} ↑${device.up.toFixed(1)} Mbps
+                                </span>
+                            </div>
+                            <div style="height: 8px; background: var(--surface1); border-radius: 4px; overflow: hidden;">
+                                <div style="height: 100%; width: ${barWidth}%; display: flex; border-radius: 4px; overflow: hidden;">
+                                    <div style="width: ${downPercent}%; background: var(--blue);"></div>
+                                    <div style="flex: 1; background: var(--mauve);"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Add legend
+            listContainer.innerHTML += `
+                <div style="display: flex; gap: 1.5rem; justify-content: center; margin-top: 0.75rem; font-size: 0.75rem; color: var(--subtext0);">
+                    <span><span style="display: inline-block; width: 12px; height: 12px; background: var(--blue); border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>Download</span>
+                    <span><span style="display: inline-block; width: 12px; height: 12px; background: var(--mauve); border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>Upload</span>
+                </div>
+            `;
+
+        } catch (error) {
+            console.error('Failed to load current bandwidth:', error);
+            document.getElementById('current-bandwidth-list').innerHTML = '';
+            document.getElementById('current-bandwidth-empty').style.display = 'block';
+        }
+    }
+
+    // Escape HTML to prevent XSS
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     // Load networks and populate dropdown
     async function loadNetworks() {
         try {
@@ -975,7 +1091,10 @@
             loadNetworkBandwidthChart(currentDays);
         }
 
-        // Load top devices chart
+        // Load current bandwidth usage (from latest poll)
+        loadCurrentBandwidth();
+
+        // Load top devices chart (historical)
         loadTopDevicesChart();
     }
 
