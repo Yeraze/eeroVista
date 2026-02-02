@@ -671,6 +671,44 @@ async def get_devices(
             latest_connections_time = (time.time() - latest_connections_start) * 1000
             logger.info(f"GET /api/devices - fetched connections in {latest_connections_time:.1f}ms")
 
+            # Get bandwidth data from most recent connection that has it
+            # (eero API only populates bandwidth periodically, so latest connection may not have it)
+            bandwidth_start = time.time()
+            devices_needing_bandwidth = [
+                d_id for d_id, (conn, _) in connection_map.items()
+                if conn and conn.bandwidth_down_mbps is None and conn.bandwidth_up_mbps is None
+            ]
+
+            bandwidth_map = {}
+            if devices_needing_bandwidth:
+                # Get most recent connection with bandwidth data for each device (within last 2 hours)
+                from datetime import timedelta
+                cutoff_time = datetime.utcnow() - timedelta(hours=2)
+
+                bandwidth_subq = db.query(
+                    DeviceConnection.device_id,
+                    func.max(DeviceConnection.timestamp).label('max_timestamp')
+                ).filter(
+                    DeviceConnection.device_id.in_(devices_needing_bandwidth),
+                    DeviceConnection.timestamp >= cutoff_time,
+                    (DeviceConnection.bandwidth_down_mbps.isnot(None)) | (DeviceConnection.bandwidth_up_mbps.isnot(None))
+                ).group_by(DeviceConnection.device_id).subquery()
+
+                bandwidth_connections = db.query(DeviceConnection).join(
+                    bandwidth_subq,
+                    and_(
+                        DeviceConnection.device_id == bandwidth_subq.c.device_id,
+                        DeviceConnection.timestamp == bandwidth_subq.c.max_timestamp
+                    )
+                ).all()
+
+                for conn in bandwidth_connections:
+                    bandwidth_map[conn.device_id] = (conn.bandwidth_down_mbps, conn.bandwidth_up_mbps)
+
+            bandwidth_time = (time.time() - bandwidth_start) * 1000
+            if devices_needing_bandwidth:
+                logger.info(f"GET /api/devices - fetched bandwidth for {len(bandwidth_map)}/{len(devices_needing_bandwidth)} devices in {bandwidth_time:.1f}ms")
+
             # Build devices_query as list of tuples (device, connection, node)
             devices_query = []
             for device in devices:
@@ -702,6 +740,10 @@ async def get_devices(
                     signal_strength = connection.signal_strength
                     bandwidth_down = connection.bandwidth_down_mbps
                     bandwidth_up = connection.bandwidth_up_mbps
+
+                    # Use bandwidth from recent connection if latest doesn't have it
+                    if bandwidth_down is None and bandwidth_up is None and device.id in bandwidth_map:
+                        bandwidth_down, bandwidth_up = bandwidth_map[device.id]
 
                 device_name = device.nickname or device.hostname or device.manufacturer or device.mac_address
 
