@@ -263,6 +263,15 @@
         cursor: pointer;
     }
 
+    .node-icon {
+        user-select: none;
+        -webkit-user-select: none;
+    }
+
+    .node-group {
+        cursor: pointer;
+    }
+
     #reset-view-btn:hover {
         background-color: var(--surface0);
         border-color: var(--surface2);
@@ -361,6 +370,47 @@
     let currentZoom = null;
     let currentSvg = null;
     let currentG = null;
+
+    // Device type to emoji mapping
+    const deviceIconMap = {
+        'air_conditioner': '❄️',
+        'car': '🚗',
+        'desktop_computer': '🖥️',
+        'digital_assistant': '🔊',
+        'door_bell': '🔔',
+        'e_reader': '📖',
+        'game_console': '🎮',
+        'garage_door': '🚪',
+        'generic': '📱',
+        'hard_drive': '💾',
+        'hub': '🔌',
+        'laptop_computer': '💻',
+        'light': '💡',
+        'media_streamer': '📺',
+        'network_equipment': '🌐',
+        'phone': '📱',
+        'plug': '🔌',
+        'printer': '🖨️',
+        'security_camera': '📷',
+        'tablet': '📱',
+        'television': '📺',
+        'thermostat': '🌡️',
+        'unknown_computer': '💻',
+        'vacuum': '🧹',
+        'watch': '⌚'
+    };
+
+    // Get icon for a node based on its type
+    function getNodeIcon(d) {
+        if (d.node_type === 'internet') {
+            return '🌐';
+        } else if (d.node_type === 'eero') {
+            return d.is_gateway ? '📡' : '📶';
+        } else {
+            // Device - look up by device type
+            return deviceIconMap[d.type] || '📱';
+        }
+    }
 
     // Get current selected network
     function getSelectedNetwork() {
@@ -471,11 +521,23 @@
                 return 'link-wireless';
             });
 
-        // Draw nodes
-        const node = currentG.append('g')
-            .selectAll('circle')
+        // Draw nodes as groups containing circle + icon
+        const nodeGroups = currentG.append('g')
+            .selectAll('g')
             .data(nodes)
-            .join('circle')
+            .join('g')
+            .attr('class', 'node-group')
+            .on('click', (event, d) => {
+                event.stopPropagation();
+                showNodeDetails(d);
+            })
+            .call(d3.drag()
+                .on('start', dragstarted)
+                .on('drag', dragged)
+                .on('end', dragended));
+
+        // Add circles to node groups
+        const node = nodeGroups.append('circle')
             .attr('r', d => d.radius)
             .attr('class', d => {
                 let classes = 'node-cursor ';
@@ -487,15 +549,21 @@
                     classes += 'node-device';
                 }
                 return classes;
+            });
+
+        // Add icons (emojis) centered in each node
+        const nodeIcons = nodeGroups.append('text')
+            .attr('class', 'node-icon')
+            .attr('text-anchor', 'middle')
+            .attr('dominant-baseline', 'central')
+            .attr('font-size', d => {
+                // Scale icon size based on node radius
+                if (d.node_type === 'internet') return '16px';
+                if (d.node_type === 'eero') return '14px';
+                return '10px';  // devices
             })
-            .on('click', (event, d) => {
-                event.stopPropagation();
-                showNodeDetails(d);
-            })
-            .call(d3.drag()
-                .on('start', dragstarted)
-                .on('drag', dragged)
-                .on('end', dragended));
+            .attr('pointer-events', 'none')
+            .text(d => getNodeIcon(d));
 
         // Add labels
         const labels = currentG.append('g')
@@ -510,8 +578,8 @@
                 return name.length > 15 ? name.substring(0, 15) + '...' : name;
             });
 
-        // Add tooltips
-        node.append('title')
+        // Add tooltips to node groups
+        nodeGroups.append('title')
             .text(d => {
                 if (d.node_type === 'internet') {
                     return 'Internet Connection';
@@ -531,9 +599,9 @@
                 .attr('x2', d => d.target.x)
                 .attr('y2', d => d.target.y);
 
-            node
-                .attr('cx', d => d.x)
-                .attr('cy', d => d.y);
+            // Update node group positions (moves both circle and icon together)
+            nodeGroups
+                .attr('transform', d => `translate(${d.x},${d.y})`);
 
             labels
                 .attr('x', d => d.x)
