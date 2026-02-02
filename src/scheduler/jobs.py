@@ -1,7 +1,9 @@
 """Background job scheduler using APScheduler."""
 
 import logging
-from typing import Optional
+import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from typing import Callable, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -13,6 +15,9 @@ from src.eero_client import EeroClientWrapper
 from src.utils.database import get_db_context
 
 logger = logging.getLogger(__name__)
+
+# Default timeout for API operations (seconds)
+DEFAULT_COLLECTOR_TIMEOUT = 60
 
 
 class CollectorScheduler:
@@ -30,6 +35,16 @@ class CollectorScheduler:
             "routing_collector": 0,
         }
         self._max_consecutive_failures = 3  # Threshold for health alerts
+        # Use 8 workers (2x collectors) for resilience if threads hang
+        self._executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="collector")
+        # Explicit initialization for all collectors
+        self._running_collectors: dict[str, bool] = {
+            "device_collector": False,
+            "network_collector": False,
+            "speedtest_collector": False,
+            "routing_collector": False,
+        }
+        self._lock = threading.Lock()
 
     def start(self) -> None:
         """Start the scheduler and add collection jobs."""
@@ -107,12 +122,81 @@ class CollectorScheduler:
         self._run_speedtest_collector()
         self._run_routing_collector()
 
+    def _run_with_timeout(
+        self,
+        collector_id: str,
+        func: Callable[[], dict],
+        timeout: int = DEFAULT_COLLECTOR_TIMEOUT
+    ) -> dict:
+        """Run a collector function with timeout protection.
+
+        This prevents collectors from hanging indefinitely if the eero API
+        times out or becomes unresponsive. If a collector is already running,
+        the new invocation is skipped to prevent job pileup.
+
+        Note: Python's ThreadPoolExecutor.cancel() only prevents tasks from
+        starting, it cannot interrupt running threads. If a timeout occurs,
+        the thread may continue running in the background until completion.
+        The running state tracking prevents new invocations from piling up.
+
+        Args:
+            collector_id: Unique identifier for the collector
+            func: The collector function to run (must return dict)
+            timeout: Maximum seconds to wait (default: 60)
+
+        Returns:
+            dict with success status and any error information
+        """
+        # Check if this collector is already running
+        with self._lock:
+            if self._running_collectors.get(collector_id, False):
+                logger.warning(
+                    f"{collector_id} skipped - previous run still in progress. "
+                    f"This may indicate the eero API is slow or unresponsive."
+                )
+                return {
+                    "success": False,
+                    "error": "Previous run still in progress",
+                    "skipped": True,
+                }
+            self._running_collectors[collector_id] = True
+
+        try:
+            # Submit the work to the thread pool with timeout
+            future = self._executor.submit(func)
+            try:
+                result = future.result(timeout=timeout)
+                return result
+            except FuturesTimeoutError:
+                logger.error(
+                    f"{collector_id} TIMEOUT after {timeout}s - "
+                    f"eero API may be unresponsive. Thread may continue in background."
+                )
+                # Note: cancel() only prevents queued tasks from starting,
+                # it cannot stop an already-running thread
+                future.cancel()
+                return {
+                    "success": False,
+                    "error": f"Operation timed out after {timeout} seconds",
+                    "timeout": True,
+                }
+        finally:
+            # Always clear the running flag so next scheduled run can proceed
+            with self._lock:
+                self._running_collectors[collector_id] = False
+
     def stop(self) -> None:
-        """Stop the scheduler."""
+        """Stop the scheduler and cleanup resources."""
         if self.scheduler and self.scheduler.running:
             logger.info("Stopping collector scheduler")
             self.scheduler.shutdown()
             self.scheduler = None
+
+        # Shutdown the thread pool executor, waiting for in-flight operations
+        # to complete to avoid data corruption from interrupted transactions
+        if hasattr(self, '_executor'):
+            logger.info("Shutting down collector thread pool (waiting for in-flight tasks)")
+            self._executor.shutdown(wait=True)
 
     def run_all_collectors_now(self) -> None:
         """Trigger immediate collection run for all collectors."""
@@ -123,99 +207,147 @@ class CollectorScheduler:
         self._run_routing_collector()
 
     def _run_device_collector(self) -> None:
-        """Run the device collector."""
+        """Run the device collector with timeout protection."""
         collector_id = "device_collector"
-        try:
+
+        def _do_collect():
             with get_db_context() as db:
                 client = EeroClientWrapper(db)
                 collector = DeviceCollector(db, client)
-                result = collector.run()
+                return collector.run()
 
-                if result.get("success"):
-                    logger.info(
-                        f"Device collection complete: {result.get('items_collected')} devices"
-                    )
-                    self._record_success(collector_id)
+        try:
+            result = self._run_with_timeout(collector_id, _do_collect)
 
+            if result.get("skipped"):
+                # Don't record as failure if skipped due to already running
+                return
+
+            if result.get("success"):
+                logger.info(
+                    f"Device collection complete: {result.get('items_collected')} devices"
+                )
+                self._record_success(collector_id)
+
+                # Only run side effects if collection completed successfully (not timed out)
+                # These run outside the timeout wrapper to avoid background execution on timeout
+                with get_db_context() as db:
+                    client = EeroClientWrapper(db)
                     # Retry auth-dependent migrations after first successful authentication
                     self._retry_auth_migrations_if_needed(client)
 
-                    # Update DNS hosts file after successful device collection
-                    try:
-                        from src.services.dns_service import update_dns_on_device_change
-                        update_dns_on_device_change()
-                    except Exception as dns_error:
-                        logger.error(f"DNS update failed: {dns_error}", exc_info=True)
+                # Update DNS hosts file after successful device collection
+                try:
+                    from src.services.dns_service import update_dns_on_device_change
+                    update_dns_on_device_change()
+                except Exception as dns_error:
+                    logger.error(f"DNS update failed: {dns_error}", exc_info=True)
+            else:
+                error = result.get('error', 'Unknown error')
+                if result.get("timeout"):
+                    logger.error(f"Device collection timed out: {error}")
                 else:
-                    logger.error(f"Device collection failed: {result.get('error')}")
-                    self._record_failure(collector_id, result.get('error', 'Unknown error'))
+                    logger.error(f"Device collection failed: {error}")
+                self._record_failure(collector_id, error)
 
         except Exception as e:
             logger.error(f"Device collector error: {e}", exc_info=True)
             self._record_failure(collector_id, str(e))
 
     def _run_network_collector(self) -> None:
-        """Run the network collector."""
+        """Run the network collector with timeout protection."""
         collector_id = "network_collector"
-        try:
+
+        def _do_collect():
             with get_db_context() as db:
                 client = EeroClientWrapper(db)
                 collector = NetworkCollector(db, client)
-                result = collector.run()
+                return collector.run()
 
-                if result.get("success"):
-                    logger.info("Network collection complete")
-                    self._record_success(collector_id)
+        try:
+            result = self._run_with_timeout(collector_id, _do_collect)
+
+            if result.get("skipped"):
+                return
+
+            if result.get("success"):
+                logger.info("Network collection complete")
+                self._record_success(collector_id)
+            else:
+                error = result.get('error', 'Unknown error')
+                if result.get("timeout"):
+                    logger.error(f"Network collection timed out: {error}")
                 else:
-                    logger.error(f"Network collection failed: {result.get('error')}")
-                    self._record_failure(collector_id, result.get('error', 'Unknown error'))
+                    logger.error(f"Network collection failed: {error}")
+                self._record_failure(collector_id, error)
 
         except Exception as e:
             logger.error(f"Network collector error: {e}", exc_info=True)
             self._record_failure(collector_id, str(e))
 
     def _run_speedtest_collector(self) -> None:
-        """Run the speedtest collector."""
+        """Run the speedtest collector with timeout protection."""
         collector_id = "speedtest_collector"
-        try:
+
+        def _do_collect():
             with get_db_context() as db:
                 client = EeroClientWrapper(db)
                 collector = SpeedtestCollector(db, client)
-                result = collector.run()
+                return collector.run()
 
-                if result.get("success"):
-                    items = result.get("items_collected", 0)
-                    if items > 0:
-                        logger.info(f"Speedtest collection complete: {items} new results")
-                    self._record_success(collector_id)
-                else:
-                    self._record_failure(collector_id, result.get('error', 'Unknown error'))
+        try:
+            result = self._run_with_timeout(collector_id, _do_collect)
+
+            if result.get("skipped"):
+                return
+
+            if result.get("success"):
+                items = result.get("items_collected", 0)
+                if items > 0:
+                    logger.info(f"Speedtest collection complete: {items} new results")
+                self._record_success(collector_id)
+            else:
+                error = result.get('error', 'Unknown error')
+                if result.get("timeout"):
+                    logger.error(f"Speedtest collection timed out: {error}")
+                self._record_failure(collector_id, error)
 
         except Exception as e:
             logger.error(f"Speedtest collector error: {e}", exc_info=True)
             self._record_failure(collector_id, str(e))
 
     def _run_routing_collector(self) -> None:
-        """Run the routing collector."""
+        """Run the routing collector with timeout protection."""
         collector_id = "routing_collector"
-        try:
+
+        def _do_collect():
             with get_db_context() as db:
                 client = EeroClientWrapper(db)
                 collector = RoutingCollector(db, client)
-                result = collector.run()
+                return collector.run()
 
-                if result.get("success"):
-                    logger.info(
-                        f"Routing collection complete: "
-                        f"{result.get('reservations_added', 0)} reservations added, "
-                        f"{result.get('reservations_updated', 0)} updated, "
-                        f"{result.get('forwards_added', 0)} forwards added, "
-                        f"{result.get('forwards_updated', 0)} updated"
-                    )
-                    self._record_success(collector_id)
+        try:
+            result = self._run_with_timeout(collector_id, _do_collect)
+
+            if result.get("skipped"):
+                return
+
+            if result.get("success"):
+                logger.info(
+                    f"Routing collection complete: "
+                    f"{result.get('reservations_added', 0)} reservations added, "
+                    f"{result.get('reservations_updated', 0)} updated, "
+                    f"{result.get('forwards_added', 0)} forwards added, "
+                    f"{result.get('forwards_updated', 0)} updated"
+                )
+                self._record_success(collector_id)
+            else:
+                error = result.get('error', 'Unknown error')
+                if result.get("timeout"):
+                    logger.error(f"Routing collection timed out: {error}")
                 else:
-                    logger.error(f"Routing collection failed: {result.get('error')}")
-                    self._record_failure(collector_id, result.get('error', 'Unknown error'))
+                    logger.error(f"Routing collection failed: {error}")
+                self._record_failure(collector_id, error)
 
         except Exception as e:
             logger.error(f"Routing collector error: {e}", exc_info=True)
@@ -317,12 +449,28 @@ class CollectorScheduler:
             dict with health status for each collector
         """
         status = {}
+        with self._lock:
+            running_collectors = dict(self._running_collectors)
+
         for collector_id, failures in self._consecutive_failures.items():
+            is_running = running_collectors.get(collector_id, False)
+            # Health is based on failure count only - running is a normal state
             is_healthy = failures < self._max_consecutive_failures
+
+            if failures == 0:
+                collector_status = "healthy"
+            elif failures < self._max_consecutive_failures:
+                collector_status = "degraded"
+            elif failures < self._max_consecutive_failures * 2:
+                collector_status = "critical"
+            else:
+                collector_status = "failed"
+
             status[collector_id] = {
                 "healthy": is_healthy,
                 "consecutive_failures": failures,
-                "status": "healthy" if is_healthy else "degraded" if failures < self._max_consecutive_failures * 2 else "critical"
+                "currently_running": is_running,
+                "status": collector_status
             }
         return status
 
