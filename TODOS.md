@@ -6,12 +6,11 @@
 
 ## In Progress
 
-- [ ] Database Performance Optimization (2026-01-17)
-  - Added VACUUM to database cleanup routine to reclaim disk space after deletions
-  - Added NetworkMetric cleanup (previously only DeviceConnection and EeroNodeMetric were cleaned)
-  - VACUUM only runs if fragmentation exceeds 10% threshold
-  - Logs space reclaimed (before/after sizes)
-  - Tested: 1.6GB fragmented database reduced to 376MB after VACUUM
+- [ ] Collector Timeout Protection (2026-01-17)
+  - Added 60-second timeout to all collector jobs to prevent indefinite hangs
+  - Collectors now track running state to prevent job pileup
+  - Timeout errors are logged and reported in health status
+  - Health status now shows "currently_running" flag for debugging
 
 ## Completed
 - [x] Update Notification Feature (2025-11-14)
