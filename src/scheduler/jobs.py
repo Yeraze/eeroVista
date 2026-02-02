@@ -3,7 +3,7 @@
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from typing import Optional
+from typing import Callable, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -35,7 +35,8 @@ class CollectorScheduler:
             "routing_collector": 0,
         }
         self._max_consecutive_failures = 3  # Threshold for health alerts
-        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="collector")
+        # Use 8 workers (2x collectors) for resilience if threads hang
+        self._executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="collector")
         self._running_collectors: dict[str, bool] = {}  # Track running state
         self._lock = threading.Lock()
 
@@ -118,7 +119,7 @@ class CollectorScheduler:
     def _run_with_timeout(
         self,
         collector_id: str,
-        func: callable,
+        func: Callable[[], dict],
         timeout: int = DEFAULT_COLLECTOR_TIMEOUT
     ) -> dict:
         """Run a collector function with timeout protection.
@@ -127,9 +128,14 @@ class CollectorScheduler:
         times out or becomes unresponsive. If a collector is already running,
         the new invocation is skipped to prevent job pileup.
 
+        Note: Python's ThreadPoolExecutor.cancel() only prevents tasks from
+        starting, it cannot interrupt running threads. If a timeout occurs,
+        the thread may continue running in the background until completion.
+        The running state tracking prevents new invocations from piling up.
+
         Args:
             collector_id: Unique identifier for the collector
-            func: The collector function to run
+            func: The collector function to run (must return dict)
             timeout: Maximum seconds to wait (default: 60)
 
         Returns:
@@ -158,8 +164,10 @@ class CollectorScheduler:
             except FuturesTimeoutError:
                 logger.error(
                     f"{collector_id} TIMEOUT after {timeout}s - "
-                    f"eero API may be unresponsive. Cancelling operation."
+                    f"eero API may be unresponsive. Thread may continue in background."
                 )
+                # Note: cancel() only prevents queued tasks from starting,
+                # it cannot stop an already-running thread
                 future.cancel()
                 return {
                     "success": False,
@@ -167,7 +175,7 @@ class CollectorScheduler:
                     "timeout": True,
                 }
         finally:
-            # Always clear the running flag
+            # Always clear the running flag so next scheduled run can proceed
             with self._lock:
                 self._running_collectors[collector_id] = False
 
@@ -178,10 +186,11 @@ class CollectorScheduler:
             self.scheduler.shutdown()
             self.scheduler = None
 
-        # Shutdown the thread pool executor
+        # Shutdown the thread pool executor, waiting for in-flight operations
+        # to complete to avoid data corruption from interrupted transactions
         if hasattr(self, '_executor'):
-            logger.info("Shutting down collector thread pool")
-            self._executor.shutdown(wait=False)
+            logger.info("Shutting down collector thread pool (waiting up to 30s for completion)")
+            self._executor.shutdown(wait=True, cancel_futures=True)
 
     def run_all_collectors_now(self) -> None:
         """Trigger immediate collection run for all collectors."""
@@ -438,11 +447,10 @@ class CollectorScheduler:
 
         for collector_id, failures in self._consecutive_failures.items():
             is_running = running_collectors.get(collector_id, False)
-            is_healthy = failures < self._max_consecutive_failures and not is_running
+            # Health is based on failure count only - running is a normal state
+            is_healthy = failures < self._max_consecutive_failures
 
-            if is_running:
-                collector_status = "running"
-            elif failures == 0:
+            if failures == 0:
                 collector_status = "healthy"
             elif failures < self._max_consecutive_failures:
                 collector_status = "degraded"
