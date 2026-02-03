@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 
 from pydantic_settings import BaseSettings
 
+from src import __version__
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,7 +18,7 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "eeroVista"
-    version: str = "0.9.0"
+    version: str = __version__
     debug: bool = False
 
     # Database
