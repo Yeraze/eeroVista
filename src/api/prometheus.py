@@ -20,24 +20,28 @@ registry = CollectorRegistry()
 network_devices_total = Gauge(
     "eero_network_devices_total",
     "Total number of devices known to the network",
+    ["network"],
     registry=registry
 )
 
 network_devices_online = Gauge(
     "eero_network_devices_online",
     "Number of currently online devices",
+    ["network"],
     registry=registry
 )
 
 network_status = Gauge(
     "eero_network_status",
     "Network WAN status (1=online, 0=offline)",
+    ["network"],
     registry=registry
 )
 
 network_bridge_mode = Gauge(
     "eero_network_bridge_mode",
     "Network is in bridge mode (1=bridge mode, 0=router mode)",
+    ["network"],
     registry=registry
 )
 
@@ -45,18 +49,21 @@ network_bridge_mode = Gauge(
 speedtest_download_mbps = Gauge(
     "eero_speedtest_download_mbps",
     "Latest speedtest download speed in Mbps",
+    ["network"],
     registry=registry
 )
 
 speedtest_upload_mbps = Gauge(
     "eero_speedtest_upload_mbps",
     "Latest speedtest upload speed in Mbps",
+    ["network"],
     registry=registry
 )
 
 speedtest_latency_ms = Gauge(
     "eero_speedtest_latency_ms",
     "Latest speedtest latency in milliseconds",
+    ["network"],
     registry=registry
 )
 
@@ -64,42 +71,42 @@ speedtest_latency_ms = Gauge(
 device_connected = Gauge(
     "eero_device_connected",
     "Device connection status (1=online, 0=offline)",
-    ["mac", "hostname", "nickname", "type", "node"],
+    ["network", "mac", "hostname", "nickname", "type", "node"],
     registry=registry
 )
 
 device_signal_strength_dbm = Gauge(
     "eero_device_signal_strength_dbm",
     "Device WiFi signal strength in dBm",
-    ["mac", "hostname", "nickname", "type", "node"],
+    ["network", "mac", "hostname", "nickname", "type", "node"],
     registry=registry
 )
 
 device_bandwidth_down_mbps = Gauge(
     "eero_device_bandwidth_down_mbps",
     "Device current download rate in Mbps",
-    ["mac", "hostname", "nickname", "type", "node"],
+    ["network", "mac", "hostname", "nickname", "type", "node"],
     registry=registry
 )
 
 device_bandwidth_up_mbps = Gauge(
     "eero_device_bandwidth_up_mbps",
     "Device current upload rate in Mbps",
-    ["mac", "hostname", "nickname", "type", "node"],
+    ["network", "mac", "hostname", "nickname", "type", "node"],
     registry=registry
 )
 
 device_daily_download_mb = Gauge(
     "eero_device_daily_download_mb",
     "Device total download for today in MB",
-    ["mac", "hostname", "nickname", "type"],
+    ["network", "mac", "hostname", "nickname", "type"],
     registry=registry
 )
 
 device_daily_upload_mb = Gauge(
     "eero_device_daily_upload_mb",
     "Device total upload for today in MB",
-    ["mac", "hostname", "nickname", "type"],
+    ["network", "mac", "hostname", "nickname", "type"],
     registry=registry
 )
 
@@ -107,49 +114,49 @@ device_daily_upload_mb = Gauge(
 node_status = Gauge(
     "eero_node_status",
     "Eero node status (1=online, 0=offline)",
-    ["node_id", "location", "model", "is_gateway"],
+    ["network", "node_id", "location", "model", "is_gateway"],
     registry=registry
 )
 
 node_connected_devices = Gauge(
     "eero_node_connected_devices",
     "Number of devices connected to this node",
-    ["node_id", "location", "model", "is_gateway"],
+    ["network", "node_id", "location", "model", "is_gateway"],
     registry=registry
 )
 
 node_connected_wired = Gauge(
     "eero_node_connected_wired",
     "Number of wired devices connected to this node",
-    ["node_id", "location", "model", "is_gateway"],
+    ["network", "node_id", "location", "model", "is_gateway"],
     registry=registry
 )
 
 node_connected_wireless = Gauge(
     "eero_node_connected_wireless",
     "Number of wireless devices connected to this node",
-    ["node_id", "location", "model", "is_gateway"],
+    ["network", "node_id", "location", "model", "is_gateway"],
     registry=registry
 )
 
 node_mesh_quality = Gauge(
     "eero_node_mesh_quality",
     "Node mesh quality (1-5 bars)",
-    ["node_id", "location", "model", "is_gateway"],
+    ["network", "node_id", "location", "model", "is_gateway"],
     registry=registry
 )
 
 node_uptime_seconds = Gauge(
     "eero_node_uptime_seconds",
     "Node uptime in seconds",
-    ["node_id", "location", "model", "is_gateway"],
+    ["network", "node_id", "location", "model", "is_gateway"],
     registry=registry
 )
 
 node_update_available = Gauge(
     "eero_node_update_available",
     "Firmware update available for node (1=yes, 0=no)",
-    ["node_id", "location", "model", "is_gateway"],
+    ["network", "node_id", "location", "model", "is_gateway"],
     registry=registry
 )
 
@@ -170,35 +177,60 @@ def update_metrics() -> None:
                 Speedtest,
             )
 
-            # Get latest network metrics
-            latest_network = (
+            # Get latest network metrics per network
+            network_subquery = (
+                db.query(
+                    NetworkMetric.network_name,
+                    func.max(NetworkMetric.timestamp).label('max_timestamp')
+                )
+                .group_by(NetworkMetric.network_name)
+                .subquery()
+            )
+            latest_networks = (
                 db.query(NetworkMetric)
-                .order_by(NetworkMetric.timestamp.desc())
-                .first()
+                .join(
+                    network_subquery,
+                    (NetworkMetric.network_name == network_subquery.c.network_name) &
+                    (NetworkMetric.timestamp == network_subquery.c.max_timestamp)
+                )
+                .all()
             )
 
-            if latest_network:
-                network_devices_total.set(latest_network.total_devices or 0)
-                network_devices_online.set(latest_network.total_devices_online or 0)
-                network_status.set(1 if latest_network.wan_status == "online" else 0)
-                # Set bridge mode metric (1 if bridge mode, 0 otherwise)
-                is_bridge = latest_network.connection_mode and latest_network.connection_mode.lower() == 'bridge'
-                network_bridge_mode.set(1 if is_bridge else 0)
+            for nm in latest_networks:
+                net = nm.network_name
+                network_devices_total.labels(network=net).set(nm.total_devices or 0)
+                network_devices_online.labels(network=net).set(nm.total_devices_online or 0)
+                network_status.labels(network=net).set(1 if nm.wan_status == "online" else 0)
+                is_bridge = nm.connection_mode and nm.connection_mode.lower() == 'bridge'
+                network_bridge_mode.labels(network=net).set(1 if is_bridge else 0)
 
-            # Get latest speedtest
-            latest_speedtest = (
+            # Get latest speedtest per network
+            speedtest_subquery = (
+                db.query(
+                    Speedtest.network_name,
+                    func.max(Speedtest.timestamp).label('max_timestamp')
+                )
+                .group_by(Speedtest.network_name)
+                .subquery()
+            )
+            latest_speedtests = (
                 db.query(Speedtest)
-                .order_by(Speedtest.timestamp.desc())
-                .first()
+                .join(
+                    speedtest_subquery,
+                    (Speedtest.network_name == speedtest_subquery.c.network_name) &
+                    (Speedtest.timestamp == speedtest_subquery.c.max_timestamp)
+                )
+                .all()
             )
 
-            if latest_speedtest:
-                if latest_speedtest.download_mbps is not None:
-                    speedtest_download_mbps.set(latest_speedtest.download_mbps)
-                if latest_speedtest.upload_mbps is not None:
-                    speedtest_upload_mbps.set(latest_speedtest.upload_mbps)
-                if latest_speedtest.latency_ms is not None:
-                    speedtest_latency_ms.set(latest_speedtest.latency_ms)
+            for st in latest_speedtests:
+                net = st.network_name
+                if st.download_mbps is not None:
+                    speedtest_download_mbps.labels(network=net).set(st.download_mbps)
+                if st.upload_mbps is not None:
+                    speedtest_upload_mbps.labels(network=net).set(st.upload_mbps)
+                if st.latency_ms is not None:
+                    speedtest_latency_ms.labels(network=net).set(st.latency_ms)
 
             # Pre-fetch all nodes to avoid N+1 queries
             all_nodes = db.query(EeroNode).all()
@@ -265,6 +297,7 @@ def update_metrics() -> None:
                         # Connection status
                         is_connected = 1 if latest_conn.is_connected else 0
                         device_connected.labels(
+                            network=device.network_name,
                             mac=mac,
                             hostname=hostname,
                             nickname=nickname,
@@ -275,6 +308,7 @@ def update_metrics() -> None:
                         # Signal strength (only for wireless devices)
                         if latest_conn.signal_strength is not None:
                             device_signal_strength_dbm.labels(
+                                network=device.network_name,
                                 mac=mac,
                                 hostname=hostname,
                                 nickname=nickname,
@@ -285,6 +319,7 @@ def update_metrics() -> None:
                         # Current bandwidth
                         if latest_conn.bandwidth_down_mbps is not None:
                             device_bandwidth_down_mbps.labels(
+                                network=device.network_name,
                                 mac=mac,
                                 hostname=hostname,
                                 nickname=nickname,
@@ -294,6 +329,7 @@ def update_metrics() -> None:
 
                         if latest_conn.bandwidth_up_mbps is not None:
                             device_bandwidth_up_mbps.labels(
+                                network=device.network_name,
                                 mac=mac,
                                 hostname=hostname,
                                 nickname=nickname,
@@ -305,6 +341,7 @@ def update_metrics() -> None:
                     daily_bw = bandwidth_by_device.get(device.id)
                     if daily_bw:
                         device_daily_download_mb.labels(
+                            network=device.network_name,
                             mac=mac,
                             hostname=hostname,
                             nickname=nickname,
@@ -312,6 +349,7 @@ def update_metrics() -> None:
                         ).set(daily_bw.download_mb)
 
                         device_daily_upload_mb.labels(
+                            network=device.network_name,
                             mac=mac,
                             hostname=hostname,
                             nickname=nickname,
@@ -358,6 +396,7 @@ def update_metrics() -> None:
                         # Node status
                         status_val = 1 if latest_metric.status == "online" else 0
                         node_status.labels(
+                            network=node.network_name,
                             node_id=node_id,
                             location=location,
                             model=model,
@@ -367,6 +406,7 @@ def update_metrics() -> None:
                         # Connected devices
                         if latest_metric.connected_device_count is not None:
                             node_connected_devices.labels(
+                                network=node.network_name,
                                 node_id=node_id,
                                 location=location,
                                 model=model,
@@ -376,6 +416,7 @@ def update_metrics() -> None:
                         # Wired/Wireless breakdown
                         if latest_metric.connected_wired_count is not None:
                             node_connected_wired.labels(
+                                network=node.network_name,
                                 node_id=node_id,
                                 location=location,
                                 model=model,
@@ -384,6 +425,7 @@ def update_metrics() -> None:
 
                         if latest_metric.connected_wireless_count is not None:
                             node_connected_wireless.labels(
+                                network=node.network_name,
                                 node_id=node_id,
                                 location=location,
                                 model=model,
@@ -393,6 +435,7 @@ def update_metrics() -> None:
                         # Mesh quality
                         if latest_metric.mesh_quality_bars is not None:
                             node_mesh_quality.labels(
+                                network=node.network_name,
                                 node_id=node_id,
                                 location=location,
                                 model=model,
@@ -402,6 +445,7 @@ def update_metrics() -> None:
                         # Uptime
                         if latest_metric.uptime_seconds is not None:
                             node_uptime_seconds.labels(
+                                network=node.network_name,
                                 node_id=node_id,
                                 location=location,
                                 model=model,
@@ -411,6 +455,7 @@ def update_metrics() -> None:
                     # Update available
                     update_val = 1 if node.update_available else 0
                     node_update_available.labels(
+                        network=node.network_name,
                         node_id=node_id,
                         location=location,
                         model=model,
