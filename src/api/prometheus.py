@@ -316,26 +316,24 @@ def update_metrics() -> None:
                                 node=node_name
                             ).set(latest_conn.signal_strength)
 
-                        # Current bandwidth
-                        if latest_conn.bandwidth_down_mbps is not None:
-                            device_bandwidth_down_mbps.labels(
-                                network=device.network_name,
-                                mac=mac,
-                                hostname=hostname,
-                                nickname=nickname,
-                                type=device_type,
-                                node=node_name
-                            ).set(latest_conn.bandwidth_down_mbps)
+                        # Current bandwidth - always emit (0 when not available from API)
+                        device_bandwidth_down_mbps.labels(
+                            network=device.network_name,
+                            mac=mac,
+                            hostname=hostname,
+                            nickname=nickname,
+                            type=device_type,
+                            node=node_name
+                        ).set(latest_conn.bandwidth_down_mbps if latest_conn.bandwidth_down_mbps is not None else 0.0)
 
-                        if latest_conn.bandwidth_up_mbps is not None:
-                            device_bandwidth_up_mbps.labels(
-                                network=device.network_name,
-                                mac=mac,
-                                hostname=hostname,
-                                nickname=nickname,
-                                type=device_type,
-                                node=node_name
-                            ).set(latest_conn.bandwidth_up_mbps)
+                        device_bandwidth_up_mbps.labels(
+                            network=device.network_name,
+                            mac=mac,
+                            hostname=hostname,
+                            nickname=nickname,
+                            type=device_type,
+                            node=node_name
+                        ).set(latest_conn.bandwidth_up_mbps if latest_conn.bandwidth_up_mbps is not None else 0.0)
 
                     # Get daily bandwidth using pre-fetched data
                     daily_bw = bandwidth_by_device.get(device.id)
