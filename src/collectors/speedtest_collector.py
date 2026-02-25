@@ -79,8 +79,22 @@ class SpeedtestCollector(BaseCollector):
                 logger.debug(f"No speedtest data available for network '{network_name}'")
                 return {"items_collected": 0, "errors": 0}
 
+            # Handle both dict (eero_patch fallback) and Pydantic model
+            if isinstance(speedtest_data, dict):
+                test_date = speedtest_data.get('date')
+                down_data = speedtest_data.get('down') or {}
+                up_data = speedtest_data.get('up') or {}
+                download_mbps = down_data.get('value') if isinstance(down_data, dict) else None
+                upload_mbps = up_data.get('value') if isinstance(up_data, dict) else None
+                latency_ms = speedtest_data.get('latency')
+            else:
+                # Pydantic model
+                test_date = speedtest_data.date
+                download_mbps = speedtest_data.down.value if speedtest_data.down else None
+                upload_mbps = speedtest_data.up.value if speedtest_data.up else None
+                latency_ms = None  # Not typically provided by Eero via model
+
             # Check if we already have this speedtest result (to avoid duplicates)
-            test_date = speedtest_data.date
             if test_date:
                 # Check if we already have a test from this time for this network
                 existing = (
@@ -99,9 +113,9 @@ class SpeedtestCollector(BaseCollector):
             speedtest = Speedtest(
                 network_name=network_name,
                 timestamp=test_date if test_date else datetime.utcnow(),
-                download_mbps=speedtest_data.down.value if speedtest_data.down else None,
-                upload_mbps=speedtest_data.up.value if speedtest_data.up else None,
-                latency_ms=None,  # Not typically provided by Eero
+                download_mbps=download_mbps,
+                upload_mbps=upload_mbps,
+                latency_ms=latency_ms,
                 jitter_ms=None,  # Not typically provided by Eero
                 server_location=None,  # Not in the Speed model
                 isp=None,  # Not in the Speed model
@@ -115,5 +129,5 @@ class SpeedtestCollector(BaseCollector):
         except Exception as e:
             self.db.rollback()
             # Speedtest endpoint might not be available or data format might differ
-            logger.debug(f"Could not fetch speedtest data for network '{network_name}': {e}")
+            logger.warning(f"Could not fetch speedtest data for network '{network_name}': {e}")
             return {"items_collected": 0, "errors": 0}
