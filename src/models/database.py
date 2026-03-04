@@ -213,6 +213,34 @@ class DailyBandwidth(Base):
     device: Mapped[Optional["Device"]] = relationship()
 
 
+class DeviceGroup(Base):
+    """A group of bonded devices (e.g., same physical device with multiple connections)."""
+
+    __tablename__ = "device_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    network_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    members: Mapped[list["DeviceGroupMember"]] = relationship(
+        back_populates="group", cascade="all, delete-orphan"
+    )
+
+
+class DeviceGroupMember(Base):
+    """Membership of a device in a device group."""
+
+    __tablename__ = "device_group_members"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(Integer, ForeignKey("device_groups.id", ondelete="CASCADE"), nullable=False)
+    device_id: Mapped[int] = mapped_column(Integer, ForeignKey("devices.id"), nullable=False, unique=True)
+
+    group: Mapped["DeviceGroup"] = relationship(back_populates="members")
+    device: Mapped["Device"] = relationship()
+
+
 class IpReservation(Base):
     """DHCP IP address reservation."""
 
