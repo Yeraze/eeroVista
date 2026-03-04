@@ -3,7 +3,7 @@
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -25,7 +25,7 @@ class DeviceAliasesRequest(BaseModel):
     aliases: List[str]
 
 # Track when the app started
-APP_START_TIME = datetime.utcnow()
+APP_START_TIME = datetime.now(timezone.utc)
 
 # Simple in-memory cache for expensive queries
 # Cache structure: {cache_key: (data, expiry_time)}
@@ -64,7 +64,7 @@ def get_network_name_filter(network: Optional[str], client: EeroClientWrapper) -
 @router.get("/health")
 async def health_check(client: EeroClientWrapper = Depends(get_eero_client)) -> Dict[str, Any]:
     """Health check endpoint."""
-    uptime = (datetime.utcnow() - APP_START_TIME).total_seconds()
+    uptime = (datetime.now(timezone.utc) - APP_START_TIME).total_seconds()
 
     # Check database
     db_status = "connected"
@@ -103,7 +103,7 @@ async def health_check(client: EeroClientWrapper = Depends(get_eero_client)) -> 
         "database": db_status,
         "eero_api": eero_status,
         "collectors": collector_health,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -181,7 +181,7 @@ async def collection_status() -> Dict[str, Any]:
                         last_collections[collector_type] = {
                             "timestamp": config.value,
                             "seconds_ago": int(
-                                (datetime.utcnow() - timestamp).total_seconds()
+                                (datetime.now(timezone.utc) - timestamp).total_seconds()
                             ),
                         }
                     except Exception:
@@ -975,7 +975,7 @@ async def get_network_bandwidth_history(
             from src.models.database import Device, DeviceConnection
 
             # Calculate time range
-            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
 
             # Get all connections in time range for devices in this network
             # Group by timestamp and sum bandwidth across all devices
@@ -2094,7 +2094,7 @@ async def generate_support_package(
             )
 
         package_data = {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "version": __version__,
             "networks": []
         }

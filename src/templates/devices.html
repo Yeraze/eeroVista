@@ -448,6 +448,11 @@
     let reservationsMap = new Map(); // MAC -> reservation info
     let forwardsMap = new Map(); // IP -> array of forwards
 
+    // Escape user-controlled strings for safe innerHTML insertion
+    function escapeHtml(s) {
+        return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
     // Format device type with emoji and proper capitalization
     function formatDeviceType(type) {
         const typeMap = {
@@ -715,10 +720,10 @@
             // Determine if this is a grouped device
             const isGrouped = !!device.group_id;
             const displayName = isGrouped
-                ? `&#x1F517; ${device.group_name || device.name}`
-                : device.name;
+                ? `&#x1F517; ${escapeHtml(device.group_name || device.name)}`
+                : escapeHtml(device.name);
             const onclickHandler = isGrouped
-                ? `showGroupDetails(groupDeviceLookup[${device.group_id}])`
+                ? `if(groupDeviceLookup[${device.group_id}]) showGroupDetails(groupDeviceLookup[${device.group_id}])`
                 : `showDeviceDetails(${originalIndex})`;
 
             // Check if IP is reserved
@@ -842,7 +847,7 @@
         let detailsHtml = bandwidthSectionHtml;
 
         // Add two-column layout for device details and aliases
-        const aliasesValue = device.aliases ? device.aliases.join('\n') : '';
+        const aliasesValue = escapeHtml(device.aliases ? device.aliases.join('\n') : '');
         detailsHtml += `
             <div class="details-grid">
                 <div class="details-column">
@@ -857,32 +862,32 @@
                     ${device.nickname ? `
                     <div class="info-row">
                         <div class="info-label">Nickname:</div>
-                        <div class="info-value">${device.nickname}</div>
+                        <div class="info-value">${escapeHtml(device.nickname)}</div>
                     </div>` : ''}
                     ${device.hostname ? `
                     <div class="info-row">
                         <div class="info-label">Hostname:</div>
-                        <div class="info-value">${device.hostname}</div>
+                        <div class="info-value">${escapeHtml(device.hostname)}</div>
                     </div>` : ''}
                     ${device.manufacturer ? `
                     <div class="info-row">
                         <div class="info-label">Manufacturer:</div>
-                        <div class="info-value">${device.manufacturer}</div>
+                        <div class="info-value">${escapeHtml(device.manufacturer)}</div>
                     </div>` : ''}
                     <div class="info-row">
                         <div class="info-label">IP Address:</div>
                         <div class="info-value">
-                            ${reservationInfo && reservationInfo.reserved ? '🔒 ' : ''}${device.ip_address}
+                            ${reservationInfo && reservationInfo.reserved ? '🔒 ' : ''}${escapeHtml(device.ip_address)}
                             ${reservationInfo && reservationInfo.reserved ? '<span style="color: var(--blue); font-size: 0.75rem; margin-left: 0.5rem;">(Reserved)</span>' : '<span style="color: var(--subtext1); font-size: 0.75rem; margin-left: 0.5rem;">(DHCP)</span>'}
                         </div>
                     </div>
                     <div class="info-row">
                         <div class="info-label">MAC Address:</div>
-                        <div class="info-value">${device.mac_address}</div>
+                        <div class="info-value">${escapeHtml(device.mac_address)}</div>
                     </div>
                     <div class="info-row">
                         <div class="info-label">Connection:</div>
-                        <div class="info-value">${device.connection_type}</div>
+                        <div class="info-value">${escapeHtml(device.connection_type)}</div>
                     </div>
                     ${device.signal_strength !== null && device.signal_strength !== undefined ? `
                     <div class="info-row">
@@ -901,7 +906,7 @@
                     </div>` : ''}
                     <div class="info-row">
                         <div class="info-label">Connected To:</div>
-                        <div class="info-value">${device.node}</div>
+                        <div class="info-value">${escapeHtml(device.node)}</div>
                     </div>
                     ${device.last_seen ? `
                     <div class="info-row">
@@ -923,13 +928,13 @@
                             ${forwardInfo.map(fwd => `
                                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; ${forwardInfo.indexOf(fwd) < forwardInfo.length - 1 ? 'border-bottom: 1px solid var(--surface1);' : ''}">
                                     <div>
-                                        <div style="font-weight: 600; color: var(--text);">${fwd.description || 'Forward'}</div>
+                                        <div style="font-weight: 600; color: var(--text);">${escapeHtml(fwd.description || 'Forward')}</div>
                                         <div style="font-size: 0.75rem; color: var(--subtext0); margin-top: 0.25rem;">
-                                            Port <strong>${fwd.gateway_port}</strong> → ${fwd.client_port}
+                                            Port <strong>${escapeHtml(fwd.gateway_port)}</strong> → ${escapeHtml(fwd.client_port)}
                                         </div>
                                     </div>
                                     <div>
-                                        <span style="background: var(--${fwd.protocol === 'tcp' ? 'blue' : fwd.protocol === 'udp' ? 'mauve' : 'green'}); color: var(--base); padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">${fwd.protocol.toUpperCase()}</span>
+                                        <span style="background: var(--${fwd.protocol === 'tcp' ? 'blue' : fwd.protocol === 'udp' ? 'mauve' : 'green'}); color: var(--base); padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">${escapeHtml(fwd.protocol.toUpperCase())}</span>
                                         ${!fwd.enabled ? '<span style="color: var(--red); font-size: 0.75rem; margin-left: 0.5rem;">⚠ Disabled</span>' : ''}
                                     </div>
                                 </div>
@@ -1599,7 +1604,7 @@
         try {
             const resp = await fetch(`/api/device-groups?network=${encodeURIComponent(network)}`);
             const data = await resp.json();
-            deviceGroupsData = data.groups || [];
+            deviceGroupsData = Array.isArray(data) ? data : (data.groups || []);
         } catch (e) {
             console.error('Failed to load device groups:', e);
             deviceGroupsData = [];
@@ -1657,12 +1662,12 @@
         }
 
         container.innerHTML = available.map(d => {
-            const name = d.name || d.hostname || d.mac_address;
+            const name = escapeHtml(d.name || d.hostname || d.mac_address);
             const checked = d._inCurrentGroup ? 'checked' : '';
             return `<label style="display: flex; align-items: center; padding: 0.3rem; gap: 0.5rem; cursor: pointer;">
-                <input type="checkbox" class="group-device-checkbox" value="${d.mac_address}" ${checked}>
+                <input type="checkbox" class="group-device-checkbox" value="${escapeHtml(d.mac_address)}" ${checked}>
                 <span>${name}</span>
-                <span style="color: var(--subtext0); font-size: 0.85rem; margin-left: auto;">${d.mac_address}</span>
+                <span style="color: var(--subtext0); font-size: 0.85rem; margin-left: auto;">${escapeHtml(d.mac_address)}</span>
             </label>`;
         }).join('');
     }
@@ -1677,7 +1682,7 @@
         if (!name) { alert('Please enter a group name.'); return; }
 
         const checked = [...document.querySelectorAll('.group-device-checkbox:checked')];
-        if (checked.length < 2) { alert('Select at least 2 devices to group.'); return; }
+        if (checked.length < 1) { alert('Select at least 1 device to group.'); return; }
 
         const selectedMacs = checked.map(cb => cb.value);
         const network = document.getElementById('network-selector').value;
@@ -1729,7 +1734,7 @@
 
     function renderMemberDetailHtml(member, reservationInfo, forwardInfo) {
         const macId = member.mac_address.replace(/:/g, '-');
-        const aliasesValue = member.aliases ? member.aliases.join('\n') : '';
+        const aliasesValue = escapeHtml(member.aliases ? member.aliases.join('\n') : '');
         let html = `
             <div class="details-grid">
                 <div class="details-column">
@@ -1744,32 +1749,32 @@
                     ${member.nickname ? `
                     <div class="info-row">
                         <div class="info-label">Nickname:</div>
-                        <div class="info-value">${member.nickname}</div>
+                        <div class="info-value">${escapeHtml(member.nickname)}</div>
                     </div>` : ''}
                     ${member.hostname ? `
                     <div class="info-row">
                         <div class="info-label">Hostname:</div>
-                        <div class="info-value">${member.hostname}</div>
+                        <div class="info-value">${escapeHtml(member.hostname)}</div>
                     </div>` : ''}
                     ${member.manufacturer ? `
                     <div class="info-row">
                         <div class="info-label">Manufacturer:</div>
-                        <div class="info-value">${member.manufacturer}</div>
+                        <div class="info-value">${escapeHtml(member.manufacturer)}</div>
                     </div>` : ''}
                     <div class="info-row">
                         <div class="info-label">IP Address:</div>
                         <div class="info-value">
-                            ${reservationInfo && reservationInfo.reserved ? '🔒 ' : ''}${member.ip_address}
+                            ${reservationInfo && reservationInfo.reserved ? '🔒 ' : ''}${escapeHtml(member.ip_address)}
                             ${reservationInfo && reservationInfo.reserved ? '<span style="color: var(--blue); font-size: 0.75rem; margin-left: 0.5rem;">(Reserved)</span>' : '<span style="color: var(--subtext1); font-size: 0.75rem; margin-left: 0.5rem;">(DHCP)</span>'}
                         </div>
                     </div>
                     <div class="info-row">
                         <div class="info-label">MAC Address:</div>
-                        <div class="info-value">${member.mac_address}</div>
+                        <div class="info-value">${escapeHtml(member.mac_address)}</div>
                     </div>
                     <div class="info-row">
                         <div class="info-label">Connection:</div>
-                        <div class="info-value">${member.connection_type}</div>
+                        <div class="info-value">${escapeHtml(member.connection_type)}</div>
                     </div>
                     ${member.signal_strength !== null && member.signal_strength !== undefined ? `
                     <div class="info-row">
@@ -1788,7 +1793,7 @@
                     </div>` : ''}
                     <div class="info-row">
                         <div class="info-label">Connected To:</div>
-                        <div class="info-value">${member.node}</div>
+                        <div class="info-value">${escapeHtml(member.node)}</div>
                     </div>
                     ${member.last_seen ? `
                     <div class="info-row">
@@ -1810,13 +1815,13 @@
                             ${forwardInfo.map((fwd, idx) => `
                                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; ${idx < forwardInfo.length - 1 ? 'border-bottom: 1px solid var(--surface1);' : ''}">
                                     <div>
-                                        <div style="font-weight: 600; color: var(--text);">${fwd.description || 'Forward'}</div>
+                                        <div style="font-weight: 600; color: var(--text);">${escapeHtml(fwd.description || 'Forward')}</div>
                                         <div style="font-size: 0.75rem; color: var(--subtext0); margin-top: 0.25rem;">
-                                            Port <strong>${fwd.gateway_port}</strong> → ${fwd.client_port}
+                                            Port <strong>${escapeHtml(fwd.gateway_port)}</strong> → ${escapeHtml(fwd.client_port)}
                                         </div>
                                     </div>
                                     <div>
-                                        <span style="background: var(--${fwd.protocol === 'tcp' ? 'blue' : fwd.protocol === 'udp' ? 'mauve' : 'green'}); color: var(--base); padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">${fwd.protocol.toUpperCase()}</span>
+                                        <span style="background: var(--${fwd.protocol === 'tcp' ? 'blue' : fwd.protocol === 'udp' ? 'mauve' : 'green'}); color: var(--base); padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">${escapeHtml(fwd.protocol.toUpperCase())}</span>
                                         ${!fwd.enabled ? '<span style="color: var(--red); font-size: 0.75rem; margin-left: 0.5rem;">⚠ Disabled</span>' : ''}
                                     </div>
                                 </div>
@@ -1976,7 +1981,7 @@
 
         // Build tab bar
         const tabsHtml = members.map((m, i) => {
-            const label = m.name || m.hostname || m.mac_address;
+            const label = escapeHtml(m.name || m.hostname || m.mac_address);
             return `<button class="group-tab${i === 0 ? ' active' : ''}" onclick="switchGroupMemberTab(${i})">${connIcon(m.connection_type)} ${label}</button>`;
         }).join('');
 

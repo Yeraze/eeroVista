@@ -44,8 +44,18 @@ def run(session: Session, eero_client) -> None:
                 UNIQUE (device_id)
             )
         """))
+        session.execute(text(
+            "CREATE INDEX ix_device_group_members_group_id ON device_group_members (group_id)"
+        ))
         logger.info("Created device_group_members table")
     else:
+        # Ensure index exists for previously created tables
+        existing_indexes = {idx["name"] for idx in inspector.get_indexes("device_group_members")}
+        if "ix_device_group_members_group_id" not in existing_indexes:
+            session.execute(text(
+                "CREATE INDEX ix_device_group_members_group_id ON device_group_members (group_id)"
+            ))
+            logger.info("Added missing index on device_group_members.group_id")
         logger.info("device_group_members table already exists")
 
     session.commit()

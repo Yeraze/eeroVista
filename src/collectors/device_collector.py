@@ -1,7 +1,7 @@
 """Device collector for tracking connected devices."""
 
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Dict, Optional
 from zoneinfo import ZoneInfo
 
@@ -116,7 +116,7 @@ class DeviceCollector(BaseCollector):
             # Track network-wide bandwidth totals
             network_bandwidth_down = 0.0
             network_bandwidth_up = 0.0
-            timestamp = datetime.utcnow()
+            timestamp = datetime.now(timezone.utc)
 
             # Process each device
             for device_data in devices_data:
@@ -175,7 +175,7 @@ class DeviceCollector(BaseCollector):
             Dict mapping eero API URL to database ID
         """
         eero_node_map = {}
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now(timezone.utc)
 
         for eero_data in eeros_data:
             try:
@@ -283,13 +283,12 @@ class DeviceCollector(BaseCollector):
                             # Always use UTC for consistency with database timestamps
                             if reboot_time.tzinfo:
                                 # Convert to UTC if timezone-aware
-                                from datetime import timezone
                                 current_time = datetime.now(timezone.utc)
                                 reboot_time_utc = reboot_time.astimezone(timezone.utc)
                                 uptime_seconds = int((current_time - reboot_time_utc).total_seconds())
                             else:
                                 # If no timezone, assume UTC
-                                current_time = datetime.utcnow()
+                                current_time = datetime.now(timezone.utc)
                                 uptime_seconds = int((current_time - reboot_time).total_seconds())
                     except Exception as e:
                         logger.debug(f"Could not parse last_reboot time: {e}")
@@ -402,7 +401,7 @@ class DeviceCollector(BaseCollector):
                 nickname=device_data.get("nickname"),
                 manufacturer=device_data.get("manufacturer"),
                 device_type=self._guess_device_type(device_data),
-                first_seen=datetime.utcnow(),
+                first_seen=datetime.now(timezone.utc),
             )
             self.db.add(device)
             self.db.flush()  # Get the ID
@@ -411,7 +410,7 @@ class DeviceCollector(BaseCollector):
             device.hostname = device_data.get("hostname") or device.hostname
             device.nickname = device_data.get("nickname") or device.nickname
             device.manufacturer = device_data.get("manufacturer") or device.manufacturer
-            device.last_seen = datetime.utcnow()
+            device.last_seen = datetime.now(timezone.utc)
 
         # Get connection info
         is_connected = device_data.get("connected", False)
@@ -457,7 +456,7 @@ class DeviceCollector(BaseCollector):
             bandwidth_up = usage.get("up_mbps")
 
         # Create connection record
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now(timezone.utc)
         connection = DeviceConnection(
             network_name=network_name,
             device_id=device.id,

@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 
 from sqlalchemy import and_, func
@@ -26,7 +26,7 @@ def _aggregate_group(group, member_entries):
     conn_types = sorted({(m.get("connection_type") or "").capitalize() for m in member_entries if m.get("connection_type")})
     connection_type = " + ".join(conn_types) if conn_types else "Unknown"
 
-    ips = [m["ip_address"] for m in member_entries if m.get("ip_address")]
+    ips = [m["ip_address"] for m in member_entries if m.get("ip_address") and m["ip_address"] != "N/A"]
     ip_address = ", ".join(ips) if ips else None
 
     is_guest = any(m.get("is_guest") for m in member_entries)
@@ -45,7 +45,7 @@ def _aggregate_group(group, member_entries):
         "bandwidth_down_mbps": bandwidth_down,
         "bandwidth_up_mbps": bandwidth_up,
         "node": ", ".join(sorted({m["node"] for m in member_entries if m.get("node") and m["node"] != "N/A"})) or "N/A",
-        "mac_address": member_entries[0]["mac_address"],
+        "mac_address": None,
         "last_seen": max((m["last_seen"] for m in member_entries if m.get("last_seen")), default=None),
         "aliases": None,
         "group_id": group.id,
@@ -102,7 +102,7 @@ def build_devices_list(db: Session, network_name: str) -> List[Dict]:
 
     bandwidth_map = {}
     if devices_needing_bandwidth:
-        cutoff_time = datetime.utcnow() - timedelta(hours=2)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=2)
 
         bandwidth_subq = db.query(
             DeviceConnection.device_id,
@@ -180,17 +180,19 @@ def build_devices_list(db: Session, network_name: str) -> List[Dict]:
 
     # Aggregate grouped devices
     groups = db.query(DeviceGroup).filter(DeviceGroup.network_name == network_name).all()
-    for group in groups:
-        member_device_ids = {m.device_id for m in group.members}
-        member_entries = [d for d in devices_list if d.get("device_id") in member_device_ids]
-        if not member_entries:
-            continue
+    if groups:
+        device_id_map = {d["device_id"]: d for d in devices_list if d.get("device_id")}
+        grouped_device_ids = set()
+        group_entries = []
+        for group in groups:
+            member_device_ids = {m.device_id for m in group.members}
+            member_entries = [device_id_map[did] for did in member_device_ids if did in device_id_map]
+            if not member_entries:
+                continue
+            grouped_device_ids.update(member_device_ids)
+            group_entries.append(_aggregate_group(group, member_entries))
 
-        # Remove individual member entries from the list
-        devices_list = [d for d in devices_list if d.get("device_id") not in member_device_ids]
-
-        # Add aggregated group entry
-        group_entry = _aggregate_group(group, member_entries)
-        devices_list.append(group_entry)
+        devices_list = [d for d in devices_list if d.get("device_id") not in grouped_device_ids]
+        devices_list.extend(group_entries)
 
     return devices_list

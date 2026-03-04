@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 def _resolve_macs_to_device_ids(db: Session, network_name: str, mac_addresses: List[str]) -> List[int]:
     """Resolve a list of MAC addresses to device IDs on the given network."""
+    mac_addresses = list(dict.fromkeys(mac_addresses))  # deduplicate, preserve order
     devices = db.query(Device).filter(
         Device.mac_address.in_(mac_addresses),
         Device.network_name == network_name,
@@ -167,89 +168,90 @@ def delete_device_group(db: Session, group_id: int) -> None:
 # FastAPI route handlers
 # ---------------------------------------------------------------------------
 
-try:
-    from fastapi import APIRouter, Depends, HTTPException
-    from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
-    from src.utils.database import get_db
+from src.utils.database import get_db
 
-    router = APIRouter(prefix="/api", tags=["device-groups"])
+router = APIRouter(prefix="/api", tags=["device-groups"])
 
-    class CreateGroupRequest(BaseModel):
-        """Request model for creating a device group."""
-        network_name: str
-        name: str
-        mac_addresses: List[str]
 
-    class UpdateGroupRequest(BaseModel):
-        """Request model for updating a device group."""
-        name: Optional[str] = None
-        mac_addresses: Optional[List[str]] = None
+class CreateGroupRequest(BaseModel):
+    """Request model for creating a device group."""
+    network_name: str
+    name: str
+    mac_addresses: List[str]
 
-    class GroupResponse(BaseModel):
-        """Response model for a device group."""
-        id: int
-        network_name: str
-        name: str
-        device_ids: List[int]
 
-    @router.get("/device-groups")
-    def api_list_device_groups(
-        network: Optional[str] = None,
-        db: Session = Depends(get_db),
-    ):
-        """List device groups for a network."""
-        if not network:
-            first_device = db.query(Device).first()
-            if first_device:
-                network = first_device.network_name
-            else:
-                return []
-        return list_device_groups(db, network)
+class UpdateGroupRequest(BaseModel):
+    """Request model for updating a device group."""
+    name: Optional[str] = None
+    mac_addresses: Optional[List[str]] = None
 
-    @router.post("/device-groups", status_code=201)
-    def api_create_device_group(
-        req: CreateGroupRequest,
-        db: Session = Depends(get_db),
-    ):
-        """Create a new device group."""
-        try:
-            device_ids = _resolve_macs_to_device_ids(db, req.network_name, req.mac_addresses)
-            return create_device_group(db, req.network_name, req.name, device_ids)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
 
-    @router.put("/device-groups/{group_id}")
-    def api_update_device_group(
-        group_id: int,
-        req: UpdateGroupRequest,
-        db: Session = Depends(get_db),
-    ):
-        """Update a device group."""
-        try:
-            device_ids = None
-            if req.mac_addresses is not None:
-                # Need the group's network_name to resolve MACs
-                group = db.query(DeviceGroup).filter(DeviceGroup.id == group_id).first()
-                if not group:
-                    raise HTTPException(status_code=404, detail="Group not found")
-                device_ids = _resolve_macs_to_device_ids(db, group.network_name, req.mac_addresses)
-            return update_device_group(db, group_id, name=req.name, device_ids=device_ids)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+class GroupResponse(BaseModel):
+    """Response model for a device group."""
+    id: int
+    network_name: str
+    name: str
+    device_ids: List[int]
 
-    @router.delete("/device-groups/{group_id}", status_code=204)
-    def api_delete_device_group(
-        group_id: int,
-        db: Session = Depends(get_db),
-    ):
-        """Delete a device group."""
-        try:
-            delete_device_group(db, group_id)
-        except ValueError as e:
-            raise HTTPException(status_code=404, detail=str(e))
 
-except ImportError:
-    # FastAPI not available (e.g. in test environment without it installed).
-    # Business logic functions above are still importable.
-    router = None
+@router.get("/device-groups")
+def api_list_device_groups(
+    network: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """List device groups for a network."""
+    if not network:
+        first_device = db.query(Device).first()
+        if first_device:
+            network = first_device.network_name
+        else:
+            return []
+    return list_device_groups(db, network)
+
+
+@router.post("/device-groups", status_code=201)
+def api_create_device_group(
+    req: CreateGroupRequest,
+    db: Session = Depends(get_db),
+):
+    """Create a new device group."""
+    try:
+        device_ids = _resolve_macs_to_device_ids(db, req.network_name, req.mac_addresses)
+        return create_device_group(db, req.network_name, req.name, device_ids)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/device-groups/{group_id}")
+def api_update_device_group(
+    group_id: int,
+    req: UpdateGroupRequest,
+    db: Session = Depends(get_db),
+):
+    """Update a device group."""
+    try:
+        device_ids = None
+        if req.mac_addresses is not None:
+            # Need the group's network_name to resolve MACs
+            group = db.query(DeviceGroup).filter(DeviceGroup.id == group_id).first()
+            if not group:
+                raise HTTPException(status_code=404, detail="Group not found")
+            device_ids = _resolve_macs_to_device_ids(db, group.network_name, req.mac_addresses)
+        return update_device_group(db, group_id, name=req.name, device_ids=device_ids)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/device-groups/{group_id}", status_code=204)
+def api_delete_device_group(
+    group_id: int,
+    db: Session = Depends(get_db),
+):
+    """Delete a device group."""
+    try:
+        delete_device_group(db, group_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

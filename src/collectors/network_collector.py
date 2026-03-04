@@ -1,7 +1,7 @@
 """Network collector for overall network statistics."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.collectors.base import BaseCollector
 from src.models.database import NetworkMetric
@@ -102,7 +102,7 @@ class NetworkCollector(BaseCollector):
             # Create network metric record
             metric = NetworkMetric(
                 network_name=network_name,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 total_devices=total_devices,
                 total_devices_online=online_devices,
                 guest_network_enabled=guest_enabled,
