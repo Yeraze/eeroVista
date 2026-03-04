@@ -150,6 +150,80 @@ GET /api/devices/{mac_address}
 }
 ```
 
+### Device Groups
+
+#### List Device Groups
+```
+GET /api/device-groups
+```
+
+**Query Parameters**:
+- `network` (string): Network name (defaults to first available network)
+
+**Response** (200 OK):
+```json
+[
+  {
+    "id": 1,
+    "network_name": "My Network",
+    "name": "Desktop PC",
+    "device_ids": [42, 43]
+  }
+]
+```
+
+#### Create Device Group
+```
+POST /api/device-groups
+```
+
+**Request Body**:
+```json
+{
+  "network_name": "My Network",
+  "name": "Desktop PC",
+  "mac_addresses": ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"]
+}
+```
+
+**Response** (201 Created):
+```json
+{
+  "id": 1,
+  "network_name": "My Network",
+  "name": "Desktop PC",
+  "device_ids": [42, 43]
+}
+```
+
+**Errors**:
+- `400` if any MAC address is not found on the specified network
+- `400` if a device is already in another group
+
+#### Update Device Group
+```
+PUT /api/device-groups/{group_id}
+```
+
+**Request Body** (all fields optional):
+```json
+{
+  "name": "New Name",
+  "mac_addresses": ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"]
+}
+```
+
+**Response** (200 OK): Same format as create response.
+
+#### Delete Device Group
+```
+DELETE /api/device-groups/{group_id}
+```
+
+**Response** (204 No Content): Group is deleted, member devices become ungrouped.
+
+---
+
 ### Network Summary
 ```
 GET /api/network/summary

@@ -5,6 +5,7 @@ A read-only web-based monitoring tool for Eero mesh networks.
 ## Features
 
 - **Real-time Dashboard**: View network status, connected devices, and bandwidth usage
+- **Device Groups**: Combine multiple network interfaces (e.g. wired + wireless) from the same physical device into a single logical entry with aggregated bandwidth
 - **Historical Data**: Track device connections and network performance over time
 - **Speedtest History**: Monitor ISP performance with historical speedtest results
 - **Multi-Format Exports**:
@@ -57,12 +58,12 @@ The main dashboard provides a real-time overview of your Eero network with bandw
 ### Device Management
 ![Device List](images/devicelist.png)
 
-View all connected devices with detailed information including connection status, IP addresses (with DHCP reservation indicators 🔒), signal strength, and port forwarding status (🔀).
+View all connected devices with detailed information including connection status, IP addresses (with DHCP reservation indicators 🔒), signal strength, and port forwarding status (🔀). Create device groups to combine multiple network interfaces from the same physical device.
 
 ### Device Details
 ![Device Details](images/device-detail.png)
 
-Click any device to see detailed metrics, historical bandwidth usage, configure DNS aliases, and view port forwarding configuration.
+Click any device to see detailed metrics, historical bandwidth usage, configure DNS aliases, and view port forwarding configuration. Grouped devices show an aggregate bandwidth chart with per-member stacked bars and tabbed member details.
 
 ### Network Topology
 ![Network Topology](images/nodes.png)
