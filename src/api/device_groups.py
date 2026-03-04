@@ -10,6 +10,19 @@ from src.models.database import Device, DeviceGroup, DeviceGroupMember
 logger = logging.getLogger(__name__)
 
 
+def _resolve_macs_to_device_ids(db: Session, network_name: str, mac_addresses: List[str]) -> List[int]:
+    """Resolve a list of MAC addresses to device IDs on the given network."""
+    devices = db.query(Device).filter(
+        Device.mac_address.in_(mac_addresses),
+        Device.network_name == network_name,
+    ).all()
+    if len(devices) != len(mac_addresses):
+        found_macs = {d.mac_address for d in devices}
+        missing = [m for m in mac_addresses if m not in found_macs]
+        raise ValueError(f"Devices not found on network: {missing}")
+    return [d.id for d in devices]
+
+
 # ---------------------------------------------------------------------------
 # Business logic functions (testable without FastAPI)
 # ---------------------------------------------------------------------------
@@ -166,12 +179,12 @@ try:
         """Request model for creating a device group."""
         network_name: str
         name: str
-        device_ids: List[int]
+        mac_addresses: List[str]
 
     class UpdateGroupRequest(BaseModel):
         """Request model for updating a device group."""
         name: Optional[str] = None
-        device_ids: Optional[List[int]] = None
+        mac_addresses: Optional[List[str]] = None
 
     class GroupResponse(BaseModel):
         """Response model for a device group."""
@@ -201,7 +214,8 @@ try:
     ):
         """Create a new device group."""
         try:
-            return create_device_group(db, req.network_name, req.name, req.device_ids)
+            device_ids = _resolve_macs_to_device_ids(db, req.network_name, req.mac_addresses)
+            return create_device_group(db, req.network_name, req.name, device_ids)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -213,7 +227,14 @@ try:
     ):
         """Update a device group."""
         try:
-            return update_device_group(db, group_id, name=req.name, device_ids=req.device_ids)
+            device_ids = None
+            if req.mac_addresses is not None:
+                # Need the group's network_name to resolve MACs
+                group = db.query(DeviceGroup).filter(DeviceGroup.id == group_id).first()
+                if not group:
+                    raise HTTPException(status_code=404, detail="Group not found")
+                device_ids = _resolve_macs_to_device_ids(db, group.network_name, req.mac_addresses)
+            return update_device_group(db, group_id, name=req.name, device_ids=device_ids)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
