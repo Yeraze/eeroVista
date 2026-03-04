@@ -15,7 +15,7 @@ from src import __version__
 #   2. patch_eero_client() - Fixes TypeAdapter usage
 from src.utils.eero_patch import patch_eero_client  # noqa: F401
 
-from src.api import health, prometheus, setup, web, zabbix
+from src.api import device_groups, health, prometheus, setup, web, zabbix
 from src.config import ensure_data_directory, get_settings
 from src.scheduler.jobs import get_scheduler
 from src.utils.database import init_database
@@ -75,6 +75,7 @@ app.include_router(setup.router)
 app.include_router(health.router)
 app.include_router(prometheus.router)
 app.include_router(zabbix.router)
+app.include_router(device_groups.router)
 
 
 @app.get("/favicon.ico")

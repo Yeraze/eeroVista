@@ -3,7 +3,7 @@
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -25,7 +25,7 @@ class DeviceAliasesRequest(BaseModel):
     aliases: List[str]
 
 # Track when the app started
-APP_START_TIME = datetime.utcnow()
+APP_START_TIME = datetime.now(timezone.utc)
 
 # Simple in-memory cache for expensive queries
 # Cache structure: {cache_key: (data, expiry_time)}
@@ -64,7 +64,7 @@ def get_network_name_filter(network: Optional[str], client: EeroClientWrapper) -
 @router.get("/health")
 async def health_check(client: EeroClientWrapper = Depends(get_eero_client)) -> Dict[str, Any]:
     """Health check endpoint."""
-    uptime = (datetime.utcnow() - APP_START_TIME).total_seconds()
+    uptime = (datetime.now(timezone.utc) - APP_START_TIME).total_seconds()
 
     # Check database
     db_status = "connected"
@@ -103,7 +103,7 @@ async def health_check(client: EeroClientWrapper = Depends(get_eero_client)) -> 
         "database": db_status,
         "eero_api": eero_status,
         "collectors": collector_health,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -181,7 +181,7 @@ async def collection_status() -> Dict[str, Any]:
                         last_collections[collector_type] = {
                             "timestamp": config.value,
                             "seconds_ago": int(
-                                (datetime.utcnow() - timestamp).total_seconds()
+                                (datetime.now(timezone.utc) - timestamp).total_seconds()
                             ),
                         }
                     except Exception:
@@ -616,171 +616,15 @@ async def get_devices(
             return {"devices": [], "total": 0}
 
         with get_db_context() as db:
-            from src.models.database import Device, DeviceConnection, EeroNode
+            from src.services.device_service import build_devices_list
+            result = build_devices_list(db, network_name)
 
-            # Get all devices with their most recent connection for this network
-            # Use optimized JOIN query to avoid N+1 query problem
-            from sqlalchemy import func
-
-            query_start = time.time()
-
-            # Alternative approach: Query devices first, then get latest connection for each
-            # This is actually faster with 6M+ connection records
-            devices = db.query(Device).filter(Device.network_name == network_name).all()
-            query_time_devices = (time.time() - query_start) * 1000
-            logger.info(f"GET /api/devices - fetched {len(devices)} devices in {query_time_devices:.1f}ms")
-
-            # Build a map of device_id -> latest connection using a single query per device
-            # Actually, let's do this smarter - fetch all latest connections in one query
-            latest_connections_start = time.time()
-
-            # Get latest connection for each device using DISTINCT ON equivalent for SQLite
-            # We'll use GROUP BY on device_id and MAX(timestamp)
-            device_ids = [d.id for d in devices]
-
-            # Use a subquery approach that SQLite can optimize better
-            # This leverages the composite index (device_id, timestamp)
-            from sqlalchemy import and_, tuple_
-
-            # Create the subquery to get max timestamp per device
-            latest_subq = db.query(
-                DeviceConnection.device_id,
-                func.max(DeviceConnection.timestamp).label('max_timestamp')
-            ).filter(
-                DeviceConnection.device_id.in_(device_ids)
-            ).group_by(DeviceConnection.device_id).subquery()
-
-            # Join back to get the full connection records
-            # This uses the composite index efficiently
-            connections = db.query(DeviceConnection, EeroNode).join(
-                latest_subq,
-                and_(
-                    DeviceConnection.device_id == latest_subq.c.device_id,
-                    DeviceConnection.timestamp == latest_subq.c.max_timestamp
-                )
-            ).outerjoin(
-                EeroNode,
-                EeroNode.id == DeviceConnection.eero_node_id
-            ).all()
-
-            # Build a map of device_id -> (connection, node)
-            connection_map = {}
-            for conn, node in connections:
-                connection_map[conn.device_id] = (conn, node)
-
-            latest_connections_time = (time.time() - latest_connections_start) * 1000
-            logger.info(f"GET /api/devices - fetched connections in {latest_connections_time:.1f}ms")
-
-            # Get bandwidth data from most recent connection that has it
-            # (eero API only populates bandwidth periodically, so latest connection may not have it)
-            bandwidth_start = time.time()
-            devices_needing_bandwidth = [
-                d_id for d_id, (conn, _) in connection_map.items()
-                if conn and conn.bandwidth_down_mbps is None and conn.bandwidth_up_mbps is None
-            ]
-
-            bandwidth_map = {}
-            if devices_needing_bandwidth:
-                # Get most recent connection with bandwidth data for each device (within last 2 hours)
-                from datetime import timedelta
-                cutoff_time = datetime.utcnow() - timedelta(hours=2)
-
-                bandwidth_subq = db.query(
-                    DeviceConnection.device_id,
-                    func.max(DeviceConnection.timestamp).label('max_timestamp')
-                ).filter(
-                    DeviceConnection.device_id.in_(devices_needing_bandwidth),
-                    DeviceConnection.timestamp >= cutoff_time,
-                    (DeviceConnection.bandwidth_down_mbps.isnot(None)) | (DeviceConnection.bandwidth_up_mbps.isnot(None))
-                ).group_by(DeviceConnection.device_id).subquery()
-
-                bandwidth_connections = db.query(DeviceConnection).join(
-                    bandwidth_subq,
-                    and_(
-                        DeviceConnection.device_id == bandwidth_subq.c.device_id,
-                        DeviceConnection.timestamp == bandwidth_subq.c.max_timestamp
-                    )
-                ).all()
-
-                for conn in bandwidth_connections:
-                    bandwidth_map[conn.device_id] = (conn.bandwidth_down_mbps, conn.bandwidth_up_mbps)
-
-            bandwidth_time = (time.time() - bandwidth_start) * 1000
-            if devices_needing_bandwidth:
-                logger.info(f"GET /api/devices - fetched bandwidth for {len(bandwidth_map)}/{len(devices_needing_bandwidth)} devices in {bandwidth_time:.1f}ms")
-
-            # Build devices_query as list of tuples (device, connection, node)
-            devices_query = []
-            for device in devices:
-                conn, node = connection_map.get(device.id, (None, None))
-                devices_query.append((device, conn, node))
-
-            query_time = (time.time() - query_start) * 1000
-            logger.info(f"GET /api/devices - total query time: {query_time:.1f}ms for {len(devices_query)} devices")
-
-            # Build devices list from query results
-            serial_start = time.time()
-            devices_list = []
-            for device, connection, node in devices_query:
-                # Get eero node name if connected to one
-                node_name = node.location if node else None
-                connection_type = "unknown"
-                ip_address = "N/A"
-                is_online = False
-                is_guest = False
-                signal_strength = None
-                bandwidth_down = None
-                bandwidth_up = None
-
-                if connection:
-                    ip_address = connection.ip_address or "N/A"
-                    is_online = connection.is_connected or False
-                    connection_type = connection.connection_type or "unknown"
-                    is_guest = connection.is_guest or False
-                    signal_strength = connection.signal_strength
-                    bandwidth_down = connection.bandwidth_down_mbps
-                    bandwidth_up = connection.bandwidth_up_mbps
-
-                    # Use bandwidth from recent connection if latest doesn't have it
-                    if bandwidth_down is None and bandwidth_up is None and device.id in bandwidth_map:
-                        bandwidth_down, bandwidth_up = bandwidth_map[device.id]
-
-                device_name = device.nickname or device.hostname or device.manufacturer or device.mac_address
-
-                # Parse aliases
-                aliases = []
-                if device.aliases:
-                    try:
-                        aliases = json.loads(device.aliases)
-                    except json.JSONDecodeError:
-                        logger.error(f"Invalid JSON in aliases for device {device.mac_address}")
-
-                devices_list.append({
-                    "name": device_name,
-                    "nickname": device.nickname,
-                    "hostname": device.hostname,
-                    "manufacturer": device.manufacturer,
-                    "type": device.device_type or "unknown",
-                    "ip_address": ip_address,
-                    "is_online": is_online,
-                    "is_guest": is_guest,
-                    "connection_type": connection_type,
-                    "signal_strength": signal_strength,
-                    "bandwidth_down_mbps": bandwidth_down,
-                    "bandwidth_up_mbps": bandwidth_up,
-                    "node": node_name or "N/A",
-                    "mac_address": device.mac_address,
-                    "last_seen": device.last_seen.isoformat() if device.last_seen else None,
-                    "aliases": aliases,
-                })
-
-            serial_time = (time.time() - serial_start) * 1000
             total_time = (time.time() - start_time) * 1000
-            logger.info(f"GET /api/devices - serialization: {serial_time:.1f}ms, total: {total_time:.1f}ms")
+            logger.info(f"GET /api/devices - total: {total_time:.1f}ms, {len(result)} devices")
 
             return {
-                "devices": devices_list,
-                "total": len(devices_list),
+                "devices": result,
+                "total": len(result),
             }
 
     except Exception as e:
@@ -1131,7 +975,7 @@ async def get_network_bandwidth_history(
             from src.models.database import Device, DeviceConnection
 
             # Calculate time range
-            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
 
             # Get all connections in time range for devices in this network
             # Group by timestamp and sum bandwidth across all devices
@@ -1473,7 +1317,7 @@ async def get_network_bandwidth_top_devices(
         from zoneinfo import ZoneInfo
 
         with get_db_context() as db:
-            from src.models.database import DailyBandwidth, Device
+            from src.models.database import DailyBandwidth, Device, DeviceGroup, DeviceGroupMember
 
             # Use local timezone
             settings = get_settings()
@@ -1486,24 +1330,59 @@ async def get_network_bandwidth_top_devices(
             all_dates = [since_date + timedelta(days=i) for i in range(days)]
             date_strings = [d.isoformat() for d in all_dates]
 
-            # Get top N devices by total bandwidth in this network
-            top_devices_query = (
+            # Build group membership map: device_id -> group
+            group_members = (
+                db.query(DeviceGroupMember, DeviceGroup)
+                .join(DeviceGroup, DeviceGroup.id == DeviceGroupMember.group_id)
+                .filter(DeviceGroup.network_name == network_name)
+                .all()
+            )
+            device_to_group = {}  # device_id -> group
+            group_device_ids = {}  # group_id -> [device_ids]
+            for member, group in group_members:
+                device_to_group[member.device_id] = group
+                group_device_ids.setdefault(group.id, []).append(member.device_id)
+
+            # Get per-device bandwidth totals for ranking
+            all_device_totals = (
                 db.query(
-                    Device,
+                    DailyBandwidth.device_id,
                     func.sum(DailyBandwidth.download_mb + DailyBandwidth.upload_mb).label('total_mb')
                 )
-                .join(DailyBandwidth, Device.id == DailyBandwidth.device_id)
+                .join(Device, Device.id == DailyBandwidth.device_id)
                 .filter(
                     Device.network_name == network_name,
-                    DailyBandwidth.date >= since_date
+                    DailyBandwidth.date >= since_date,
+                    DailyBandwidth.device_id.isnot(None),
                 )
-                .group_by(Device.id)
-                .order_by(func.sum(DailyBandwidth.download_mb + DailyBandwidth.upload_mb).desc())
-                .limit(limit)
+                .group_by(DailyBandwidth.device_id)
                 .all()
             )
 
-            top_device_ids = [device.id for device, _ in top_devices_query]
+            # Aggregate by entity (group or individual device)
+            # entity_key: "group_{id}" or "device_{id}"
+            entity_totals = {}  # key -> total_mb
+            entity_device_ids = {}  # key -> [device_ids]
+            for device_id, total_mb in all_device_totals:
+                if device_id in device_to_group:
+                    grp = device_to_group[device_id]
+                    key = f"group_{grp.id}"
+                    entity_totals[key] = entity_totals.get(key, 0) + total_mb
+                    entity_device_ids.setdefault(key, []).append(device_id)
+                else:
+                    key = f"device_{device_id}"
+                    entity_totals[key] = total_mb
+                    entity_device_ids[key] = [device_id]
+
+            # Rank and pick top N
+            sorted_entities = sorted(entity_totals.items(), key=lambda x: x[1], reverse=True)
+            top_entities = sorted_entities[:limit]
+            top_entity_keys = {k for k, _ in top_entities}
+
+            # Collect all device_ids that are in top entities
+            top_device_ids = []
+            for key in top_entity_keys:
+                top_device_ids.extend(entity_device_ids[key])
 
             # Get daily breakdown for top devices
             daily_data = (
@@ -1513,28 +1392,53 @@ async def get_network_bandwidth_top_devices(
                     DailyBandwidth.date >= since_date
                 )
                 .all()
-            )
+            ) if top_device_ids else []
 
-            # Organize data by device
-            device_data_map = {}
-            for device, total_mb in top_devices_query:
-                device_name = device.nickname or device.hostname or device.manufacturer or device.mac_address
-                device_data_map[device.id] = {
-                    "name": device_name,
-                    "mac_address": device.mac_address,
-                    "type": device.device_type or "unknown",
-                    "total_mb": round(total_mb, 2),
-                    "daily_download": [0.0] * days,
-                    "daily_upload": [0.0] * days,
-                }
+            # Build a device info lookup
+            top_devices = db.query(Device).filter(Device.id.in_(top_device_ids)).all() if top_device_ids else []
+            device_info = {d.id: d for d in top_devices}
 
-            # Fill in daily values
+            # Organize data by entity
+            entity_data_map = {}
+            for key, total_mb in top_entities:
+                if key.startswith("group_"):
+                    group_id = int(key.split("_")[1])
+                    grp = device_to_group[entity_device_ids[key][0]]
+                    entity_data_map[key] = {
+                        "name": grp.name,
+                        "mac_address": None,
+                        "type": "group",
+                        "total_mb": round(total_mb, 2),
+                        "daily_download": [0.0] * days,
+                        "daily_upload": [0.0] * days,
+                    }
+                else:
+                    device_id = int(key.split("_")[1])
+                    device = device_info.get(device_id)
+                    if device:
+                        device_name = device.nickname or device.hostname or device.manufacturer or device.mac_address
+                        entity_data_map[key] = {
+                            "name": device_name,
+                            "mac_address": device.mac_address,
+                            "type": device.device_type or "unknown",
+                            "total_mb": round(total_mb, 2),
+                            "daily_download": [0.0] * days,
+                            "daily_upload": [0.0] * days,
+                        }
+
+            # Fill in daily values, aggregating grouped devices
             for record in daily_data:
-                if record.device_id in device_data_map:
+                if record.device_id in device_to_group:
+                    key = f"group_{device_to_group[record.device_id].id}"
+                else:
+                    key = f"device_{record.device_id}"
+                if key in entity_data_map:
                     date_index = (record.date - since_date).days
                     if 0 <= date_index < days:
-                        device_data_map[record.device_id]["daily_download"][date_index] = round(record.download_mb, 2)
-                        device_data_map[record.device_id]["daily_upload"][date_index] = round(record.upload_mb, 2)
+                        entity_data_map[key]["daily_download"][date_index] = round(
+                            entity_data_map[key]["daily_download"][date_index] + record.download_mb, 2)
+                        entity_data_map[key]["daily_upload"][date_index] = round(
+                            entity_data_map[key]["daily_upload"][date_index] + record.upload_mb, 2)
 
             # Get "Other" devices data
             other_daily_data = (
@@ -1563,16 +1467,10 @@ async def get_network_bandwidth_top_devices(
                     other_upload[date_index] = round(upload, 2)
                     other_total += download + upload
 
-            # Count other devices
-            other_device_count = (
-                db.query(func.count(func.distinct(DailyBandwidth.device_id)))
-                .filter(
-                    DailyBandwidth.device_id.notin_(top_device_ids) if top_device_ids else True,
-                    DailyBandwidth.device_id.isnot(None),
-                    DailyBandwidth.date >= since_date
-                )
-                .scalar() or 0
-            )
+            # Count other devices/groups
+            all_entity_count = len(entity_totals)
+            top_entity_count = len(top_entities)
+            other_entity_count = all_entity_count - top_entity_count
 
             return {
                 "period": {
@@ -1581,10 +1479,10 @@ async def get_network_bandwidth_top_devices(
                     "end_date": today_local.isoformat(),
                 },
                 "dates": date_strings,
-                "devices": list(device_data_map.values()),
+                "devices": list(entity_data_map.values()),
                 "other": {
                     "name": "Other Devices",
-                    "device_count": other_device_count,
+                    "device_count": other_entity_count,
                     "total_mb": round(other_total, 2),
                     "daily_download": other_download,
                     "daily_upload": other_upload,
@@ -2196,7 +2094,7 @@ async def generate_support_package(
             )
 
         package_data = {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "version": __version__,
             "networks": []
         }

@@ -2,7 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -35,7 +35,7 @@ class BaseCollector(ABC):
     def update_last_collection(self, collector_type: str) -> None:
         """Update the last collection timestamp for this collector type."""
         try:
-            timestamp = datetime.utcnow().isoformat()
+            timestamp = datetime.now(timezone.utc).isoformat()
             config_key = f"last_collection_{collector_type}"
 
             config = self.db.query(Config).filter(Config.key == config_key).first()
@@ -74,7 +74,7 @@ class BaseCollector(ABC):
             dict with collection stats
         """
         logger.info(f"Starting {self.name}")
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         try:
             # Check authentication
@@ -93,7 +93,7 @@ class BaseCollector(ABC):
             collector_type = self.name.replace("Collector", "").lower()
             self.update_last_collection(collector_type)
 
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.info(
                 f"{self.name} completed in {duration:.2f}s - "
                 f"{result.get('items_collected', 0)} items"
@@ -106,7 +106,7 @@ class BaseCollector(ABC):
             }
 
         except Exception as e:
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.error(f"{self.name} failed after {duration:.2f}s: {e}", exc_info=True)
 
             # Attempt session refresh on API failures

@@ -286,6 +286,36 @@
     .details-column {
         min-width: 0; /* Prevents grid overflow */
     }
+
+    /* Group member tab bar */
+    .group-tab-bar {
+        display: flex;
+        overflow-x: auto;
+        gap: 0;
+        border-bottom: 2px solid var(--surface1);
+        margin-bottom: 1rem;
+    }
+    .group-tab {
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        border: none;
+        background: transparent;
+        color: var(--subtext0);
+        font-size: 0.9rem;
+        white-space: nowrap;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        transition: color 0.2s, border-color 0.2s;
+    }
+    .group-tab:hover {
+        color: var(--text);
+        background: var(--surface0);
+    }
+    .group-tab.active {
+        color: var(--blue);
+        border-bottom-color: var(--blue);
+        font-weight: 600;
+    }
 </style>
 {% endblock %}
 
@@ -339,6 +369,10 @@
                 <span style="font-size: 0.875rem; white-space: nowrap;">Show Guests</span>
             </label>
         </div>
+        <button id="create-group-btn" class="btn"
+            style="background: var(--blue); color: white; padding: 0.4rem 1rem; border: none; border-radius: 6px; cursor: pointer;">
+            &#x1F517; Create Device Group
+        </button>
     </div>
 
     <div class="mt-3" style="overflow-x: auto;">
@@ -378,6 +412,31 @@
     </div>
 </div>
 
+<!-- Device Group Modal -->
+<div id="group-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+            <h2 class="modal-title">Create Device Group</h2>
+            <button class="modal-close" id="group-modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <label for="group-name-input" style="font-weight: 600;">Group Name:</label>
+            <input type="text" id="group-name-input" placeholder="e.g., My Desktop"
+                style="width: 100%; padding: 0.5rem; margin: 0.5rem 0 1rem; border: 1px solid var(--surface1); border-radius: 6px;">
+            <label style="font-weight: 600;">Select Devices:</label>
+            <input type="text" id="group-device-filter" placeholder="Filter devices..."
+                style="width: 100%; padding: 0.4rem; margin: 0.5rem 0; border: 1px solid var(--surface1); border-radius: 6px;">
+            <div id="group-device-list" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--surface1); border-radius: 6px; padding: 0.5rem;"></div>
+            <div style="display: flex; gap: 0.5rem; margin-top: 1rem; justify-content: flex-end;">
+                <button id="group-cancel-btn" class="btn"
+                    style="padding: 0.4rem 1rem; border: 1px solid var(--surface1); border-radius: 6px; cursor: pointer;">Cancel</button>
+                <button id="group-save-btn" class="btn"
+                    style="background: var(--green); color: white; padding: 0.4rem 1rem; border: none; border-radius: 6px; cursor: pointer;">Create Group</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
     let devicesData = [];
     let currentSort = { column: 'name', direction: 'asc' };
@@ -388,6 +447,11 @@
     // Routing data
     let reservationsMap = new Map(); // MAC -> reservation info
     let forwardsMap = new Map(); // IP -> array of forwards
+
+    // Escape user-controlled strings for safe innerHTML insertion
+    function escapeHtml(s) {
+        return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
 
     // Format device type with emoji and proper capitalization
     function formatDeviceType(type) {
@@ -572,6 +636,9 @@
         });
     }
 
+    // Lookup for group devices by group_id (used by onclick in table rows)
+    window.groupDeviceLookup = {};
+
     // Render devices table with filtering
     function renderDevices() {
         const tbody = document.getElementById('devices-table-body');
@@ -588,6 +655,12 @@
             return;
         }
 
+        // Build group device lookup
+        groupDeviceLookup = {};
+        devicesData.forEach(d => {
+            if (d.group_id) groupDeviceLookup[d.group_id] = d;
+        });
+
         // Apply filters
         const filteredDevices = devicesData.filter(device => {
             // Filter by offline status
@@ -603,10 +676,11 @@
             // Filter by text search
             if (filterText) {
                 const searchLower = filterText.toLowerCase();
-                const matchesName = device.name.toLowerCase().includes(searchLower);
-                const matchesIP = device.ip_address.toLowerCase().includes(searchLower);
-                const matchesType = device.type.toLowerCase().includes(searchLower);
-                const matchesNode = device.node.toLowerCase().includes(searchLower);
+                const displayName = (device.group_id ? (device.group_name || device.name) : device.name) || '';
+                const matchesName = displayName.toLowerCase().includes(searchLower);
+                const matchesIP = (device.ip_address || '').toLowerCase().includes(searchLower);
+                const matchesType = (device.type || '').toLowerCase().includes(searchLower);
+                const matchesNode = (device.node || '').toLowerCase().includes(searchLower);
 
                 if (!matchesName && !matchesIP && !matchesType && !matchesNode) {
                     return false;
@@ -643,9 +717,18 @@
                 ? '<span class="status-badge status-online">Online</span>'
                 : '<span class="status-badge status-offline">Offline</span>';
 
+            // Determine if this is a grouped device
+            const isGrouped = !!device.group_id;
+            const displayName = isGrouped
+                ? `&#x1F517; ${escapeHtml(device.group_name || device.name)}`
+                : escapeHtml(device.name);
+            const onclickHandler = isGrouped
+                ? `if(groupDeviceLookup[${device.group_id}]) showGroupDetails(groupDeviceLookup[${device.group_id}])`
+                : `showDeviceDetails(${originalIndex})`;
+
             // Check if IP is reserved
             const isReserved = reservationsMap.has(device.mac_address);
-            const ipDisplay = isReserved ? `🔒 ${device.ip_address}` : device.ip_address;
+            const ipDisplay = isReserved ? `🔒 ${device.ip_address}` : (device.ip_address || 'N/A');
 
             // Check for port forwards
             const forwards = forwardsMap.get(device.ip_address) || [];
@@ -659,13 +742,13 @@
                 : '';
 
             return `
-                <tr class="device-row ${rowClass}" onclick="showDeviceDetails(${originalIndex})">
-                    <td>${device.name}${guestIndicator}</td>
-                    <td>${formatDeviceType(device.type)}</td>
+                <tr class="device-row ${rowClass}" onclick="${onclickHandler}">
+                    <td>${displayName}${guestIndicator}</td>
+                    <td>${formatDeviceType(device.type || 'generic')}</td>
                     <td>${ipDisplay}</td>
                     <td>${statusBadge}</td>
-                    <td>${device.connection_type}</td>
-                    <td>${device.node}</td>
+                    <td>${device.connection_type || 'N/A'}</td>
+                    <td>${device.node || 'N/A'}</td>
                     <td style="text-align: center;">${forwardIndicator}</td>
                 </tr>
             `;
@@ -764,7 +847,7 @@
         let detailsHtml = bandwidthSectionHtml;
 
         // Add two-column layout for device details and aliases
-        const aliasesValue = device.aliases ? device.aliases.join('\n') : '';
+        const aliasesValue = escapeHtml(device.aliases ? device.aliases.join('\n') : '');
         detailsHtml += `
             <div class="details-grid">
                 <div class="details-column">
@@ -779,32 +862,32 @@
                     ${device.nickname ? `
                     <div class="info-row">
                         <div class="info-label">Nickname:</div>
-                        <div class="info-value">${device.nickname}</div>
+                        <div class="info-value">${escapeHtml(device.nickname)}</div>
                     </div>` : ''}
                     ${device.hostname ? `
                     <div class="info-row">
                         <div class="info-label">Hostname:</div>
-                        <div class="info-value">${device.hostname}</div>
+                        <div class="info-value">${escapeHtml(device.hostname)}</div>
                     </div>` : ''}
                     ${device.manufacturer ? `
                     <div class="info-row">
                         <div class="info-label">Manufacturer:</div>
-                        <div class="info-value">${device.manufacturer}</div>
+                        <div class="info-value">${escapeHtml(device.manufacturer)}</div>
                     </div>` : ''}
                     <div class="info-row">
                         <div class="info-label">IP Address:</div>
                         <div class="info-value">
-                            ${reservationInfo && reservationInfo.reserved ? '🔒 ' : ''}${device.ip_address}
+                            ${reservationInfo && reservationInfo.reserved ? '🔒 ' : ''}${escapeHtml(device.ip_address)}
                             ${reservationInfo && reservationInfo.reserved ? '<span style="color: var(--blue); font-size: 0.75rem; margin-left: 0.5rem;">(Reserved)</span>' : '<span style="color: var(--subtext1); font-size: 0.75rem; margin-left: 0.5rem;">(DHCP)</span>'}
                         </div>
                     </div>
                     <div class="info-row">
                         <div class="info-label">MAC Address:</div>
-                        <div class="info-value">${device.mac_address}</div>
+                        <div class="info-value">${escapeHtml(device.mac_address)}</div>
                     </div>
                     <div class="info-row">
                         <div class="info-label">Connection:</div>
-                        <div class="info-value">${device.connection_type}</div>
+                        <div class="info-value">${escapeHtml(device.connection_type)}</div>
                     </div>
                     ${device.signal_strength !== null && device.signal_strength !== undefined ? `
                     <div class="info-row">
@@ -823,7 +906,7 @@
                     </div>` : ''}
                     <div class="info-row">
                         <div class="info-label">Connected To:</div>
-                        <div class="info-value">${device.node}</div>
+                        <div class="info-value">${escapeHtml(device.node)}</div>
                     </div>
                     ${device.last_seen ? `
                     <div class="info-row">
@@ -845,13 +928,13 @@
                             ${forwardInfo.map(fwd => `
                                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; ${forwardInfo.indexOf(fwd) < forwardInfo.length - 1 ? 'border-bottom: 1px solid var(--surface1);' : ''}">
                                     <div>
-                                        <div style="font-weight: 600; color: var(--text);">${fwd.description || 'Forward'}</div>
+                                        <div style="font-weight: 600; color: var(--text);">${escapeHtml(fwd.description || 'Forward')}</div>
                                         <div style="font-size: 0.75rem; color: var(--subtext0); margin-top: 0.25rem;">
-                                            Port <strong>${fwd.gateway_port}</strong> → ${fwd.client_port}
+                                            Port <strong>${escapeHtml(fwd.gateway_port)}</strong> → ${escapeHtml(fwd.client_port)}
                                         </div>
                                     </div>
                                     <div>
-                                        <span style="background: var(--${fwd.protocol === 'tcp' ? 'blue' : fwd.protocol === 'udp' ? 'mauve' : 'green'}); color: var(--base); padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">${fwd.protocol.toUpperCase()}</span>
+                                        <span style="background: var(--${fwd.protocol === 'tcp' ? 'blue' : fwd.protocol === 'udp' ? 'mauve' : 'green'}); color: var(--base); padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">${escapeHtml(fwd.protocol.toUpperCase())}</span>
                                         ${!fwd.enabled ? '<span style="color: var(--red); font-size: 0.75rem; margin-left: 0.5rem;">⚠ Disabled</span>' : ''}
                                     </div>
                                 </div>
@@ -885,6 +968,14 @@
     function hideModal() {
         const modal = document.getElementById('device-modal');
         modal.classList.remove('active');
+
+        // Cleanup chart and group state
+        if (bandwidthChart) {
+            bandwidthChart.destroy();
+            bandwidthChart = null;
+        }
+        window._groupMembers = null;
+        window._groupMemberRouting = null;
     }
 
     function formatTimestamp(isoString) {
@@ -1294,6 +1385,637 @@
         });
     }
 
+    // --- Group bandwidth functions ---
+
+    // Per-member shades: blue for download, mauve for upload, varying opacity per member
+    function getGroupMemberColor(memberIndex, totalMembers) {
+        // Spread opacity from 0.9 (first member) down to 0.35 (last), evenly spaced
+        const opacity = totalMembers === 1 ? 0.8 : 0.9 - (memberIndex * 0.55 / (totalMembers - 1));
+        return {
+            dl: `rgba(30, 102, 245, ${opacity.toFixed(2)})`,   // Catppuccin blue
+            ul: `rgba(136, 57, 239, ${opacity.toFixed(2)})`    // Catppuccin mauve
+        };
+    }
+
+    function getMemberName(mac) {
+        if (!window._groupMembers) return mac;
+        const m = window._groupMembers.find(d => d.mac_address === mac);
+        return m ? (m.name || m.hostname || mac) : mac;
+    }
+
+    async function loadGroupBandwidthChart(macs, days) {
+        try {
+            const responses = await Promise.all(
+                macs.map(mac => fetch(`/api/devices/${encodeURIComponent(mac)}/bandwidth-total?days=${days}`).then(r => r.json()))
+            );
+
+            // Collect all dates across members
+            const allDates = new Set();
+            responses.forEach(data => {
+                if (!data.daily_breakdown) return;
+                data.daily_breakdown.forEach(d => allDates.add(d.date));
+            });
+            const labels = [...allDates].sort();
+            if (labels.length === 0) { showNoDataMessage(); return; }
+
+            // Build per-member lookup: mac -> { date -> {download_mb, upload_mb} }
+            const perMember = responses.map((data, i) => {
+                const byDate = {};
+                if (data.daily_breakdown) {
+                    data.daily_breakdown.forEach(d => { byDate[d.date] = d; });
+                }
+                return { mac: macs[i], byDate };
+            });
+
+            // Build stacked datasets and compute totals
+            let totalDownload = 0, totalUpload = 0;
+            const datasets = [];
+            perMember.forEach((member, i) => {
+                const color = getGroupMemberColor(i, perMember.length);
+                const name = getMemberName(member.mac);
+                const dlData = labels.map(date => {
+                    const val = member.byDate[date] ? member.byDate[date].download_mb : 0;
+                    totalDownload += val;
+                    return val;
+                });
+                const ulData = labels.map(date => {
+                    const val = member.byDate[date] ? member.byDate[date].upload_mb : 0;
+                    totalUpload += val;
+                    return val;
+                });
+                datasets.push({
+                    label: `${name} DL`,
+                    data: dlData,
+                    backgroundColor: color.dl,
+                    stack: 'download',
+                    borderWidth: 0
+                });
+                datasets.push({
+                    label: `${name} UL`,
+                    data: ulData,
+                    backgroundColor: color.ul,
+                    stack: 'upload',
+                    borderWidth: 0
+                });
+            });
+
+            document.getElementById('device-period-download').textContent = formatBytes(totalDownload);
+            document.getElementById('device-period-upload').textContent = formatBytes(totalUpload);
+
+            renderGroupStackedChart(labels, datasets, 'Date', function(value) {
+                const dateStr = this.getLabelForValue(value);
+                const [year, month, day] = dateStr.split('-').map(Number);
+                const date = new Date(year, month - 1, day);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            });
+        } catch (error) {
+            console.error('Failed to load group bandwidth chart:', error);
+            showNoDataMessage();
+        }
+    }
+
+    async function loadGroupBandwidthHourlyChart(macs) {
+        try {
+            const responses = await Promise.all(
+                macs.map(mac => fetch(`/api/devices/${encodeURIComponent(mac)}/bandwidth-history?hours=24`).then(r => r.json()))
+            );
+
+            const now = new Date();
+            const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const hourLabels = Array.from({ length: 24 }, (_, h) => `${h.toString().padStart(2, '0')}:00`);
+            const secondsPerDataPoint = 30;
+
+            // Build per-member hourly buckets
+            let totalDownload = 0, totalUpload = 0;
+            const datasets = [];
+            responses.forEach((data, i) => {
+                const color = getGroupMemberColor(i, responses.length);
+                const name = getMemberName(macs[i]);
+                const dlBuckets = Array(24).fill(0);
+                const ulBuckets = Array(24).fill(0);
+
+                if (data.history) {
+                    data.history.forEach(point => {
+                        const timestamp = new Date(point.timestamp);
+                        if (timestamp >= todayMidnight && point.download_mbps !== null && point.upload_mbps !== null) {
+                            const hour = timestamp.getHours();
+                            dlBuckets[hour] += (point.download_mbps * secondsPerDataPoint) / 8;
+                            ulBuckets[hour] += (point.upload_mbps * secondsPerDataPoint) / 8;
+                        }
+                    });
+                }
+
+                totalDownload += dlBuckets.reduce((s, v) => s + v, 0);
+                totalUpload += ulBuckets.reduce((s, v) => s + v, 0);
+
+                datasets.push({
+                    label: `${name} DL`,
+                    data: dlBuckets,
+                    backgroundColor: color.dl,
+                    stack: 'download',
+                    borderWidth: 0
+                });
+                datasets.push({
+                    label: `${name} UL`,
+                    data: ulBuckets,
+                    backgroundColor: color.ul,
+                    stack: 'upload',
+                    borderWidth: 0
+                });
+            });
+
+            document.getElementById('device-period-download').textContent = formatBytes(totalDownload);
+            document.getElementById('device-period-upload').textContent = formatBytes(totalUpload);
+
+            renderGroupStackedChart(hourLabels, datasets, 'Hour', null);
+        } catch (error) {
+            console.error('Failed to load group hourly bandwidth chart:', error);
+            showNoDataMessage();
+        }
+    }
+
+    function renderGroupStackedChart(labels, datasets, xTitle, xTickCallback) {
+        const ctx = document.getElementById('bandwidth-chart');
+        if (!ctx) return;
+        if (bandwidthChart) { bandwidthChart.destroy(); }
+
+        const xConfig = {
+            type: 'category',
+            stacked: true,
+            title: { display: true, text: xTitle }
+        };
+        if (xTickCallback) { xConfig.ticks = { callback: xTickCallback }; }
+
+        bandwidthChart = new Chart(ctx, {
+            type: 'bar',
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: true, position: 'top' },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ${formatBytes(context.parsed.y)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: xConfig,
+                    y: {
+                        beginAtZero: true,
+                        stacked: true,
+                        title: { display: true, text: 'Data Usage' },
+                        ticks: { callback: function(value) { return formatBytes(value); } }
+                    }
+                }
+            }
+        });
+    }
+
+    function updateGroupBandwidthDays(macs, days) {
+        currentDays = days;
+        currentMode = 'daily';
+        document.querySelectorAll('.interval-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (parseInt(btn.dataset.days) === days) btn.classList.add('active');
+        });
+        loadGroupBandwidthChart(macs, days);
+    }
+
+    function updateGroupBandwidthMode(macs, mode) {
+        currentMode = mode;
+        document.querySelectorAll('.interval-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.dataset.mode === mode) btn.classList.add('active');
+        });
+        loadGroupBandwidthHourlyChart(macs);
+    }
+
+    // --- Device Group functions ---
+    let deviceGroupsData = [];
+
+    async function loadDeviceGroups() {
+        const network = document.getElementById('network-selector').value;
+        try {
+            const resp = await fetch(`/api/device-groups?network=${encodeURIComponent(network)}`);
+            const data = await resp.json();
+            deviceGroupsData = Array.isArray(data) ? data : (data.groups || []);
+        } catch (e) {
+            console.error('Failed to load device groups:', e);
+            deviceGroupsData = [];
+        }
+    }
+
+    function openGroupModal(editGroupId = null) {
+        const modal = document.getElementById('group-modal');
+        const nameInput = document.getElementById('group-name-input');
+        const saveBtn = document.getElementById('group-save-btn');
+        const title = modal.querySelector('.modal-title');
+
+        // Close the device detail modal if open
+        hideModal();
+
+        if (editGroupId) {
+            const group = deviceGroupsData.find(g => g.id === editGroupId);
+            title.textContent = 'Edit Device Group';
+            saveBtn.textContent = 'Save Changes';
+            nameInput.value = group ? group.name : '';
+            modal.dataset.editGroupId = editGroupId;
+        } else {
+            title.textContent = 'Create Device Group';
+            saveBtn.textContent = 'Create Group';
+            nameInput.value = '';
+            delete modal.dataset.editGroupId;
+        }
+
+        populateGroupDeviceList(editGroupId);
+        modal.style.display = 'flex';
+    }
+
+    function populateGroupDeviceList(editGroupId = null) {
+        const container = document.getElementById('group-device-list');
+
+        // Build a set of MAC addresses that are in the current edit group
+        let currentGroupMacs = new Set();
+        if (editGroupId) {
+            const groupEntry = devicesData.find(d => d.group_id === editGroupId);
+            if (groupEntry && groupEntry.group_members) {
+                groupEntry.group_members.forEach(m => currentGroupMacs.add(m.mac_address));
+            }
+        }
+
+        // Show ungrouped devices + devices in the group being edited
+        const available = [];
+        for (const d of devicesData) {
+            if (d.group_id && d.group_id !== editGroupId) continue; // skip other groups
+            if (d.group_id === editGroupId && d.group_members) {
+                // This is the group entry itself - add its members instead
+                d.group_members.forEach(m => available.push({...m, _inCurrentGroup: true}));
+            } else if (!d.group_id) {
+                available.push({...d, _inCurrentGroup: false});
+            }
+        }
+
+        container.innerHTML = available.map(d => {
+            const name = escapeHtml(d.name || d.hostname || d.mac_address);
+            const checked = d._inCurrentGroup ? 'checked' : '';
+            return `<label style="display: flex; align-items: center; padding: 0.3rem; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox" class="group-device-checkbox" value="${escapeHtml(d.mac_address)}" ${checked}>
+                <span>${name}</span>
+                <span style="color: var(--subtext0); font-size: 0.85rem; margin-left: auto;">${escapeHtml(d.mac_address)}</span>
+            </label>`;
+        }).join('');
+    }
+
+    function closeGroupModal() {
+        document.getElementById('group-modal').style.display = 'none';
+    }
+
+    async function saveDeviceGroup() {
+        const modal = document.getElementById('group-modal');
+        const name = document.getElementById('group-name-input').value.trim();
+        if (!name) { alert('Please enter a group name.'); return; }
+
+        const checked = [...document.querySelectorAll('.group-device-checkbox:checked')];
+        if (checked.length < 1) { alert('Select at least 1 device to group.'); return; }
+
+        const selectedMacs = checked.map(cb => cb.value);
+        const network = document.getElementById('network-selector').value;
+        const editGroupId = modal.dataset.editGroupId;
+
+        try {
+            let resp;
+            if (editGroupId) {
+                resp = await fetch(`/api/device-groups/${editGroupId}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ name, mac_addresses: selectedMacs }),
+                });
+            } else {
+                resp = await fetch('/api/device-groups', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ network_name: network, name, mac_addresses: selectedMacs }),
+                });
+            }
+
+            if (!resp.ok) {
+                const err = await resp.json();
+                alert(err.detail || 'Failed to save group.');
+                return;
+            }
+
+            closeGroupModal();
+            await loadDeviceGroups();
+            await loadDevices();
+        } catch (e) {
+            alert('Error saving group: ' + e.message);
+        }
+    }
+
+    async function deleteDeviceGroup(groupId) {
+        if (!confirm('Are you sure you want to ungroup these devices?')) return;
+        try {
+            const resp = await fetch(`/api/device-groups/${groupId}`, { method: 'DELETE' });
+            if (!resp.ok) throw new Error('Failed to delete group');
+            await loadDeviceGroups();
+            await loadDevices();
+        } catch (e) {
+            alert('Error deleting group: ' + e.message);
+        }
+    }
+
+    // --- Group member detail helpers ---
+
+    function renderMemberDetailHtml(member, reservationInfo, forwardInfo) {
+        const macId = member.mac_address.replace(/:/g, '-');
+        const aliasesValue = escapeHtml(member.aliases ? member.aliases.join('\n') : '');
+        let html = `
+            <div class="details-grid">
+                <div class="details-column">
+                    <div class="info-row">
+                        <div class="info-label">Type:</div>
+                        <div class="info-value">${formatDeviceType(member.type)}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Status:</div>
+                        <div class="info-value">${member.is_online ? '<span style="color: var(--green);">● Online</span>' : '<span style="color: var(--subtext0);">● Offline</span>'}</div>
+                    </div>
+                    ${member.nickname ? `
+                    <div class="info-row">
+                        <div class="info-label">Nickname:</div>
+                        <div class="info-value">${escapeHtml(member.nickname)}</div>
+                    </div>` : ''}
+                    ${member.hostname ? `
+                    <div class="info-row">
+                        <div class="info-label">Hostname:</div>
+                        <div class="info-value">${escapeHtml(member.hostname)}</div>
+                    </div>` : ''}
+                    ${member.manufacturer ? `
+                    <div class="info-row">
+                        <div class="info-label">Manufacturer:</div>
+                        <div class="info-value">${escapeHtml(member.manufacturer)}</div>
+                    </div>` : ''}
+                    <div class="info-row">
+                        <div class="info-label">IP Address:</div>
+                        <div class="info-value">
+                            ${reservationInfo && reservationInfo.reserved ? '🔒 ' : ''}${escapeHtml(member.ip_address)}
+                            ${reservationInfo && reservationInfo.reserved ? '<span style="color: var(--blue); font-size: 0.75rem; margin-left: 0.5rem;">(Reserved)</span>' : '<span style="color: var(--subtext1); font-size: 0.75rem; margin-left: 0.5rem;">(DHCP)</span>'}
+                        </div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">MAC Address:</div>
+                        <div class="info-value">${escapeHtml(member.mac_address)}</div>
+                    </div>
+                    <div class="info-row">
+                        <div class="info-label">Connection:</div>
+                        <div class="info-value">${escapeHtml(member.connection_type)}</div>
+                    </div>
+                    ${member.signal_strength !== null && member.signal_strength !== undefined ? `
+                    <div class="info-row">
+                        <div class="info-label">Signal Strength:</div>
+                        <div class="info-value">${member.signal_strength} dBm</div>
+                    </div>` : ''}
+                    ${member.bandwidth_down_mbps !== null && member.bandwidth_down_mbps !== undefined ? `
+                    <div class="info-row">
+                        <div class="info-label">Current Download:</div>
+                        <div class="info-value">${member.bandwidth_down_mbps.toFixed(1)} Mbps</div>
+                    </div>` : ''}
+                    ${member.bandwidth_up_mbps !== null && member.bandwidth_up_mbps !== undefined ? `
+                    <div class="info-row">
+                        <div class="info-label">Current Upload:</div>
+                        <div class="info-value">${member.bandwidth_up_mbps.toFixed(1)} Mbps</div>
+                    </div>` : ''}
+                    <div class="info-row">
+                        <div class="info-label">Connected To:</div>
+                        <div class="info-value">${escapeHtml(member.node)}</div>
+                    </div>
+                    ${member.last_seen ? `
+                    <div class="info-row">
+                        <div class="info-label">Last Seen:</div>
+                        <div class="info-value">${formatTimestamp(member.last_seen)}</div>
+                    </div>` : ''}
+                </div>
+                <div class="details-column">
+                    <div class="aliases-label">DNS Aliases</div>
+                    <textarea id="aliases-textarea-${macId}" class="aliases-textarea" placeholder="Enter DNS aliases, one per line">${aliasesValue}</textarea>
+                    <div class="aliases-help">Each alias will be added as an alternate DNS name for this device</div>
+                    <button id="save-aliases-btn-${macId}" class="save-button" onclick="saveGroupMemberAliases('${member.mac_address}', '${macId}')">Save Aliases</button>
+                    <div id="save-message-${macId}" class="save-message"></div>
+
+                    ${forwardInfo.length > 0 ? `
+                    <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--surface0);">
+                        <div class="aliases-label">Port Forwards</div>
+                        <div style="background: var(--surface0); border-radius: 6px; padding: 0.75rem; margin-top: 0.5rem;">
+                            ${forwardInfo.map((fwd, idx) => `
+                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; ${idx < forwardInfo.length - 1 ? 'border-bottom: 1px solid var(--surface1);' : ''}">
+                                    <div>
+                                        <div style="font-weight: 600; color: var(--text);">${escapeHtml(fwd.description || 'Forward')}</div>
+                                        <div style="font-size: 0.75rem; color: var(--subtext0); margin-top: 0.25rem;">
+                                            Port <strong>${escapeHtml(fwd.gateway_port)}</strong> → ${escapeHtml(fwd.client_port)}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <span style="background: var(--${fwd.protocol === 'tcp' ? 'blue' : fwd.protocol === 'udp' ? 'mauve' : 'green'}); color: var(--base); padding: 0.125rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">${escapeHtml(fwd.protocol.toUpperCase())}</span>
+                                        ${!fwd.enabled ? '<span style="color: var(--red); font-size: 0.75rem; margin-left: 0.5rem;">⚠ Disabled</span>' : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--subtext1); margin-top: 0.5rem;">
+                            ${forwardInfo.length} active port forward${forwardInfo.length !== 1 ? 's' : ''}
+                        </div>
+                    </div>` : ''}
+                </div>
+            </div>`;
+        return html;
+    }
+
+    async function saveGroupMemberAliases(macAddress, macId) {
+        const textarea = document.getElementById(`aliases-textarea-${macId}`);
+        const saveBtn = document.getElementById(`save-aliases-btn-${macId}`);
+        const saveMessage = document.getElementById(`save-message-${macId}`);
+
+        const aliases = textarea.value
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0);
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        saveMessage.className = 'save-message';
+        saveMessage.textContent = '';
+
+        try {
+            const response = await fetch(`/api/devices/${encodeURIComponent(macAddress)}/aliases`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ aliases: aliases }),
+            });
+
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const data = await response.json();
+
+            saveMessage.className = 'save-message success';
+            saveMessage.textContent = 'Aliases saved successfully! DNS updated.';
+
+            // Update local data
+            const deviceIndex = devicesData.findIndex(d => d.mac_address === macAddress);
+            if (deviceIndex !== -1) {
+                devicesData[deviceIndex].aliases = data.aliases;
+            }
+
+            setTimeout(() => { saveMessage.className = 'save-message'; }, 3000);
+        } catch (error) {
+            console.error('Failed to save aliases:', error);
+            saveMessage.className = 'save-message error';
+            saveMessage.textContent = `Error saving aliases: ${error.message}`;
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Aliases';
+        }
+    }
+
+    // --- Group detail modal ---
+    function switchGroupMemberTab(index) {
+        // Toggle active class on tabs
+        document.querySelectorAll('#group-tab-bar .group-tab').forEach((tab, i) => {
+            tab.classList.toggle('active', i === index);
+        });
+
+        const member = window._groupMembers[index];
+        const routing = window._groupMemberRouting[index] || {};
+        const content = document.getElementById('group-member-detail-content');
+        content.innerHTML = renderMemberDetailHtml(member, routing.reservation, routing.forwards || []);
+    }
+
+    async function showGroupDetails(groupDevice) {
+        const modal = document.getElementById('device-modal');
+        const title = document.getElementById('modal-title');
+        const body = document.getElementById('modal-body');
+        const members = groupDevice.group_members || [];
+        const macs = members.map(m => m.mac_address);
+
+        title.textContent = groupDevice.group_name || groupDevice.name;
+
+        // Check bridge mode
+        let isBridgeMode = false;
+        try {
+            const network = getSelectedNetwork();
+            const statsUrl = network ? `/api/dashboard-stats?network=${encodeURIComponent(network)}` : '/api/dashboard-stats';
+            const statsResponse = await fetch(statsUrl);
+            if (statsResponse.ok) {
+                const stats = await statsResponse.json();
+                isBridgeMode = stats.connection_mode && stats.connection_mode.toLowerCase() === 'bridge';
+            }
+        } catch (error) {
+            console.error('Failed to check bridge mode:', error);
+        }
+
+        // Fetch routing data for all members in parallel
+        const routingResults = await Promise.all(members.map(async (m) => {
+            let reservation = null;
+            let forwards = [];
+            try {
+                const resResp = await fetch(`/api/routing/reservation/${encodeURIComponent(m.mac_address)}`);
+                if (resResp.ok) reservation = await resResp.json();
+                const fwdResp = await fetch(`/api/routing/forwards/${encodeURIComponent(m.ip_address)}`);
+                if (fwdResp.ok) { const d = await fwdResp.json(); forwards = d.forwards || []; }
+            } catch (e) { console.error('Failed to load routing info for member:', e); }
+            return { reservation, forwards };
+        }));
+
+        // Store for tab switching
+        window._groupMembers = members;
+        window._groupMemberRouting = routingResults;
+
+        // Build bandwidth section
+        let bandwidthHtml = '';
+        if (isBridgeMode) {
+            bandwidthHtml = `
+            <div class="bandwidth-section" style="margin-top: 0; padding-top: 0; border-top: none;">
+                <div class="bandwidth-header">
+                    <div class="bandwidth-title">Bandwidth Usage</div>
+                </div>
+                <div style="padding: 2rem; text-align: center; background: var(--surface0); border-radius: 8px; color: var(--subtext0);">
+                    <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🌉</div>
+                    <div style="font-weight: 600; color: var(--text); margin-bottom: 0.5rem;">Bridge Mode Active</div>
+                    <div>Bandwidth calculations are not available in bridge mode</div>
+                </div>
+            </div>`;
+        } else {
+            const macsJson = JSON.stringify(macs).replace(/"/g, '&quot;');
+            bandwidthHtml = `
+            <div class="bandwidth-section" style="margin-top: 0; padding-top: 0; border-top: none;">
+                <div class="bandwidth-header">
+                    <div class="bandwidth-title">Bandwidth Usage (Combined)</div>
+                    <div class="interval-selector">
+                        <button class="interval-btn" data-mode="hourly" onclick="updateGroupBandwidthMode(${macsJson}, 'hourly')">Hourly</button>
+                        <button class="interval-btn active" data-days="7" onclick="updateGroupBandwidthDays(${macsJson}, 7)">7 Days</button>
+                        <button class="interval-btn" data-days="30" onclick="updateGroupBandwidthDays(${macsJson}, 30)">30 Days</button>
+                    </div>
+                </div>
+                <div id="device-bandwidth-summary" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-bottom: 1rem; padding: 0 0.25rem;">
+                    <div style="text-align: center; padding: 0.5rem; background: var(--surface0); border-radius: 6px;">
+                        <div style="font-size: 1.25rem; font-weight: 600; color: var(--blue);" id="device-period-download">--</div>
+                        <div style="font-size: 0.75rem; color: var(--subtext0);">Download</div>
+                    </div>
+                    <div style="text-align: center; padding: 0.5rem; background: var(--surface0); border-radius: 6px;">
+                        <div style="font-size: 1.25rem; font-weight: 600; color: var(--mauve);" id="device-period-upload">--</div>
+                        <div style="font-size: 0.75rem; color: var(--subtext0);">Upload</div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="bandwidth-chart"></canvas>
+                </div>
+            </div>`;
+        }
+
+        // Connection icon helper
+        const connIcon = (type) => type === 'wireless' ? '📶' : type === 'wired' ? '🔌' : '📡';
+
+        // Build tab bar
+        const tabsHtml = members.map((m, i) => {
+            const label = escapeHtml(m.name || m.hostname || m.mac_address);
+            return `<button class="group-tab${i === 0 ? ' active' : ''}" onclick="switchGroupMemberTab(${i})">${connIcon(m.connection_type)} ${label}</button>`;
+        }).join('');
+
+        let html = `
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                <button onclick="openGroupModal(${groupDevice.group_id})"
+                    class="btn" style="padding: 0.3rem 0.8rem; border: 1px solid var(--blue); color: var(--blue); border-radius: 6px; cursor: pointer; background: transparent;">
+                    Edit Group
+                </button>
+                <button onclick="deleteDeviceGroup(${groupDevice.group_id})"
+                    class="btn" style="padding: 0.3rem 0.8rem; border: 1px solid var(--red); color: var(--red); border-radius: 6px; cursor: pointer; background: transparent;">
+                    Ungroup
+                </button>
+            </div>
+            ${bandwidthHtml}
+            <h3 style="margin-top: 1.5rem; margin-bottom: 0.5rem;">Member Devices</h3>
+            <div class="group-tab-bar" id="group-tab-bar">
+                ${tabsHtml}
+            </div>
+            <div id="group-member-detail-content"></div>
+        `;
+
+        body.innerHTML = html;
+        modal.classList.add('active');
+
+        // Render first member tab
+        switchGroupMemberTab(0);
+
+        // Load aggregate bandwidth chart
+        if (!isBridgeMode) {
+            loadGroupBandwidthChart(macs, 7);
+        }
+    }
+
     // Modal event listeners
     document.getElementById('modal-close').addEventListener('click', hideModal);
     document.getElementById('device-modal').addEventListener('click', (e) => {
@@ -1332,6 +2054,21 @@
         renderDevices();
     });
 
+    // Device group modal event listeners
+    document.getElementById('create-group-btn').addEventListener('click', () => openGroupModal());
+    document.getElementById('group-modal-close').addEventListener('click', closeGroupModal);
+    document.getElementById('group-cancel-btn').addEventListener('click', closeGroupModal);
+    document.getElementById('group-save-btn').addEventListener('click', saveDeviceGroup);
+    document.getElementById('group-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'group-modal') closeGroupModal();
+    });
+    document.getElementById('group-device-filter').addEventListener('input', (e) => {
+        const filter = e.target.value.toLowerCase();
+        document.querySelectorAll('#group-device-list label').forEach(label => {
+            label.style.display = label.textContent.toLowerCase().includes(filter) ? 'flex' : 'none';
+        });
+    });
+
     // Load networks and populate dropdown
     async function loadNetworks() {
         try {
@@ -1364,6 +2101,7 @@
                 selector.addEventListener('change', function() {
                     localStorage.setItem('selectedNetwork', this.value);
                     // Reload all data for the new network
+                    loadDeviceGroups();
                     loadDevices();
                     loadRoutingData();
                 });
@@ -1379,6 +2117,7 @@
     // Initial load
     async function initialize() {
         await loadNetworks();  // Wait for networks to load first
+        await loadDeviceGroups();
         loadDevices();
         loadRoutingData();
     }

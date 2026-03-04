@@ -73,3 +73,6 @@ Thumbs.db
 *.key
 *.pem
 credentials.json
+
+# Implementation plans (process artifacts)
+docs/plans/

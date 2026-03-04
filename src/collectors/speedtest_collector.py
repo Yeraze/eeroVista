@@ -1,7 +1,7 @@
 """Speedtest collector for passive speedtest result collection."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.collectors.base import BaseCollector
 from src.models.database import Speedtest
@@ -112,7 +112,7 @@ class SpeedtestCollector(BaseCollector):
             # Create speedtest record
             speedtest = Speedtest(
                 network_name=network_name,
-                timestamp=test_date if test_date else datetime.utcnow(),
+                timestamp=test_date if test_date else datetime.now(timezone.utc),
                 download_mbps=download_mbps,
                 upload_mbps=upload_mbps,
                 latency_ms=latency_ms,

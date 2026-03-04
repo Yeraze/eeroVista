@@ -1,7 +1,7 @@
 """Routing collector for IP reservations and port forwards."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.dialects.sqlite import insert
 
@@ -97,7 +97,7 @@ class RoutingCollector(BaseCollector):
             reservations_updated = 0
             forwards_added = 0
             forwards_updated = 0
-            current_time = datetime.utcnow()
+            current_time = datetime.now(timezone.utc)
 
             # Process IP reservations using upsert to avoid race conditions
             for res in routing.reservations.data:

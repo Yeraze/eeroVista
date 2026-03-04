@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Tuple
 
 from sqlalchemy import func
@@ -72,7 +72,7 @@ def generate_hosts_file() -> Tuple[int, int]:
             used_hostnames = set()
             devices_added = 0
 
-            offline_cutoff = datetime.utcnow() - timedelta(hours=OFFLINE_INCLUSION_HOURS)
+            offline_cutoff = datetime.now(timezone.utc) - timedelta(hours=OFFLINE_INCLUSION_HOURS)
 
             # Get latest connection for each device in ONE query (fixes N+1 problem)
             latest_connections_subq = (

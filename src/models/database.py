@@ -1,6 +1,6 @@
 """SQLAlchemy database models."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import (
@@ -41,7 +41,7 @@ class EeroNode(Base):
     is_gateway: Mapped[Optional[bool]] = mapped_column(Boolean)
     os_version: Mapped[Optional[str]] = mapped_column(String)
     update_available: Mapped[Optional[bool]] = mapped_column(Boolean)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     # Connection type fields (how this node connects to upstream)
@@ -80,7 +80,7 @@ class Device(Base):
     manufacturer: Mapped[Optional[str]] = mapped_column(String)
     device_type: Mapped[Optional[str]] = mapped_column(String)
     aliases: Mapped[Optional[str]] = mapped_column(Text)  # JSON array of alias strings
-    first_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    first_seen: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     # Relationships
@@ -105,7 +105,7 @@ class DeviceConnection(Base):
         Integer, ForeignKey("eero_nodes.id")
     )
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, index=True
+        DateTime, default=lambda: datetime.now(timezone.utc), index=True
     )
     is_connected: Mapped[Optional[bool]] = mapped_column(Boolean)
     connection_type: Mapped[Optional[str]] = mapped_column(String)  # wireless/wired
@@ -130,7 +130,7 @@ class NetworkMetric(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     network_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, index=True
+        DateTime, default=lambda: datetime.now(timezone.utc), index=True
     )
     total_devices: Mapped[Optional[int]] = mapped_column(Integer)
     total_devices_online: Mapped[Optional[int]] = mapped_column(Integer)
@@ -147,7 +147,7 @@ class Speedtest(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     network_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, index=True
+        DateTime, default=lambda: datetime.now(timezone.utc), index=True
     )
     download_mbps: Mapped[Optional[float]] = mapped_column(Float)
     upload_mbps: Mapped[Optional[float]] = mapped_column(Float)
@@ -167,7 +167,7 @@ class EeroNodeMetric(Base):
         Integer, ForeignKey("eero_nodes.id"), nullable=False
     )
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, index=True
+        DateTime, default=lambda: datetime.now(timezone.utc), index=True
     )
     status: Mapped[Optional[str]] = mapped_column(String)  # online/offline
     connected_device_count: Mapped[Optional[int]] = mapped_column(Integer)
@@ -204,13 +204,41 @@ class DailyBandwidth(Base):
     last_collection_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     # Metadata
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
     device: Mapped[Optional["Device"]] = relationship()
+
+
+class DeviceGroup(Base):
+    """A group of bonded devices (e.g., same physical device with multiple connections)."""
+
+    __tablename__ = "device_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    network_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    members: Mapped[list["DeviceGroupMember"]] = relationship(
+        back_populates="group", cascade="all, delete-orphan"
+    )
+
+
+class DeviceGroupMember(Base):
+    """Membership of a device in a device group."""
+
+    __tablename__ = "device_group_members"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(Integer, ForeignKey("device_groups.id", ondelete="CASCADE"), nullable=False)
+    device_id: Mapped[int] = mapped_column(Integer, ForeignKey("devices.id"), nullable=False, unique=True)
+
+    group: Mapped["DeviceGroup"] = relationship(back_populates="members")
+    device: Mapped["Device"] = relationship()
 
 
 class IpReservation(Base):
@@ -228,9 +256,9 @@ class IpReservation(Base):
     ip_address: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String)
     eero_url: Mapped[Optional[str]] = mapped_column(String)  # URL from Eero API
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_seen: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
 
 
@@ -254,9 +282,9 @@ class PortForward(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     reservation_url: Mapped[Optional[str]] = mapped_column(String)  # Link to reservation
     eero_url: Mapped[Optional[str]] = mapped_column(String)  # URL from Eero API
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_seen: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
 
 
@@ -268,7 +296,7 @@ class Config(Base):
     key: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[Optional[str]] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
 
 

@@ -129,6 +129,22 @@ The Devices page shows all connected devices with:
 - Signal strength for wireless devices
 - Port forwarding indicators (🔀)
 - Sortable and filterable table
+- Device grouping for combining multiple network interfaces
+
+#### Device Groups
+
+Many devices connect to your network over both wired and wireless interfaces, appearing as two separate entries. Device Groups let you combine these into a single logical device:
+
+1. Click **Create Device Group** on the Devices page
+2. Name the group and select the member devices
+3. Click **Create Group**
+
+Grouped devices appear as a single row in the device table with aggregated bandwidth and a link icon (🔗). Click a group to see:
+- **Combined bandwidth chart** with stacked bars showing each member's contribution (blue = download, purple = upload)
+- **Hourly / 7-day / 30-day** chart views
+- **Tabbed member details** with full device info, DNS aliases, and port forwards for each member
+
+You can edit or ungroup devices at any time from the group detail modal.
 
 ## Troubleshooting
 
