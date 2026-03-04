@@ -72,6 +72,7 @@ def run_migrations(session: Session, eero_client, retry_skipped: bool = False) -
         ('005_add_performance_indexes', 'src.migrations.005_add_performance_indexes', False),
         ('006_add_node_connection_type', 'src.migrations.006_add_node_connection_type', False),
         ('007_add_connection_mode', 'src.migrations.007_add_connection_mode', False),
+        ('008_add_device_groups', 'src.migrations.008_add_device_groups', False),
     ]
 
     for migration_name, module_path, requires_auth in migrations:
