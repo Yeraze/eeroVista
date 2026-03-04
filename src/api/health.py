@@ -1317,7 +1317,7 @@ async def get_network_bandwidth_top_devices(
         from zoneinfo import ZoneInfo
 
         with get_db_context() as db:
-            from src.models.database import DailyBandwidth, Device
+            from src.models.database import DailyBandwidth, Device, DeviceGroup, DeviceGroupMember
 
             # Use local timezone
             settings = get_settings()
@@ -1330,24 +1330,59 @@ async def get_network_bandwidth_top_devices(
             all_dates = [since_date + timedelta(days=i) for i in range(days)]
             date_strings = [d.isoformat() for d in all_dates]
 
-            # Get top N devices by total bandwidth in this network
-            top_devices_query = (
+            # Build group membership map: device_id -> group
+            group_members = (
+                db.query(DeviceGroupMember, DeviceGroup)
+                .join(DeviceGroup, DeviceGroup.id == DeviceGroupMember.group_id)
+                .filter(DeviceGroup.network_name == network_name)
+                .all()
+            )
+            device_to_group = {}  # device_id -> group
+            group_device_ids = {}  # group_id -> [device_ids]
+            for member, group in group_members:
+                device_to_group[member.device_id] = group
+                group_device_ids.setdefault(group.id, []).append(member.device_id)
+
+            # Get per-device bandwidth totals for ranking
+            all_device_totals = (
                 db.query(
-                    Device,
+                    DailyBandwidth.device_id,
                     func.sum(DailyBandwidth.download_mb + DailyBandwidth.upload_mb).label('total_mb')
                 )
-                .join(DailyBandwidth, Device.id == DailyBandwidth.device_id)
+                .join(Device, Device.id == DailyBandwidth.device_id)
                 .filter(
                     Device.network_name == network_name,
-                    DailyBandwidth.date >= since_date
+                    DailyBandwidth.date >= since_date,
+                    DailyBandwidth.device_id.isnot(None),
                 )
-                .group_by(Device.id)
-                .order_by(func.sum(DailyBandwidth.download_mb + DailyBandwidth.upload_mb).desc())
-                .limit(limit)
+                .group_by(DailyBandwidth.device_id)
                 .all()
             )
 
-            top_device_ids = [device.id for device, _ in top_devices_query]
+            # Aggregate by entity (group or individual device)
+            # entity_key: "group_{id}" or "device_{id}"
+            entity_totals = {}  # key -> total_mb
+            entity_device_ids = {}  # key -> [device_ids]
+            for device_id, total_mb in all_device_totals:
+                if device_id in device_to_group:
+                    grp = device_to_group[device_id]
+                    key = f"group_{grp.id}"
+                    entity_totals[key] = entity_totals.get(key, 0) + total_mb
+                    entity_device_ids.setdefault(key, []).append(device_id)
+                else:
+                    key = f"device_{device_id}"
+                    entity_totals[key] = total_mb
+                    entity_device_ids[key] = [device_id]
+
+            # Rank and pick top N
+            sorted_entities = sorted(entity_totals.items(), key=lambda x: x[1], reverse=True)
+            top_entities = sorted_entities[:limit]
+            top_entity_keys = {k for k, _ in top_entities}
+
+            # Collect all device_ids that are in top entities
+            top_device_ids = []
+            for key in top_entity_keys:
+                top_device_ids.extend(entity_device_ids[key])
 
             # Get daily breakdown for top devices
             daily_data = (
@@ -1357,28 +1392,53 @@ async def get_network_bandwidth_top_devices(
                     DailyBandwidth.date >= since_date
                 )
                 .all()
-            )
+            ) if top_device_ids else []
 
-            # Organize data by device
-            device_data_map = {}
-            for device, total_mb in top_devices_query:
-                device_name = device.nickname or device.hostname or device.manufacturer or device.mac_address
-                device_data_map[device.id] = {
-                    "name": device_name,
-                    "mac_address": device.mac_address,
-                    "type": device.device_type or "unknown",
-                    "total_mb": round(total_mb, 2),
-                    "daily_download": [0.0] * days,
-                    "daily_upload": [0.0] * days,
-                }
+            # Build a device info lookup
+            top_devices = db.query(Device).filter(Device.id.in_(top_device_ids)).all() if top_device_ids else []
+            device_info = {d.id: d for d in top_devices}
 
-            # Fill in daily values
+            # Organize data by entity
+            entity_data_map = {}
+            for key, total_mb in top_entities:
+                if key.startswith("group_"):
+                    group_id = int(key.split("_")[1])
+                    grp = device_to_group[entity_device_ids[key][0]]
+                    entity_data_map[key] = {
+                        "name": grp.name,
+                        "mac_address": None,
+                        "type": "group",
+                        "total_mb": round(total_mb, 2),
+                        "daily_download": [0.0] * days,
+                        "daily_upload": [0.0] * days,
+                    }
+                else:
+                    device_id = int(key.split("_")[1])
+                    device = device_info.get(device_id)
+                    if device:
+                        device_name = device.nickname or device.hostname or device.manufacturer or device.mac_address
+                        entity_data_map[key] = {
+                            "name": device_name,
+                            "mac_address": device.mac_address,
+                            "type": device.device_type or "unknown",
+                            "total_mb": round(total_mb, 2),
+                            "daily_download": [0.0] * days,
+                            "daily_upload": [0.0] * days,
+                        }
+
+            # Fill in daily values, aggregating grouped devices
             for record in daily_data:
-                if record.device_id in device_data_map:
+                if record.device_id in device_to_group:
+                    key = f"group_{device_to_group[record.device_id].id}"
+                else:
+                    key = f"device_{record.device_id}"
+                if key in entity_data_map:
                     date_index = (record.date - since_date).days
                     if 0 <= date_index < days:
-                        device_data_map[record.device_id]["daily_download"][date_index] = round(record.download_mb, 2)
-                        device_data_map[record.device_id]["daily_upload"][date_index] = round(record.upload_mb, 2)
+                        entity_data_map[key]["daily_download"][date_index] = round(
+                            entity_data_map[key]["daily_download"][date_index] + record.download_mb, 2)
+                        entity_data_map[key]["daily_upload"][date_index] = round(
+                            entity_data_map[key]["daily_upload"][date_index] + record.upload_mb, 2)
 
             # Get "Other" devices data
             other_daily_data = (
@@ -1407,16 +1467,10 @@ async def get_network_bandwidth_top_devices(
                     other_upload[date_index] = round(upload, 2)
                     other_total += download + upload
 
-            # Count other devices
-            other_device_count = (
-                db.query(func.count(func.distinct(DailyBandwidth.device_id)))
-                .filter(
-                    DailyBandwidth.device_id.notin_(top_device_ids) if top_device_ids else True,
-                    DailyBandwidth.device_id.isnot(None),
-                    DailyBandwidth.date >= since_date
-                )
-                .scalar() or 0
-            )
+            # Count other devices/groups
+            all_entity_count = len(entity_totals)
+            top_entity_count = len(top_entities)
+            other_entity_count = all_entity_count - top_entity_count
 
             return {
                 "period": {
@@ -1425,10 +1479,10 @@ async def get_network_bandwidth_top_devices(
                     "end_date": today_local.isoformat(),
                 },
                 "dates": date_strings,
-                "devices": list(device_data_map.values()),
+                "devices": list(entity_data_map.values()),
                 "other": {
                     "name": "Other Devices",
-                    "device_count": other_device_count,
+                    "device_count": other_entity_count,
                     "total_mb": round(other_total, 2),
                     "daily_download": other_download,
                     "daily_upload": other_upload,
