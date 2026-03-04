@@ -340,7 +340,7 @@
             </label>
         </div>
         <button id="create-group-btn" class="btn"
-            style="background: var(--ctp-blue); color: white; padding: 0.4rem 1rem; border: none; border-radius: 6px; cursor: pointer;">
+            style="background: var(--blue); color: white; padding: 0.4rem 1rem; border: none; border-radius: 6px; cursor: pointer;">
             &#x1F517; Create Device Group
         </button>
     </div>
@@ -392,16 +392,16 @@
         <div class="modal-body">
             <label for="group-name-input" style="font-weight: 600;">Group Name:</label>
             <input type="text" id="group-name-input" placeholder="e.g., My Desktop"
-                style="width: 100%; padding: 0.5rem; margin: 0.5rem 0 1rem; border: 1px solid var(--ctp-surface1); border-radius: 6px;">
+                style="width: 100%; padding: 0.5rem; margin: 0.5rem 0 1rem; border: 1px solid var(--surface1); border-radius: 6px;">
             <label style="font-weight: 600;">Select Devices:</label>
             <input type="text" id="group-device-filter" placeholder="Filter devices..."
-                style="width: 100%; padding: 0.4rem; margin: 0.5rem 0; border: 1px solid var(--ctp-surface1); border-radius: 6px;">
-            <div id="group-device-list" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--ctp-surface1); border-radius: 6px; padding: 0.5rem;"></div>
+                style="width: 100%; padding: 0.4rem; margin: 0.5rem 0; border: 1px solid var(--surface1); border-radius: 6px;">
+            <div id="group-device-list" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--surface1); border-radius: 6px; padding: 0.5rem;"></div>
             <div style="display: flex; gap: 0.5rem; margin-top: 1rem; justify-content: flex-end;">
                 <button id="group-cancel-btn" class="btn"
-                    style="padding: 0.4rem 1rem; border: 1px solid var(--ctp-surface1); border-radius: 6px; cursor: pointer;">Cancel</button>
+                    style="padding: 0.4rem 1rem; border: 1px solid var(--surface1); border-radius: 6px; cursor: pointer;">Cancel</button>
                 <button id="group-save-btn" class="btn"
-                    style="background: var(--ctp-green); color: white; padding: 0.4rem 1rem; border: none; border-radius: 6px; cursor: pointer;">Create Group</button>
+                    style="background: var(--green); color: white; padding: 0.4rem 1rem; border: none; border-radius: 6px; cursor: pointer;">Create Group</button>
             </div>
         </div>
     </div>
@@ -602,7 +602,7 @@
     }
 
     // Lookup for group devices by group_id (used by onclick in table rows)
-    let groupDeviceLookup = {};
+    window.groupDeviceLookup = {};
 
     // Render devices table with filtering
     function renderDevices() {
@@ -1413,7 +1413,7 @@
             return `<label style="display: flex; align-items: center; padding: 0.3rem; gap: 0.5rem; cursor: pointer;">
                 <input type="checkbox" class="group-device-checkbox" value="${d.mac_address}" ${checked}>
                 <span>${name}</span>
-                <span style="color: var(--ctp-subtext0); font-size: 0.85rem; margin-left: auto;">${d.mac_address}</span>
+                <span style="color: var(--subtext0); font-size: 0.85rem; margin-left: auto;">${d.mac_address}</span>
             </label>`;
         }).join('');
     }
@@ -1487,17 +1487,17 @@
         let html = `
             <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
                 <button onclick="openGroupModal(${groupDevice.group_id})"
-                    class="btn" style="padding: 0.3rem 0.8rem; border: 1px solid var(--ctp-blue); color: var(--ctp-blue); border-radius: 6px; cursor: pointer; background: transparent;">
+                    class="btn" style="padding: 0.3rem 0.8rem; border: 1px solid var(--blue); color: var(--blue); border-radius: 6px; cursor: pointer; background: transparent;">
                     Edit Group
                 </button>
                 <button onclick="deleteDeviceGroup(${groupDevice.group_id})"
-                    class="btn" style="padding: 0.3rem 0.8rem; border: 1px solid var(--ctp-red); color: var(--ctp-red); border-radius: 6px; cursor: pointer; background: transparent;">
+                    class="btn" style="padding: 0.3rem 0.8rem; border: 1px solid var(--red); color: var(--red); border-radius: 6px; cursor: pointer; background: transparent;">
                     Ungroup
                 </button>
             </div>
             <div style="display: grid; grid-template-columns: auto 1fr; gap: 0.3rem 1rem; margin-bottom: 1rem;">
                 <span style="font-weight: 600;">Status:</span>
-                <span>${groupDevice.is_online ? '<span style="color: var(--ctp-green);">Online</span>' : '<span style="color: var(--ctp-red);">Offline</span>'}</span>
+                <span>${groupDevice.is_online ? '<span style="color: var(--green);">Online</span>' : '<span style="color: var(--red);">Offline</span>'}</span>
                 <span style="font-weight: 600;">Connection:</span>
                 <span>${groupDevice.connection_type || 'N/A'}</span>
                 <span style="font-weight: 600;">IP Address:</span>
