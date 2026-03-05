@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -25,7 +26,7 @@ class NotificationService:
         self.config = config or get_settings()
         self._apprise = apprise.Apprise()
         if apprise_urls:
-            for url in apprise_urls.split(","):
+            for url in re.split(r"[,\n]", apprise_urls):
                 url = url.strip()
                 if url:
                     self._apprise.add(url)
@@ -74,7 +75,13 @@ class NotificationService:
         return dt
 
     def _should_notify(self, rule: NotificationRule, event_key: str) -> bool:
-        """Check if we should send a notification (cooldown/dedup check)."""
+        """Check if we should send a notification (cooldown/dedup check).
+
+        Cooldown suppresses duplicate alerts for the same ongoing event.
+        Once an event is resolved, a new occurrence can fire immediately —
+        this is intentional so that flapping devices generate a fresh alert
+        each time they go offline again, rather than being silently suppressed.
+        """
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=rule.cooldown_minutes)
 
         # Check for an active (unresolved) event or a recent one within cooldown
@@ -91,7 +98,7 @@ class NotificationService:
 
     def _send(self, title: str, body: str) -> bool:
         """Send notification via Apprise. Returns True if sent successfully."""
-        if not self._apprise:
+        if len(self._apprise) == 0:
             logger.warning("No Apprise URLs configured, skipping notification")
             return False
 

@@ -468,13 +468,14 @@ async function saveRule() {
 
 async function toggleRule(ruleId, enabled) {
     try {
-        await fetch(`/api/notification-rules/${ruleId}`, {
+        const resp = await fetch(`/api/notification-rules/${ruleId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled }),
         });
+        if (!resp.ok) throw new Error('Failed to update rule');
     } catch (e) {
-        alert('Failed to update rule');
+        alert(e.message);
         loadRules();
     }
 }
@@ -482,7 +483,8 @@ async function toggleRule(ruleId, enabled) {
 async function deleteRule(ruleId) {
     if (!confirm('Delete this notification rule?')) return;
     try {
-        await fetch(`/api/notification-rules/${ruleId}`, { method: 'DELETE' });
+        const resp = await fetch(`/api/notification-rules/${ruleId}`, { method: 'DELETE' });
+        if (!resp.ok) throw new Error('Failed to delete rule');
         loadRules();
     } catch (e) {
         alert('Failed to delete rule');

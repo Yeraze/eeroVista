@@ -113,7 +113,7 @@ class TestNotificationService:
         # Replace internal apprise with a mock
         mock_apprise = MagicMock()
         mock_apprise.notify.return_value = True
-        mock_apprise.__bool__ = lambda self: True
+        mock_apprise.__len__ = lambda self: 1
         service._apprise = mock_apprise
         return service
 
