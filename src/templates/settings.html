@@ -236,6 +236,12 @@ let currentNetwork = null;
 let eeroNodes = [];
 let devices = [];
 
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
 function updateAppriseStatusBadge(urls) {
     const statusEl = document.getElementById('appriseStatus');
     if (urls && urls.trim()) {
@@ -352,9 +358,9 @@ async function loadHistory() {
                 ? `<span class="badge badge-success">Resolved</span>`
                 : `<span class="badge badge-warning">Active</span>`;
             return `<tr>
-                <td>${sentAt}</td>
-                <td><code>${entry.event_key}</code></td>
-                <td>${entry.message}</td>
+                <td>${escapeHtml(sentAt)}</td>
+                <td><code>${escapeHtml(entry.event_key)}</code></td>
+                <td>${escapeHtml(entry.message)}</td>
                 <td>${status}</td>
             </tr>`;
         }).join('');
@@ -380,7 +386,7 @@ function updateRuleConfigFields() {
         let checkboxes = eeroNodes.map(node =>
             `<label style="display: block; margin-bottom: 0.25rem;">
                 <input type="checkbox" class="node-checkbox" value="${node.id}">
-                ${node.location || node.eero_id} ${node.is_gateway ? '(Gateway)' : ''}
+                ${escapeHtml(node.location || node.eero_id)} ${node.is_gateway ? '(Gateway)' : ''}
             </label>`
         ).join('');
         container.innerHTML = `<label style="font-weight: 600;">Watch Nodes:</label>${checkboxes || '<p class="text-muted">No nodes found</p>'}`;
@@ -389,7 +395,7 @@ function updateRuleConfigFields() {
         let checkboxes = sorted.map(d =>
             `<label style="display: block; margin-bottom: 0.25rem;">
                 <input type="checkbox" class="device-checkbox" value="${d.id}">
-                ${d.name} (${d.mac_address})
+                ${escapeHtml(d.name)} (${escapeHtml(d.mac_address)})
             </label>`
         ).join('');
         container.innerHTML = `<label style="font-weight: 600;">Watch Devices:</label>${checkboxes || '<p class="text-muted">No devices found</p>'}`;

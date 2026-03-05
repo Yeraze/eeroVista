@@ -255,7 +255,8 @@ def api_update_notification_rule(
             cooldown_minutes=req.cooldown_minutes,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        status = 404 if "not found" in str(e).lower() else 400
+        raise HTTPException(status_code=status, detail=str(e))
 
 
 @router.delete("/notification-rules/{rule_id}", status_code=204)
