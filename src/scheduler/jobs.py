@@ -33,6 +33,7 @@ class CollectorScheduler:
             "network_collector": 0,
             "speedtest_collector": 0,
             "routing_collector": 0,
+            "notification_checker": 0,
         }
         self._max_consecutive_failures = 3  # Threshold for health alerts
         # Use 8 workers (2x collectors) for resilience if threads hang
@@ -43,6 +44,7 @@ class CollectorScheduler:
             "network_collector": False,
             "speedtest_collector": False,
             "routing_collector": False,
+            "notification_checker": False,
         }
         self._lock = threading.Lock()
 
@@ -96,6 +98,17 @@ class CollectorScheduler:
             name="Routing Collector",
             replace_existing=True,
         )
+
+        # Notification checker - always registered, reads URLs from DB per-run
+        notification_interval = self.settings.notification_check_interval
+        self.scheduler.add_job(
+            func=self._run_notification_checker,
+            trigger=IntervalTrigger(seconds=notification_interval),
+            id="notification_checker",
+            name="Notification Checker",
+            replace_existing=True,
+        )
+        logger.info(f"Notification checker registered: {notification_interval}s interval")
 
         # Database cleanup - run daily at 3 AM to remove old records
         self.scheduler.add_job(
@@ -351,6 +364,43 @@ class CollectorScheduler:
 
         except Exception as e:
             logger.error(f"Routing collector error: {e}", exc_info=True)
+            self._record_failure(collector_id, str(e))
+
+    def _run_notification_checker(self) -> None:
+        """Run the notification checker with timeout protection."""
+        collector_id = "notification_checker"
+
+        def _do_check():
+            from src.api.notifications import get_apprise_urls
+            from src.services.notification_service import NotificationService
+            with get_db_context() as db:
+                urls = get_apprise_urls(db)
+                if not urls:
+                    return {"success": True, "rules_checked": 0, "notifications_sent": 0}
+                service = NotificationService(db, apprise_urls=urls)
+                return service.check_all_rules()
+
+        try:
+            result = self._run_with_timeout(collector_id, _do_check, timeout=30)
+
+            if result.get("skipped"):
+                return
+
+            if result.get("success"):
+                sent = result.get("notifications_sent", 0)
+                if sent > 0:
+                    logger.info(
+                        f"Notification check complete: {result.get('rules_checked', 0)} rules checked, "
+                        f"{sent} notification(s) sent"
+                    )
+                self._record_success(collector_id)
+            else:
+                error = result.get("error", "Unknown error")
+                logger.error(f"Notification check failed: {error}")
+                self._record_failure(collector_id, error)
+
+        except Exception as e:
+            logger.error(f"Notification checker error: {e}", exc_info=True)
             self._record_failure(collector_id, str(e))
 
     def _run_database_cleanup(self) -> None:

@@ -91,6 +91,111 @@
 </div>
 
 <div class="card">
+    <div class="card-title">Notifications</div>
+    <p class="text-muted">Get alerted when network events occur via <a href="https://github.com/caronc/apprise" target="_blank" rel="noopener noreferrer">Apprise</a></p>
+
+    <table class="table mt-3">
+        <tr>
+            <th style="width: 40%;">Apprise URLs</th>
+            <td>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="text" id="appriseUrlsInput" class="form-control" placeholder="e.g. discord://webhook_id/token,slack://token" style="flex: 1;">
+                    <span id="appriseStatus" class="badge badge-info">Loading...</span>
+                </div>
+                <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; align-items: center;">
+                    <button class="btn btn-success" onclick="saveAppriseUrls()">Save</button>
+                    <span id="appriseSaveStatus" class="text-muted" style="font-size: 0.85rem;"></span>
+                </div>
+                <div class="text-muted" style="font-size: 0.85rem; margin-top: 0.25rem;">
+                    Comma-separated <a href="https://github.com/caronc/apprise/wiki" target="_blank" rel="noopener noreferrer">Apprise notification URLs</a>
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <th>Notification Check Interval</th>
+            <td>{{ settings.notification_check_interval }} seconds</td>
+        </tr>
+    </table>
+
+    <div id="notifTestStatus" class="alert" style="display: none;"></div>
+
+    <button id="testNotifButton" class="btn btn-primary" onclick="sendTestNotification()">
+        Test Notification
+    </button>
+
+    <hr style="margin: 1.5rem 0;">
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h3 style="margin: 0; font-size: 1.1rem;">Notification Rules</h3>
+        <button class="btn btn-success" onclick="showAddRuleForm()">+ Add Rule</button>
+    </div>
+
+    <!-- Add Rule Form (hidden by default) -->
+    <div id="addRuleForm" style="display: none; background: var(--surface0); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+            <div>
+                <label style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Rule Type</label>
+                <select id="ruleType" class="form-control" onchange="updateRuleConfigFields()">
+                    <option value="node_offline">Node Offline</option>
+                    <option value="device_offline">Device Offline</option>
+                    <option value="high_bandwidth">High Bandwidth</option>
+                    <option value="new_device">New Device</option>
+                    <option value="firmware_update">Firmware Update</option>
+                </select>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Cooldown (minutes)</label>
+                <input type="number" id="ruleCooldown" class="form-control" value="60" min="1">
+            </div>
+        </div>
+
+        <!-- Dynamic config fields -->
+        <div id="ruleConfigFields" style="margin-top: 0.75rem;"></div>
+
+        <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;">
+            <button class="btn btn-success" onclick="saveRule()">Save Rule</button>
+            <button class="btn btn-secondary" onclick="hideAddRuleForm()">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Rules Table -->
+    <table class="table" id="rulesTable">
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Details</th>
+                <th>Cooldown</th>
+                <th>Enabled</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="rulesTableBody">
+            <tr><td colspan="5" class="text-muted" style="text-align: center;">Loading...</td></tr>
+        </tbody>
+    </table>
+
+    <hr style="margin: 1.5rem 0;">
+
+    <details>
+        <summary style="cursor: pointer; font-weight: 600;">Recent Notifications</summary>
+        <table class="table mt-2" id="historyTable">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Event</th>
+                    <th>Message</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="historyTableBody">
+                <tr><td colspan="4" class="text-muted" style="text-align: center;">Loading...</td></tr>
+            </tbody>
+        </table>
+    </details>
+
+</div>
+
+<div class="card">
     <div class="card-title">Database Maintenance</div>
     <p class="text-muted">Clean up data from networks you're no longer authorized for</p>
 
@@ -126,6 +231,321 @@
 </div>
 
 <script>
+// --- Notifications ---
+let currentNetwork = null;
+let eeroNodes = [];
+let devices = [];
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function updateAppriseStatusBadge(urls) {
+    const statusEl = document.getElementById('appriseStatus');
+    if (urls && urls.trim()) {
+        statusEl.className = 'badge badge-success';
+        statusEl.textContent = 'Configured';
+    } else {
+        statusEl.className = 'badge badge-warning';
+        statusEl.textContent = 'Not Configured';
+    }
+}
+
+async function initNotifications() {
+    // Load Apprise URLs from DB
+    try {
+        const resp = await fetch('/api/notification-settings');
+        if (resp.ok) {
+            const data = await resp.json();
+            document.getElementById('appriseUrlsInput').value = data.apprise_urls || '';
+            updateAppriseStatusBadge(data.apprise_urls);
+        }
+    } catch (e) {
+        console.error('Failed to load notification settings:', e);
+    }
+
+    // Load network name, nodes, and devices for rule config
+    try {
+        const [networksResp, nodesResp, devicesResp] = await Promise.all([
+            fetch('/api/notification-config/networks'),
+            fetch('/api/notification-config/nodes'),
+            fetch('/api/notification-config/devices'),
+        ]);
+        if (networksResp.ok) {
+            const networks = await networksResp.json();
+            if (networks.length > 0) currentNetwork = networks[0];
+        }
+        if (nodesResp.ok) eeroNodes = await nodesResp.json();
+        if (devicesResp.ok) devices = await devicesResp.json();
+    } catch (e) {
+        console.error('Failed to load config data:', e);
+    }
+
+    loadRules();
+    loadHistory();
+}
+
+async function loadRules() {
+    const tbody = document.getElementById('rulesTableBody');
+    try {
+        const resp = await fetch('/api/notification-rules');
+        const rules = await resp.json();
+
+        if (rules.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-muted" style="text-align: center;">No notification rules configured</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = rules.map(rule => {
+            const typeLabels = {
+                'node_offline': 'Node Offline',
+                'device_offline': 'Device Offline',
+                'high_bandwidth': 'High Bandwidth',
+                'new_device': 'New Device',
+                'firmware_update': 'Firmware Update',
+            };
+            const config = JSON.parse(rule.config_json || '{}');
+            let details = '';
+            if (rule.rule_type === 'node_offline') {
+                details = `Watching ${(config.node_ids || []).length} node(s)`;
+            } else if (rule.rule_type === 'device_offline') {
+                details = `Watching ${(config.device_ids || []).length} device(s)`;
+            } else if (rule.rule_type === 'high_bandwidth') {
+                const parts = [];
+                if (config.threshold_down_mbps) parts.push(`Down: ${config.threshold_down_mbps} Mbps`);
+                if (config.threshold_up_mbps) parts.push(`Up: ${config.threshold_up_mbps} Mbps`);
+                details = `All devices - ${parts.join(', ') || 'No thresholds'}`;
+            } else {
+                details = 'All events';
+            }
+
+            return `<tr>
+                <td><span class="badge badge-info">${typeLabels[rule.rule_type] || rule.rule_type}</span></td>
+                <td>${details}</td>
+                <td>${rule.cooldown_minutes} min</td>
+                <td>
+                    <label style="cursor: pointer;">
+                        <input type="checkbox" ${rule.enabled ? 'checked' : ''}
+                            onchange="toggleRule(${rule.id}, this.checked)">
+                    </label>
+                </td>
+                <td>
+                    <button class="btn btn-danger btn-sm" onclick="deleteRule(${rule.id})" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Delete</button>
+                </td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-muted" style="text-align: center;">Failed to load rules</td></tr>';
+    }
+}
+
+async function loadHistory() {
+    const tbody = document.getElementById('historyTableBody');
+    try {
+        const resp = await fetch('/api/notification-history?limit=20');
+        const history = await resp.json();
+
+        if (history.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-muted" style="text-align: center;">No notifications sent yet</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = history.map(entry => {
+            const sentAt = new Date(entry.sent_at).toLocaleString();
+            const status = entry.resolved_at
+                ? `<span class="badge badge-success">Resolved</span>`
+                : `<span class="badge badge-warning">Active</span>`;
+            return `<tr>
+                <td>${escapeHtml(sentAt)}</td>
+                <td><code>${escapeHtml(entry.event_key)}</code></td>
+                <td>${escapeHtml(entry.message)}</td>
+                <td>${status}</td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-muted" style="text-align: center;">Failed to load history</td></tr>';
+    }
+}
+
+function showAddRuleForm() {
+    document.getElementById('addRuleForm').style.display = 'block';
+    updateRuleConfigFields();
+}
+
+function hideAddRuleForm() {
+    document.getElementById('addRuleForm').style.display = 'none';
+}
+
+function updateRuleConfigFields() {
+    const type = document.getElementById('ruleType').value;
+    const container = document.getElementById('ruleConfigFields');
+
+    if (type === 'node_offline') {
+        let checkboxes = eeroNodes.map(node =>
+            `<label style="display: block; margin-bottom: 0.25rem;">
+                <input type="checkbox" class="node-checkbox" value="${node.id}">
+                ${escapeHtml(node.location || node.eero_id)} ${node.is_gateway ? '(Gateway)' : ''}
+            </label>`
+        ).join('');
+        container.innerHTML = `<label style="font-weight: 600;">Watch Nodes:</label>${checkboxes || '<p class="text-muted">No nodes found</p>'}`;
+    } else if (type === 'device_offline') {
+        let sorted = [...devices].sort((a, b) => a.name.localeCompare(b.name));
+        let checkboxes = sorted.map(d =>
+            `<label style="display: block; margin-bottom: 0.25rem;">
+                <input type="checkbox" class="device-checkbox" value="${d.id}">
+                ${escapeHtml(d.name)} (${escapeHtml(d.mac_address)})
+            </label>`
+        ).join('');
+        container.innerHTML = `<label style="font-weight: 600;">Watch Devices:</label>${checkboxes || '<p class="text-muted">No devices found</p>'}`;
+    } else if (type === 'high_bandwidth') {
+        container.innerHTML = `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                <div>
+                    <label style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Download Threshold (Mbps)</label>
+                    <input type="number" id="bwDown" class="form-control" value="100" min="0" step="0.1">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Upload Threshold (Mbps)</label>
+                    <input type="number" id="bwUp" class="form-control" value="50" min="0" step="0.1">
+                </div>
+            </div>
+            <p class="text-muted" style="margin-top: 0.5rem; font-size: 0.85rem;">Applies to all devices on the network</p>`;
+    } else {
+        container.innerHTML = '<p class="text-muted">No additional configuration needed</p>';
+    }
+}
+
+async function saveRule() {
+    const type = document.getElementById('ruleType').value;
+    const cooldown = parseInt(document.getElementById('ruleCooldown').value) || 60;
+
+    let configObj = {};
+    if (type === 'node_offline') {
+        const checked = document.querySelectorAll('.node-checkbox:checked');
+        configObj.node_ids = Array.from(checked).map(cb => parseInt(cb.value));
+        if (configObj.node_ids.length === 0) {
+            alert('Please select at least one node to watch');
+            return;
+        }
+    } else if (type === 'device_offline') {
+        const checked = document.querySelectorAll('.device-checkbox:checked');
+        configObj.device_ids = Array.from(checked).map(cb => parseInt(cb.value));
+        if (configObj.device_ids.length === 0) {
+            alert('Please select at least one device to watch');
+            return;
+        }
+    } else if (type === 'high_bandwidth') {
+        configObj.threshold_down_mbps = parseFloat(document.getElementById('bwDown').value) || 0;
+        configObj.threshold_up_mbps = parseFloat(document.getElementById('bwUp').value) || 0;
+    }
+
+    try {
+        const resp = await fetch('/api/notification-rules', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                network_name: currentNetwork || '',
+                rule_type: type,
+                config_json: JSON.stringify(configObj),
+                cooldown_minutes: cooldown,
+                enabled: true,
+            }),
+        });
+
+        if (!resp.ok) {
+            const data = await resp.json();
+            throw new Error(data.detail || 'Failed to create rule');
+        }
+
+        hideAddRuleForm();
+        loadRules();
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+async function toggleRule(ruleId, enabled) {
+    try {
+        const resp = await fetch(`/api/notification-rules/${ruleId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+        });
+        if (!resp.ok) throw new Error('Failed to update rule');
+    } catch (e) {
+        alert(e.message);
+        loadRules();
+    }
+}
+
+async function deleteRule(ruleId) {
+    if (!confirm('Delete this notification rule?')) return;
+    try {
+        const resp = await fetch(`/api/notification-rules/${ruleId}`, { method: 'DELETE' });
+        if (!resp.ok) throw new Error('Failed to delete rule');
+        loadRules();
+    } catch (e) {
+        alert('Failed to delete rule');
+    }
+}
+
+async function saveAppriseUrls() {
+    const input = document.getElementById('appriseUrlsInput');
+    const statusEl = document.getElementById('appriseSaveStatus');
+    statusEl.textContent = 'Saving...';
+    try {
+        const resp = await fetch('/api/notification-settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apprise_urls: input.value }),
+        });
+        if (!resp.ok) throw new Error('Failed to save');
+        const data = await resp.json();
+        updateAppriseStatusBadge(data.apprise_urls);
+        statusEl.textContent = 'Saved!';
+        setTimeout(() => { statusEl.textContent = ''; }, 3000);
+    } catch (e) {
+        statusEl.textContent = 'Error saving: ' + e.message;
+    }
+}
+
+async function sendTestNotification() {
+    const button = document.getElementById('testNotifButton');
+    const statusDiv = document.getElementById('notifTestStatus');
+
+    button.disabled = true;
+    button.textContent = 'Sending...';
+    statusDiv.style.display = 'none';
+
+    try {
+        const resp = await fetch('/api/notifications/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: 'This is a test notification from eeroVista' }),
+        });
+        const data = await resp.json();
+
+        if (!resp.ok) throw new Error(data.detail || 'Failed to send');
+
+        statusDiv.className = 'alert alert-success';
+        statusDiv.textContent = 'Test notification sent successfully!';
+        statusDiv.style.display = 'block';
+    } catch (e) {
+        statusDiv.className = 'alert alert-danger';
+        statusDiv.textContent = 'Error: ' + e.message;
+        statusDiv.style.display = 'block';
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Test Notification';
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', initNotifications);
+
+// --- Database & Support ---
 async function cleanupDatabase() {
     const button = document.getElementById('cleanupButton');
     const statusDiv = document.getElementById('cleanupStatus');

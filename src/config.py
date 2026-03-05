@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # Encryption key for storing sensitive data (auto-generated if not provided)
     encryption_key: Optional[str] = None
 
+    # Notifications
+    notification_check_interval: int = 60  # seconds between notification checks
+
     def get_timezone(self) -> ZoneInfo:
         """Get the configured timezone as a ZoneInfo object."""
         try:
