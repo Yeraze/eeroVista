@@ -20,6 +20,9 @@ prometheus-client>=0.19.0
 # HTTP Client (for testing)
 httpx>=0.25.0
 
+# Notifications
+apprise>=1.6.0
+
 # Utilities
 python-dateutil>=2.8.0
 cryptography>=41.0.0

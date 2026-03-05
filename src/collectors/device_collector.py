@@ -563,8 +563,14 @@ class DeviceCollector(BaseCollector):
 
         # Calculate accumulated bandwidth since last collection
         if bandwidth_record.last_collection_time:
+            # Ensure both timestamps have matching timezone awareness (SQLite strips tzinfo)
+            last_time = bandwidth_record.last_collection_time
+            if last_time.tzinfo is None and timestamp.tzinfo is not None:
+                last_time = last_time.replace(tzinfo=timezone.utc)
+            elif last_time.tzinfo is not None and timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
             # Calculate time delta in seconds
-            time_delta = (timestamp - bandwidth_record.last_collection_time).total_seconds()
+            time_delta = (timestamp - last_time).total_seconds()
 
             # Validate time delta is reasonable
             # Skip accumulation if time_delta is too large (>10 minutes) to prevent
