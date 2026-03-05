@@ -117,8 +117,10 @@ def generate_hosts_file() -> Tuple[int, int]:
                     # Normalize timezone: SQLite stores naive datetimes
                     conn_ts = connection.timestamp
                     if conn_ts is not None:
-                        if conn_ts.tzinfo is None and offline_cutoff.tzinfo is not None:
+                        if conn_ts.tzinfo is None:
                             conn_ts = conn_ts.replace(tzinfo=timezone.utc)
+                        elif offline_cutoff.tzinfo is None:
+                            offline_cutoff = offline_cutoff.replace(tzinfo=timezone.utc)
                         if conn_ts >= offline_cutoff:
                             offline_devices.append((device, connection))
 
