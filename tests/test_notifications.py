@@ -397,7 +397,7 @@ class TestNotificationService:
         service._apprise.notify.assert_called_once()
 
     def test_device_offline_detection(self, db_session, config):
-        """Device with old last_seen should trigger offline notification."""
+        """Device with is_connected=False should trigger offline notification."""
         device = Device(
             network_name="home",
             mac_address="aa:bb:cc:dd:ee:ff",
@@ -405,6 +405,16 @@ class TestNotificationService:
             last_seen=datetime.now(timezone.utc) - timedelta(minutes=5),
         )
         db_session.add(device)
+        db_session.commit()
+
+        # Latest connection shows device disconnected
+        conn = DeviceConnection(
+            device_id=device.id,
+            network_name="home",
+            is_connected=False,
+            timestamp=datetime.now(timezone.utc),
+        )
+        db_session.add(conn)
         db_session.commit()
 
         rule = NotificationRule(
@@ -421,8 +431,31 @@ class TestNotificationService:
         assert result["notifications_sent"] == 1
         service._apprise.notify.assert_called_once()
 
+    def test_device_offline_no_connection_record(self, db_session, config):
+        """Device with no connection records should trigger offline notification."""
+        device = Device(
+            network_name="home",
+            mac_address="aa:bb:cc:dd:ee:ff",
+            nickname="Smart TV",
+        )
+        db_session.add(device)
+        db_session.commit()
+
+        rule = NotificationRule(
+            network_name="home",
+            rule_type="device_offline",
+            config_json=json.dumps({"device_ids": [device.id]}),
+            cooldown_minutes=60,
+        )
+        db_session.add(rule)
+        db_session.commit()
+
+        service = self._make_service(db_session, config)
+        result = service.check_all_rules()
+        assert result["notifications_sent"] == 1
+
     def test_device_offline_online_device_no_alert(self, db_session, config):
-        """Device with recent last_seen should not trigger notification."""
+        """Device with is_connected=True should not trigger notification."""
         device = Device(
             network_name="home",
             mac_address="aa:bb:cc:dd:ee:ff",
@@ -430,6 +463,15 @@ class TestNotificationService:
             last_seen=datetime.now(timezone.utc),
         )
         db_session.add(device)
+        db_session.commit()
+
+        conn = DeviceConnection(
+            device_id=device.id,
+            network_name="home",
+            is_connected=True,
+            timestamp=datetime.now(timezone.utc),
+        )
+        db_session.add(conn)
         db_session.commit()
 
         rule = NotificationRule(
@@ -456,6 +498,16 @@ class TestNotificationService:
         db_session.add(device)
         db_session.commit()
 
+        # Start disconnected
+        conn = DeviceConnection(
+            device_id=device.id,
+            network_name="home",
+            is_connected=False,
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=2),
+        )
+        db_session.add(conn)
+        db_session.commit()
+
         rule = NotificationRule(
             network_name="home",
             rule_type="device_offline",
@@ -468,8 +520,14 @@ class TestNotificationService:
         service = self._make_service(db_session, config)
         service.check_all_rules()
 
-        # Device comes back online
-        device.last_seen = datetime.now(timezone.utc)
+        # Device comes back online - new connection record
+        conn2 = DeviceConnection(
+            device_id=device.id,
+            network_name="home",
+            is_connected=True,
+            timestamp=datetime.now(timezone.utc),
+        )
+        db_session.add(conn2)
         db_session.commit()
 
         service.check_all_rules()

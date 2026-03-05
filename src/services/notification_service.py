@@ -287,19 +287,12 @@ class NotificationService:
         return sent
 
     def _check_device_offline(self, rule: NotificationRule) -> int:
-        """Check for offline devices (client devices, not eero nodes)."""
+        """Check for offline devices based on latest collection status."""
         config = json.loads(rule.config_json)
         device_ids = config.get("device_ids", [])
 
         if not device_ids:
             return 0
-
-        # Device is considered offline if last_seen is older than 5x collection interval.
-        # Use a wider window than nodes (which use 2x) because device last_seen updates
-        # happen sequentially during collection and can lag behind.
-        threshold = datetime.now(timezone.utc) - timedelta(
-            seconds=self.config.collection_interval_devices * 5
-        )
 
         devices = self.db.query(Device).filter(
             Device.id.in_(device_ids),
@@ -310,8 +303,13 @@ class NotificationService:
         current_keys = set()
 
         for device in devices:
-            last_seen = self._ensure_utc(device.last_seen)
-            is_offline = last_seen is None or last_seen < threshold
+            # Check the most recent connection record for this device
+            latest_conn = self.db.query(DeviceConnection).filter(
+                DeviceConnection.device_id == device.id,
+                DeviceConnection.network_name == rule.network_name,
+            ).order_by(DeviceConnection.timestamp.desc()).first()
+
+            is_offline = latest_conn is None or not latest_conn.is_connected
             event_key = f"device_offline:{device.id}"
 
             if is_offline:
