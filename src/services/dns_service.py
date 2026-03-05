@@ -113,8 +113,14 @@ def generate_hosts_file() -> Tuple[int, int]:
 
                 if connection.is_connected:
                     online_devices.append((device, connection))
-                elif connection.timestamp >= offline_cutoff:
-                    offline_devices.append((device, connection))
+                else:
+                    # Normalize timezone: SQLite stores naive datetimes
+                    conn_ts = connection.timestamp
+                    if conn_ts is not None:
+                        if conn_ts.tzinfo is None and offline_cutoff.tzinfo is not None:
+                            conn_ts = conn_ts.replace(tzinfo=timezone.utc)
+                        if conn_ts >= offline_cutoff:
+                            offline_devices.append((device, connection))
 
             def add_device_entry(device, connection, is_offline=False):
                 """Add a device entry if no conflict exists."""
