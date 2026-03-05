@@ -294,9 +294,11 @@ class NotificationService:
         if not device_ids:
             return 0
 
-        # Device is considered offline if last_seen is older than 2x collection interval
+        # Device is considered offline if last_seen is older than 5x collection interval.
+        # Use a wider window than nodes (which use 2x) because device last_seen updates
+        # happen sequentially during collection and can lag behind.
         threshold = datetime.now(timezone.utc) - timedelta(
-            seconds=self.config.collection_interval_devices * 2
+            seconds=self.config.collection_interval_devices * 5
         )
 
         devices = self.db.query(Device).filter(
