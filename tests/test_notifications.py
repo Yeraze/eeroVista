@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.models.database import Base, Device, DeviceConnection, EeroNode
+from src.models.database import Base, Device, DeviceConnection, EeroNode, EeroNodeMetric
 from src.models.notifications import NotificationHistory, NotificationRule
 
 
@@ -124,7 +124,7 @@ class TestNotificationService:
         assert result["rules_checked"] == 0
 
     def test_node_offline_detection(self, db_session, config):
-        # Create a node that's been offline
+        # Create a node with an offline metric status
         node = EeroNode(
             network_name="home",
             eero_id="node1",
@@ -132,6 +132,15 @@ class TestNotificationService:
             last_seen=datetime.now(timezone.utc) - timedelta(minutes=5),
         )
         db_session.add(node)
+        db_session.commit()
+
+        # Add a metric record showing the node is offline
+        metric = EeroNodeMetric(
+            eero_node_id=node.id,
+            timestamp=datetime.now(timezone.utc),
+            status="offline",
+        )
+        db_session.add(metric)
         db_session.commit()
 
         # Create an offline rule
@@ -158,6 +167,14 @@ class TestNotificationService:
             last_seen=datetime.now(timezone.utc) - timedelta(minutes=5),
         )
         db_session.add(node)
+        db_session.commit()
+
+        metric = EeroNodeMetric(
+            eero_node_id=node.id,
+            timestamp=datetime.now(timezone.utc),
+            status="offline",
+        )
+        db_session.add(metric)
         db_session.commit()
 
         rule = NotificationRule(
@@ -189,6 +206,14 @@ class TestNotificationService:
         db_session.add(node)
         db_session.commit()
 
+        metric = EeroNodeMetric(
+            eero_node_id=node.id,
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=5),
+            status="offline",
+        )
+        db_session.add(metric)
+        db_session.commit()
+
         rule = NotificationRule(
             network_name="home",
             rule_type="node_offline",
@@ -201,8 +226,13 @@ class TestNotificationService:
         service = self._make_service(db_session, config)
         service.check_all_rules()
 
-        # Node comes back online
-        node.last_seen = datetime.now(timezone.utc)
+        # Node comes back online - add a new metric with online status
+        metric_online = EeroNodeMetric(
+            eero_node_id=node.id,
+            timestamp=datetime.now(timezone.utc),
+            status="online",
+        )
+        db_session.add(metric_online)
         db_session.commit()
 
         service.check_all_rules()
