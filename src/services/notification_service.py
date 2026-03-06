@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from src.config import Settings, get_settings
-from src.models.database import Device, DeviceConnection, EeroNode
+from src.models.database import Device, DeviceConnection, EeroNode, EeroNodeMetric
 from src.models.notifications import NotificationHistory, NotificationRule
 
 logger = logging.getLogger(__name__)
@@ -139,17 +139,12 @@ class NotificationService:
             self.db.commit()
 
     def _check_node_offline(self, rule: NotificationRule) -> int:
-        """Check for offline eero nodes."""
+        """Check for offline eero nodes using the latest metric status."""
         config = json.loads(rule.config_json)
         node_ids = config.get("node_ids", [])
 
         if not node_ids:
             return 0
-
-        # Node is considered offline if last_seen is older than 2x collection interval
-        threshold = datetime.now(timezone.utc) - timedelta(
-            seconds=self.config.collection_interval_devices * 2
-        )
 
         nodes = self.db.query(EeroNode).filter(
             EeroNode.id.in_(node_ids),
@@ -160,8 +155,12 @@ class NotificationService:
         current_keys = set()
 
         for node in nodes:
-            last_seen = self._ensure_utc(node.last_seen)
-            is_offline = last_seen is None or last_seen < threshold
+            # Get the latest metric record for this node
+            latest_metric = self.db.query(EeroNodeMetric).filter(
+                EeroNodeMetric.eero_node_id == node.id,
+            ).order_by(EeroNodeMetric.timestamp.desc()).first()
+
+            is_offline = latest_metric is None or latest_metric.status != "online"
             event_key = f"node_offline:{node.id}"
 
             if is_offline:
