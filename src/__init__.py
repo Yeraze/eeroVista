@@ -2,4 +2,4 @@
 
 # NOTE: This is the single source of truth for version numbers.
 # setup.py and pyproject.toml read from this value.
-__version__ = "2.5.2"
+__version__ = "2.5.3"
