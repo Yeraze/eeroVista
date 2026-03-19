@@ -9,7 +9,7 @@ sqlalchemy>=2.0.0
 alembic>=1.12.0
 
 # Eero API Client
-eero-client>=2.1.0
+eero-client @ git+https://github.com/Yeraze/eero-client.git@relax-dependency-pins
 
 # Background Tasks
 apscheduler>=3.10.0
