@@ -20,6 +20,8 @@ eeroVista is a **read-only** web-based monitoring tool for Eero mesh networks. I
 - 📊 **Real-time Dashboard** - View network status, connected devices, and bandwidth usage
 - 📈 **Historical Data** - Track device connections and network performance over time
 - 🚀 **Speedtest History** - Monitor ISP performance with historical speedtest results
+- 🔔 **Notifications** - Configurable alerts via 100+ services (email, Slack, Discord, Telegram, webhooks, and more) powered by [Apprise](https://github.com/caronc/apprise)
+- 🔗 **Device Groups** - Combine multiple network interfaces from the same physical device into a single logical entry with aggregated bandwidth
 - 🔌 **Multi-Format Exports** - Prometheus metrics, Zabbix LLD, and JSON API
 - 🎨 **Beautiful UI** - Clean interface using the Catppuccin Latte color theme
 - 🐳 **Docker-Ready** - Simple container deployment with persistent storage
@@ -29,9 +31,18 @@ eeroVista is a **read-only** web-based monitoring tool for Eero mesh networks. I
 ### Web Interface
 - Network overview dashboard with real-time statistics
 - Device list with connection status, signal strength, and bandwidth
+- Device grouping to combine multiple interfaces (e.g., wired + wireless) into a single logical device
 - Network topology visualization showing mesh node connections
 - Speedtest history graphs and trends
+- Notification management with rule configuration and history
 - Clean, accessible UI with Catppuccin Latte theme
+
+### Notifications
+- **5 alert types**: Node offline, device offline, new device connected, high bandwidth usage, firmware updates available
+- **100+ delivery services** via [Apprise](https://github.com/caronc/apprise): email, Slack, Discord, Telegram, Microsoft Teams, webhooks, and more
+- Configurable cooldown periods per rule to prevent alert fatigue
+- Notification history tracking with deduplication
+- Test notification support from the Settings page
 
 ### Monitoring Integration
 - **Prometheus** metrics endpoint for scraping
@@ -42,6 +53,7 @@ eeroVista is a **read-only** web-based monitoring tool for Eero mesh networks. I
 ### Data Collection
 - Automatic background collection of device metrics (every 30s)
 - Network-wide statistics (every 60s)
+- Notification rule evaluation (every 60s)
 - Passive speedtest result collection
 - Configurable data retention policies
 
@@ -164,6 +176,12 @@ See [Configuration Reference](docs/configuration.md) for all options.
 - `/network` - Network topology
 - `/speedtest` - Speedtest history
 
+### Notifications & Device Groups
+- `/api/notification-settings` - Apprise URL configuration (GET/PUT)
+- `/api/notification-rules` - Notification rule CRUD
+- `/api/notification-history` - Recent notification history
+- `/api/device-groups` - Device group management
+
 ### Monitoring Integration
 - `/metrics` - Prometheus metrics
 - `/api/health` - Health check
@@ -230,21 +248,31 @@ Contributions are welcome! Please see the [Development Guide](docs/development.m
 
 ## Roadmap
 
-- [ ] Initial release (v1.0.0)
+- [x] Initial release
   - [x] Core architecture and documentation
-  - [ ] Database models and collectors
-  - [ ] Web interface with Catppuccin theme
-  - [ ] Prometheus exporter
-  - [ ] Zabbix integration
-  - [ ] Docker image
+  - [x] Database models and collectors
+  - [x] Web interface with Catppuccin theme
+  - [x] Prometheus exporter
+  - [x] Zabbix integration
+  - [x] Docker image
+
+- [x] Notifications
+  - [x] Apprise-based notification delivery (100+ services)
+  - [x] Node offline / device offline alerts
+  - [x] New device detection
+  - [x] High bandwidth alerts
+  - [x] Firmware update alerts
+  - [x] Configurable cooldowns and history
+
+- [x] Device Groups
+  - [x] Combine multiple interfaces into logical devices
+  - [x] Aggregated bandwidth display
 
 - [ ] Future enhancements
   - [ ] CSV export functionality
-  - [ ] Webhook notifications
   - [ ] Advanced device filtering
   - [ ] Bandwidth heatmaps
   - [ ] Mobile-responsive design
-  - [ ] Multi-network support
 
 ## License
 

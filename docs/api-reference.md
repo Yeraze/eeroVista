@@ -224,6 +224,196 @@ DELETE /api/device-groups/{group_id}
 
 ---
 
+## Notification Endpoints
+
+### Notification Settings
+
+#### Get Notification Settings
+```
+GET /api/notification-settings
+```
+
+**Response** (200 OK):
+```json
+{
+  "apprise_urls": "slack://token discord://webhook",
+  "configured": true
+}
+```
+
+#### Update Notification Settings
+```
+PUT /api/notification-settings
+```
+
+**Request Body**:
+```json
+{
+  "apprise_urls": "slack://tokenA/tokenB/tokenC discord://webhook email://user:pass@smtp.example.com"
+}
+```
+
+Apprise URLs are space-separated. See [Apprise documentation](https://github.com/caronc/apprise/wiki) for supported services (100+ including email, Slack, Discord, Telegram, Microsoft Teams, webhooks, and more).
+
+**Response** (200 OK): Same format as GET response.
+
+### Notification Rules
+
+#### List Notification Rules
+```
+GET /api/notification-rules
+```
+
+**Query Parameters**:
+- `network` (string): Filter by network name
+
+**Response** (200 OK):
+```json
+[
+  {
+    "id": 1,
+    "network_name": "My Network",
+    "rule_type": "node_offline",
+    "enabled": true,
+    "config_json": "{\"node_ids\": [1, 2]}",
+    "cooldown_minutes": 60,
+    "created_at": "2025-10-19T14:00:00",
+    "updated_at": null
+  }
+]
+```
+
+#### Create Notification Rule
+```
+POST /api/notification-rules
+```
+
+**Request Body**:
+```json
+{
+  "network_name": "My Network",
+  "rule_type": "node_offline",
+  "config_json": "{\"node_ids\": [1, 2]}",
+  "cooldown_minutes": 60,
+  "enabled": true
+}
+```
+
+**Rule Types**:
+| Type | Description | Config Fields |
+|------|-------------|---------------|
+| `node_offline` | Alert when mesh nodes go offline | `node_ids` (list of node IDs) |
+| `device_offline` | Alert when specific devices go offline | `device_ids` (list of device IDs) |
+| `new_device` | Alert when a new device connects | (none) |
+| `high_bandwidth` | Alert when bandwidth exceeds threshold | `threshold_down_mbps`, `threshold_up_mbps` |
+| `firmware_update` | Alert when firmware updates are available | (none) |
+
+**Response** (201 Created): Same format as list item.
+
+**Errors**:
+- `400` if rule_type is invalid
+- `400` if config_json is not valid JSON
+
+#### Update Notification Rule
+```
+PUT /api/notification-rules/{rule_id}
+```
+
+**Request Body** (all fields optional):
+```json
+{
+  "enabled": false,
+  "config_json": "{\"node_ids\": [1]}",
+  "cooldown_minutes": 120
+}
+```
+
+**Response** (200 OK): Same format as list item.
+
+#### Delete Notification Rule
+```
+DELETE /api/notification-rules/{rule_id}
+```
+
+**Response** (204 No Content): Rule and its history are deleted.
+
+### Test Notification
+```
+POST /api/notifications/test
+```
+
+**Request Body**:
+```json
+{
+  "message": "This is a test notification from eeroVista"
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "success": true,
+  "message": "Test notification sent successfully"
+}
+```
+
+**Errors**:
+- `400` if no Apprise URLs are configured
+- `500` if notification delivery fails
+
+### Notification Configuration Helpers
+
+#### List Available Networks
+```
+GET /api/notification-config/networks
+```
+
+Returns network names for populating rule configuration dropdowns.
+
+#### List Nodes
+```
+GET /api/notification-config/nodes
+```
+
+**Query Parameters**:
+- `network` (string): Filter by network name
+
+Returns node list with IDs for configuring `node_offline` rules.
+
+#### List Devices
+```
+GET /api/notification-config/devices
+```
+
+**Query Parameters**:
+- `network` (string): Filter by network name
+
+Returns device list with IDs for configuring `device_offline` rules.
+
+### Notification History
+```
+GET /api/notification-history
+```
+
+**Query Parameters**:
+- `limit` (int): Number of entries (default: 50, max: 200)
+
+**Response** (200 OK):
+```json
+[
+  {
+    "id": 1,
+    "rule_id": 3,
+    "event_key": "node_offline:12345",
+    "message": "Node 'Living Room' is offline",
+    "sent_at": "2025-10-19T14:30:00",
+    "resolved_at": "2025-10-19T14:35:00"
+  }
+]
+```
+
+---
+
 ### Network Summary
 ```
 GET /api/network/summary
@@ -440,11 +630,6 @@ Planned for future releases:
 ```
 GET /api/export/devices.csv
 GET /api/export/speedtests.csv
-```
-
-### Webhook Notifications
-```
-POST /api/webhooks
 ```
 
 ### Advanced Filtering

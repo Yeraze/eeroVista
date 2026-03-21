@@ -36,6 +36,23 @@ All configuration is done through environment variables in `docker-compose.yml` 
 - ~50 MB for 50 devices
 - ~100 MB for 100 devices
 
+### Notifications
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NOTIFICATION_CHECK_INTERVAL` | `60` | Seconds between notification rule evaluations |
+
+Notification delivery is configured through the web UI Settings page using [Apprise](https://github.com/caronc/apprise) URLs. Apprise supports 100+ notification services including:
+
+- **Email**: `mailto://user:pass@smtp.example.com`
+- **Slack**: `slack://TokenA/TokenB/TokenC`
+- **Discord**: `discord://WebhookID/WebhookToken`
+- **Telegram**: `tgram://BotToken/ChatID`
+- **Microsoft Teams**: `msteams://TokenA/TokenB/TokenC`
+- **Webhooks**: `json://hostname/path` or `xml://hostname/path`
+
+Multiple URLs can be configured (space-separated) to deliver to multiple services simultaneously. See the [Apprise wiki](https://github.com/caronc/apprise/wiki) for the full list of supported services.
+
 ### Logging
 
 | Variable | Default | Description |
@@ -71,6 +88,9 @@ services:
       # Collection intervals (seconds)
       - COLLECTION_INTERVAL_DEVICES=30
       - COLLECTION_INTERVAL_NETWORK=60
+
+      # Notifications
+      - NOTIFICATION_CHECK_INTERVAL=60
 
       # Data retention (days)
       - DATA_RETENTION_RAW_DAYS=7
