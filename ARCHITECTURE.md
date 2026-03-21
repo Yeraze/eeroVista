@@ -116,6 +116,8 @@ eeroVista is a **read-only** monitoring system for Eero mesh networks, providing
 │  │  - /metrics       Prometheus exporter                 │ │
 │  │  - /api/health    Health check endpoint               │ │
 │  │  - /api/devices   JSON device list                    │ │
+│  │  - /api/device-groups  Device group CRUD              │ │
+│  │  - /api/notification-*  Notification management       │ │
 │  │  - /api/zabbix/*  Zabbix LLD & data                   │ │
 │  └───────────────────────────────────────────────────────┘ │
 │                            │                                 │
@@ -123,6 +125,7 @@ eeroVista is a **read-only** monitoring system for Eero mesh networks, providing
 │  │          APScheduler Background Jobs                   │ │
 │  │  - Device collector (30s)                              │ │
 │  │  - Network metrics (1m)                                │ │
+│  │  - Notification checker (60s)                          │ │
 │  │  - Data retention cleanup (daily)                      │ │
 │  │  Note: No speedtest trigger (passive collection only)  │ │
 │  └───────────────────────────────────────────────────────┘ │
@@ -253,8 +256,61 @@ CREATE INDEX idx_eero_metrics_timestamp ON eero_node_metrics(timestamp);
 CREATE INDEX idx_eero_metrics_node ON eero_node_metrics(eero_node_id, timestamp);
 ```
 
+#### `device_groups`
+Logical grouping of multiple device interfaces.
+```sql
+CREATE TABLE device_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    network_name TEXT NOT NULL,
+    name TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_device_groups_network ON device_groups(network_name);
+```
+
+#### `device_group_members`
+Device membership in groups (each device in at most one group).
+```sql
+CREATE TABLE device_group_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    device_id INTEGER NOT NULL UNIQUE,
+    FOREIGN KEY (group_id) REFERENCES device_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (device_id) REFERENCES devices(id)
+);
+```
+
+#### `notification_rules`
+Configurable notification triggers.
+```sql
+CREATE TABLE notification_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    network_name TEXT NOT NULL,
+    rule_type TEXT NOT NULL,
+    config_json TEXT DEFAULT '{}',
+    cooldown_minutes INTEGER DEFAULT 60,
+    enabled INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP
+);
+```
+
+#### `notification_history`
+Sent notification log for deduplication and cooldown tracking.
+```sql
+CREATE TABLE notification_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_id INTEGER NOT NULL,
+    event_key TEXT NOT NULL,
+    message TEXT,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP,
+    FOREIGN KEY (rule_id) REFERENCES notification_rules(id)
+);
+```
+
 #### `config`
-Application configuration key-value store.
+Application configuration key-value store (also stores Apprise notification URLs).
 ```sql
 CREATE TABLE config (
     key TEXT PRIMARY KEY,
@@ -292,7 +348,8 @@ eerovista/
 │   ├── config.py                   # Configuration management
 │   ├── models/
 │   │   ├── __init__.py
-│   │   └── database.py             # SQLAlchemy models
+│   │   ├── database.py             # SQLAlchemy models (includes DeviceGroup)
+│   │   └── notifications.py        # NotificationRule & NotificationHistory models
 │   ├── collectors/
 │   │   ├── __init__.py
 │   │   ├── base.py                 # Base collector class
@@ -303,12 +360,17 @@ eerovista/
 │   │   ├── __init__.py
 │   │   ├── client.py               # Wrapper around eero-client
 │   │   └── auth.py                 # Authentication management
+│   ├── services/
+│   │   ├── __init__.py
+│   │   └── notification_service.py # Notification checker & Apprise delivery
 │   ├── api/
 │   │   ├── __init__.py
 │   │   ├── web.py                  # Web UI routes
 │   │   ├── prometheus.py           # Prometheus /metrics
 │   │   ├── zabbix.py               # Zabbix endpoints
-│   │   └── devices.py              # JSON API endpoints
+│   │   ├── devices.py              # JSON API endpoints
+│   │   ├── device_groups.py        # Device group CRUD
+│   │   └── notifications.py        # Notification rule & settings API
 │   ├── scheduler/
 │   │   ├── __init__.py
 │   │   └── jobs.py                 # APScheduler job definitions
@@ -345,6 +407,7 @@ eerovista/
 |-----------|----------|----------------|---------|
 | Device metrics | 30s | `devices`, `eeros` | Track connections, bandwidth, signal |
 | Network metrics | 60s | `networks`, `account` | Overall network health |
+| Notification checker | 60s | (internal DB) | Evaluate rules and send alerts via Apprise |
 | Speedtest passive | On API change | `speedtest` | Collect results from eero-run tests |
 
 ### Data Retention Policy
@@ -401,6 +464,22 @@ eero_speedtest_latency_ms 12.4
 - `GET /api/devices` - List all devices with latest metrics
 - `GET /api/devices/{mac}` - Device detail with history
 - `GET /api/network/summary` - Network summary stats
+
+### Device Groups
+- `GET /api/device-groups` - List groups
+- `POST /api/device-groups` - Create group
+- `PUT /api/device-groups/{id}` - Update group
+- `DELETE /api/device-groups/{id}` - Delete group
+
+### Notifications
+- `GET/PUT /api/notification-settings` - Apprise URL configuration
+- `GET/POST /api/notification-rules` - List and create rules
+- `PUT/DELETE /api/notification-rules/{id}` - Update and delete rules
+- `POST /api/notifications/test` - Send test notification
+- `GET /api/notification-config/networks` - Available networks
+- `GET /api/notification-config/nodes` - Available nodes
+- `GET /api/notification-config/devices` - Available devices
+- `GET /api/notification-history` - Recent notification log
 
 ---
 
@@ -505,9 +584,7 @@ description: Read-only monitoring for Eero mesh networks
 
 ## Future Enhancements
 
-- **Alerting**: Optional webhook notifications for device offline/online
 - **CSV Export**: Download historical data as CSV
 - **Advanced Filtering**: Filter devices by type, location, time range
 - **Bandwidth Heatmaps**: Visualize usage patterns over time
 - **Mobile-Responsive Design**: Optimize UI for mobile devices
-- **Multi-Network Support**: Monitor multiple eero networks from one instance

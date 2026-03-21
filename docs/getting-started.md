@@ -203,8 +203,26 @@ This is **normal behavior**. eeroVista cannot access historical bandwidth data f
    docker compose logs eerovista
    ```
 
+### Notifications
+
+eeroVista supports configurable notifications for network events. To set up notifications:
+
+1. Go to the **Settings** page (`http://localhost:8080/settings`)
+2. Configure your **Apprise URLs** - these define where notifications are delivered (email, Slack, Discord, Telegram, webhooks, and 100+ other services via [Apprise](https://github.com/caronc/apprise))
+3. Use **Send Test** to verify delivery works
+4. Create **Notification Rules** to define what triggers alerts:
+   - **Node Offline**: Alert when mesh nodes go down
+   - **Device Offline**: Alert when specific devices disconnect
+   - **New Device**: Alert when an unknown device joins the network
+   - **High Bandwidth**: Alert when bandwidth exceeds a threshold
+   - **Firmware Update**: Alert when firmware updates are available
+5. Each rule has a configurable **cooldown period** (default: 60 minutes) to prevent repeated alerts
+
+Notification rules are evaluated every 60 seconds (configurable via `NOTIFICATION_CHECK_INTERVAL`).
+
 ## Next Steps
 
+- [Configure notifications](api-reference.md#notification-endpoints) for network alerts
 - [Configure Prometheus](prometheus.md) to scrape metrics
 - [Set up Zabbix](zabbix.md) monitoring
 - [Explore the API](api-reference.md) for custom integrations
