@@ -443,6 +443,286 @@ GET /api/network/summary
 
 ---
 
+## Analytics & Reports Endpoints
+
+### Network Health Score
+```
+GET /api/network/health-score
+```
+
+**Query Parameters**:
+- `network` (string): Network name (defaults to first available)
+
+**Response** (200 OK):
+```json
+{
+  "score": 92.6,
+  "color": "green",
+  "components": {
+    "wan_uptime": {"score": 100.0, "weight": 0.3},
+    "node_availability": {"score": 100.0, "weight": 0.25},
+    "mesh_quality": {"score": 99.7, "weight": 0.25},
+    "signal_quality": {"score": 63.2, "weight": 0.2}
+  },
+  "window_minutes": 60
+}
+```
+
+Score color thresholds: green (>=80), yellow (50-80), red (<50).
+
+### Health Score History
+```
+GET /api/network/health-history
+```
+
+**Query Parameters**:
+- `hours` (int): Hours to look back (default: 168, max: 720)
+- `network` (string): Network name
+
+**Response** (200 OK):
+```json
+{
+  "history": [
+    {"timestamp": "2025-10-19T14:00:00", "score": 95.2}
+  ]
+}
+```
+
+### WAN Uptime
+```
+GET /api/network/uptime
+```
+
+**Query Parameters**:
+- `network` (string): Network name
+
+**Response** (200 OK):
+```json
+{
+  "uptime_24h_pct": 99.8,
+  "uptime_7d_pct": 99.2,
+  "uptime_30d_pct": 98.5,
+  "total_outages_30d": 4,
+  "total_downtime_minutes_30d": 65.0,
+  "longest_outage_minutes": 25.0
+}
+```
+
+### Outage Events
+```
+GET /api/network/outages
+```
+
+**Query Parameters**:
+- `days` (int): Days to look back (default: 30, max: 365)
+- `network` (string): Network name
+
+**Response** (200 OK):
+```json
+{
+  "outages": [
+    {"start": "2025-10-14T02:15:00", "end": "2025-10-14T02:40:00", "duration_minutes": 25.0}
+  ],
+  "daily_uptime": [
+    {"date": "2025-10-14", "uptime_pct": 98.3, "outage_count": 1}
+  ],
+  "period_days": 30
+}
+```
+
+### Bandwidth Summary Report
+```
+GET /api/reports/bandwidth-summary
+```
+
+**Query Parameters**:
+- `period` (string): `week` or `month` (required)
+- `offset` (int): Periods back, 0=current (default: 0)
+- `network` (string): Network name
+
+**Response** (200 OK):
+```json
+{
+  "period": "2025-10-13 to 2025-10-19",
+  "previous_period": "2025-10-06 to 2025-10-12",
+  "total_download_gb": 145.2,
+  "total_upload_gb": 23.8,
+  "total_gb": 169.0,
+  "change_vs_previous": {"download_pct": 12.3, "upload_pct": -5.1, "total_pct": 8.2},
+  "top_devices": [
+    {"hostname": "Gaming-PC", "nickname": "Gaming PC", "mac_address": "AA:BB:CC:DD:EE:FF", "download_gb": 45.2, "upload_gb": 8.1, "total_gb": 53.3, "pct_of_total": 31.1}
+  ],
+  "daily_breakdown": [
+    {"date": "2025-10-13", "day": "Monday", "download_gb": 20.1, "upload_gb": 3.2, "total_gb": 23.3}
+  ],
+  "peak_day": {"date": "2025-10-15", "day": "Wednesday", "total_gb": 28.5}
+}
+```
+
+### Node Restart History
+```
+GET /api/nodes/{eero_id}/restart-history
+```
+
+**Query Parameters**:
+- `days` (int): Days to look back (default: 30, max: 365)
+- `network` (string): Network name
+
+**Response** (200 OK):
+```json
+{
+  "node_id": 1,
+  "node_name": "Living Room",
+  "restarts": [
+    {"detected_at": "2025-10-15T03:22:00", "estimated_restart_at": "2025-10-15T03:20:00", "previous_uptime_seconds": 604800}
+  ],
+  "total_restarts": 3,
+  "mean_time_between_restarts_hours": 168.5,
+  "period_days": 30
+}
+```
+
+### Node Restart Summary
+```
+GET /api/nodes/restart-summary
+```
+
+Returns restart counts for all nodes in a network.
+
+### Signal Strength History
+```
+GET /api/devices/{mac_address}/signal-history
+```
+
+**Query Parameters**:
+- `hours` (int): Hours to look back (default: 168, max: 720)
+- `network` (string): Network name
+
+**Response** (200 OK):
+```json
+{
+  "mac": "AA:BB:CC:DD:EE:FF",
+  "hostname": "iPhone",
+  "stats": {"mean": -52.3, "min": -71, "max": -38, "stddev": 8.2, "count": 500},
+  "quality_band": "good",
+  "trend": "stable",
+  "history": [
+    {"timestamp": "2025-10-19T10:00:00", "signal_strength": -48}
+  ]
+}
+```
+
+**Quality Bands**: excellent (> -50 dBm), good (-50 to -65), fair (-65 to -75), poor (< -75)
+
+**Trend Values**: `stable`, `degrading`, `improving`, `unknown`
+
+### Signal Quality Summary
+```
+GET /api/devices/signal-summary
+```
+
+Returns network-wide signal quality: device counts per quality band and list of devices with degrading signal.
+
+### Speedtest Analysis
+```
+GET /api/speedtest/analysis
+```
+
+**Query Parameters**:
+- `days` (int): Days to analyze (default: 30, max: 365)
+- `network` (string): Network name
+
+**Response** (200 OK):
+```json
+{
+  "period_days": 30,
+  "test_count": 45,
+  "avg_download_mbps": 285.3,
+  "avg_upload_mbps": 22.1,
+  "avg_latency_ms": 12.5,
+  "time_of_day_pattern": [
+    {"hour": 0, "avg_download": 310.2, "test_count": 3}
+  ],
+  "day_of_week_pattern": [
+    {"day": "Monday", "avg_download": 295.0, "test_count": 7}
+  ],
+  "trend": "stable"
+}
+```
+
+### Device Activity Pattern
+```
+GET /api/devices/{mac_address}/activity-pattern
+```
+
+**Query Parameters**:
+- `days` (int): Days to analyze (default: 7, max: 30)
+- `network` (string): Network name
+
+**Response** (200 OK):
+```json
+{
+  "mac": "AA:BB:CC:DD:EE:FF",
+  "hostname": "iPhone",
+  "heatmap": [
+    {"day": "Monday", "hours": [0.0, 0.0, null, 0.5, 1.0, 1.0, "..."]}
+  ],
+  "total_readings": 1200,
+  "period_days": 7
+}
+```
+
+Each value in `hours` is a connection probability (0.0-1.0) or `null` if no data.
+
+### Node Load Analysis
+```
+GET /api/nodes/load-analysis
+```
+
+**Query Parameters**:
+- `hours` (int): Hours to analyze (default: 24, max: 720)
+- `network` (string): Network name
+
+**Response** (200 OK):
+```json
+{
+  "imbalance_score": 0.35,
+  "nodes": [
+    {"node_id": 1, "eero_id": "12345", "location": "Living Room", "avg_devices": 12.3, "max_devices": 18, "pct_of_total": 45.2, "is_gateway": true}
+  ],
+  "roaming_events": [
+    {"device_mac": "AA:BB:CC:DD:EE:FF", "hostname": "Laptop", "from_node": "Office", "to_node": "Living Room", "at": "2025-10-19T14:30:00"}
+  ],
+  "roaming_summary": {"total_events": 23, "unique_devices": 8, "most_roaming_device": {"mac": "AA:BB:CC:DD:EE:FF", "hostname": "Laptop", "events": 5}}
+}
+```
+
+### Guest Network Usage
+```
+GET /api/network/guest-usage
+```
+
+**Query Parameters**:
+- `hours` (int): Hours to look back (default: 24, max: 720)
+- `network` (string): Network name
+
+**Response** (200 OK):
+```json
+{
+  "hours": 24,
+  "guest_device_count": 3,
+  "guest_devices": [
+    {"hostname": "Guest-Phone", "mac": "AA:BB:CC:DD:EE:FF", "type": "mobile"}
+  ],
+  "guest_bandwidth_down_mbps": 125.3,
+  "guest_bandwidth_up_mbps": 12.8,
+  "guest_pct_of_total": 15.2,
+  "non_guest_pct_of_total": 84.8
+}
+```
+
+---
+
 ## Prometheus Metrics
 
 ### Metrics Endpoint
@@ -494,6 +774,20 @@ eero_speedtest_upload_mbps 45.8
 # HELP eero_speedtest_latency_ms Latest speedtest latency
 # TYPE eero_speedtest_latency_ms gauge
 eero_speedtest_latency_ms 12.4
+
+# HELP eero_network_health_score Overall network health score (0-100)
+# TYPE eero_network_health_score gauge
+eero_network_health_score{network="My Network"} 92.6
+
+# HELP eero_network_wan_uptime_pct WAN uptime percentage
+# TYPE eero_network_wan_uptime_pct gauge
+eero_network_wan_uptime_pct{network="My Network",window="24h"} 99.8
+eero_network_wan_uptime_pct{network="My Network",window="7d"} 99.2
+eero_network_wan_uptime_pct{network="My Network",window="30d"} 98.5
+
+# HELP eero_node_restarts_30d Detected node restarts in last 30 days
+# TYPE eero_node_restarts_30d gauge
+eero_node_restarts_30d{network="My Network",node_id="12345",location="Living Room"} 0
 ```
 
 See [Prometheus Integration](prometheus.md) for scrape configuration.
