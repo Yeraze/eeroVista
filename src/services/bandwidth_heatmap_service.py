@@ -60,17 +60,19 @@ def get_bandwidth_heatmap(
 
     # Group by (day_of_week, 5-min bucket) in local time
     # SQLite %w: 0=Sunday, 1=Monday, ..., 6=Saturday
+    # Only include readings that actually have bandwidth data (not NULL)
     results = db.execute(text("""
         SELECT
             CAST(strftime('%w', datetime(timestamp, :offset)) AS INTEGER) as dow,
             (CAST(strftime('%H', datetime(timestamp, :offset)) AS INTEGER) * 12
              + CAST(strftime('%M', datetime(timestamp, :offset)) AS INTEGER) / 5) as bucket,
-            MAX(COALESCE(bandwidth_down_mbps, 0)) as max_down,
-            MAX(COALESCE(bandwidth_up_mbps, 0)) as max_up
+            MAX(bandwidth_down_mbps) as max_down,
+            MAX(bandwidth_up_mbps) as max_up
         FROM device_connections
         WHERE device_id = :device_id
           AND timestamp >= :cutoff
           AND is_connected = 1
+          AND (bandwidth_down_mbps IS NOT NULL OR bandwidth_up_mbps IS NOT NULL)
         GROUP BY dow, bucket
         ORDER BY dow, bucket
     """), {
@@ -103,8 +105,8 @@ def get_bandwidth_heatmap(
     for row in results:
         sqlite_dow = int(row[0])
         bucket = int(row[1])
-        max_down = float(row[2])
-        max_up = float(row[3])
+        max_down = float(row[2]) if row[2] is not None else 0
+        max_up = float(row[3]) if row[3] is not None else 0
         python_dow = sqlite_to_python_dow[sqlite_dow]
         data[(python_dow, bucket)] = (max_down, max_up)
         if max_down > global_max_down:
