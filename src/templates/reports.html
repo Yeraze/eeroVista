@@ -249,38 +249,42 @@
             return;
         }
 
-        const rows = devices.map((d, i) => `
-            <tr>
-                <td style="font-weight: 600;">${i + 1}</td>
-                <td>${escapeHtml(d.nickname || d.hostname || d.mac_address || 'Unknown')}</td>
-                <td style="text-align: right;">${d.download_gb.toFixed(1)} GB</td>
-                <td style="text-align: right;">${d.upload_gb.toFixed(1)} GB</td>
-                <td style="text-align: right; font-weight: 600;">${d.total_gb.toFixed(1)} GB</td>
-                <td style="text-align: right;">
-                    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem;">
-                        <div style="width: 60px; height: 8px; background: var(--surface1); border-radius: 4px; overflow: hidden;">
-                            <div style="width: ${d.pct_of_total}%; height: 100%; background: var(--blue); border-radius: 4px;"></div>
+        const maxTotal = devices[0].total_gb;
+
+        const items = devices.map((d, i) => {
+            const barWidth = maxTotal > 0 ? (d.total_gb / maxTotal * 100) : 0;
+            const downPercent = d.total_gb > 0 ? (d.download_gb / d.total_gb * 100) : 0;
+            const name = escapeHtml(d.nickname || d.hostname || d.mac_address || 'Unknown');
+
+            return `
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <div style="width: 24px; text-align: center; font-weight: 600; color: var(--subtext0);">${i + 1}</div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                            <span style="font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</span>
+                            <span style="font-size: 0.875rem; color: var(--subtext0); white-space: nowrap; margin-left: 0.5rem;">
+                                ↓${d.download_gb.toFixed(1)} ↑${d.upload_gb.toFixed(1)} GB · ${d.pct_of_total}%
+                            </span>
                         </div>
-                        <span>${d.pct_of_total}%</span>
+                        <div style="height: 8px; background: var(--surface1); border-radius: 4px; overflow: hidden;">
+                            <div style="height: 100%; width: ${barWidth}%; display: flex; border-radius: 4px; overflow: hidden;">
+                                <div style="width: ${downPercent}%; background: var(--blue);"></div>
+                                <div style="flex: 1; background: var(--mauve);"></div>
+                            </div>
+                        </div>
                     </div>
-                </td>
-            </tr>
-        `).join('');
+                </div>
+            `;
+        }).join('');
 
         container.innerHTML = `
-            <table class="routing-table">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Device</th>
-                        <th style="text-align: right;">Download</th>
-                        <th style="text-align: right;">Upload</th>
-                        <th style="text-align: right;">Total</th>
-                        <th style="text-align: right;">Share</th>
-                    </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-            </table>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                ${items}
+                <div style="display: flex; gap: 1.5rem; justify-content: center; margin-top: 0.75rem; font-size: 0.75rem; color: var(--subtext0);">
+                    <span><span style="display: inline-block; width: 12px; height: 12px; background: var(--blue); border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>Download</span>
+                    <span><span style="display: inline-block; width: 12px; height: 12px; background: var(--mauve); border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>Upload</span>
+                </div>
+            </div>
         `;
     }
 
