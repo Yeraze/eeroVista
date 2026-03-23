@@ -56,6 +56,54 @@
     </div>
 </div>
 
+<!-- ISP Reliability Section -->
+<h1 class="page-title" style="margin-top: 3rem;">ISP Reliability</h1>
+
+<div class="stats-grid" style="margin-bottom: 1.5rem;">
+    <div class="stat-card">
+        <div class="stat-value" id="uptime-24h">--</div>
+        <div class="stat-label">Uptime (24h)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="uptime-7d">--</div>
+        <div class="stat-label">Uptime (7d)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="uptime-30d">--</div>
+        <div class="stat-label">Uptime (30d)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="total-outages">--</div>
+        <div class="stat-label">Outages (30d)</div>
+        <div id="total-downtime" style="font-size: 0.75rem; color: var(--subtext1); margin-top: 0.25rem;"></div>
+    </div>
+</div>
+
+<!-- Daily Uptime Heatmap -->
+<div class="card" style="margin-bottom: 1.5rem;">
+    <div class="card-title">Daily Uptime (30 days)</div>
+    <div id="uptime-heatmap" style="display: flex; flex-wrap: wrap; gap: 3px; padding: 0.5rem 0;"></div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; font-size: 0.75rem; color: var(--subtext1);">
+        <span>30 days ago</span>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span>Less</span>
+            <div style="width: 12px; height: 12px; background: var(--red); border-radius: 2px;"></div>
+            <div style="width: 12px; height: 12px; background: var(--yellow); border-radius: 2px;"></div>
+            <div style="width: 12px; height: 12px; background: var(--green); border-radius: 2px;"></div>
+            <span>More uptime</span>
+        </div>
+        <span>Today</span>
+    </div>
+</div>
+
+<!-- Outage Events Table -->
+<div class="card">
+    <div class="card-title">Outage Events (30 days)</div>
+    <div id="outage-table-container">
+        <p style="text-align: center; color: var(--subtext1); padding: 2rem;">Loading...</p>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script>
     let currentPeriod = 'week';
@@ -248,14 +296,117 @@
                 selector.innerHTML = '<option value="">No networks</option>';
             }
 
-            selector.addEventListener('change', loadReport);
+            selector.addEventListener('change', () => { loadReport(); loadISPReliability(); });
             loadReport();
         } catch (error) {
             console.error('Failed to load networks:', error);
         }
     }
 
-    // Initialize
-    loadNetworks();
+    // ISP Reliability
+    async function loadISPReliability() {
+        const network = getSelectedNetwork();
+        const params = network ? `?network=${encodeURIComponent(network)}` : '';
+
+        try {
+            // Uptime stats
+            const uptimeResp = await fetch(`/api/network/uptime${params}`);
+            const uptime = await uptimeResp.json();
+
+            function setUptime(id, pct) {
+                const el = document.getElementById(id);
+                if (pct !== null && pct !== undefined) {
+                    el.textContent = pct + '%';
+                    el.style.color = pct >= 99.5 ? 'var(--green)' : pct >= 95 ? 'var(--yellow)' : 'var(--red)';
+                } else {
+                    el.textContent = 'N/A';
+                    el.style.color = '';
+                }
+            }
+
+            setUptime('uptime-24h', uptime.uptime_24h_pct);
+            setUptime('uptime-7d', uptime.uptime_7d_pct);
+            setUptime('uptime-30d', uptime.uptime_30d_pct);
+
+            document.getElementById('total-outages').textContent = uptime.total_outages_30d || 0;
+            const downtime = uptime.total_downtime_minutes_30d || 0;
+            document.getElementById('total-downtime').textContent = downtime > 0
+                ? `${downtime.toFixed(0)} min downtime`
+                : 'No downtime';
+
+            // Outages and daily uptime
+            const outageResp = await fetch(`/api/network/outages?days=30${network ? '&network=' + encodeURIComponent(network) : ''}`);
+            const outageData = await outageResp.json();
+
+            renderUptimeHeatmap(outageData.daily_uptime || []);
+            renderOutageTable(outageData.outages || []);
+
+        } catch (error) {
+            console.error('Failed to load ISP reliability:', error);
+        }
+    }
+
+    function renderUptimeHeatmap(daily) {
+        const container = document.getElementById('uptime-heatmap');
+        container.innerHTML = '';
+
+        daily.forEach(d => {
+            const cell = document.createElement('div');
+            const pct = d.uptime_pct;
+
+            let bg = 'var(--surface1)';
+            let title = `${d.date}: No data`;
+
+            if (pct !== null) {
+                title = `${d.date}: ${pct}% uptime`;
+                if (pct >= 99.5) bg = 'var(--green)';
+                else if (pct >= 95) bg = 'var(--yellow)';
+                else bg = 'var(--red)';
+            }
+
+            cell.style.cssText = `width: 20px; height: 20px; background: ${bg}; border-radius: 3px; cursor: default;`;
+            cell.title = title;
+            container.appendChild(cell);
+        });
+    }
+
+    function renderOutageTable(outages) {
+        const container = document.getElementById('outage-table-container');
+
+        if (outages.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: var(--green); padding: 2rem;">No outages detected in the last 30 days.</p>';
+            return;
+        }
+
+        const rows = outages.map(o => {
+            const start = new Date(o.start).toLocaleString();
+            const end = o.end ? new Date(o.end).toLocaleString() : '<span class="badge" style="background: var(--red); color: var(--base);">Ongoing</span>';
+            const duration = o.duration_minutes;
+            const durText = duration >= 60
+                ? `${Math.floor(duration / 60)}h ${Math.round(duration % 60)}m`
+                : `${Math.round(duration)}m`;
+
+            return `<tr>
+                <td>${start}</td>
+                <td>${end}</td>
+                <td>${durText}</td>
+            </tr>`;
+        }).join('');
+
+        container.innerHTML = `
+            <table class="routing-table">
+                <thead><tr><th>Start</th><th>End</th><th>Duration</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    }
+
+    // Initialize - loadNetworks() calls loadReport() on completion,
+    // then we also load ISP data
+    async function init() {
+        await loadNetworks();
+        loadISPReliability();
+    }
+    init();
 </script>
 {% endblock %}

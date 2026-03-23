@@ -831,6 +831,105 @@ async def get_nodes_restart_summary(
         return {"nodes": [], "period_days": days, "error": str(e)}
 
 
+@router.get("/network/health-score")
+async def get_network_health_score(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get current network health score (0-100)."""
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.health_score_service import compute_health_score
+            return compute_health_score(db, network_name)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to compute health score: {e}")
+        return {"score": None, "error": str(e)}
+
+
+@router.get("/network/health-history")
+async def get_network_health_history(
+    hours: int = 168,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get hourly health score history for trend display."""
+    hours = min(hours, 720)  # Cap at 30 days
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.health_score_service import compute_health_history
+            return {"history": compute_health_history(db, network_name, hours)}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to compute health history: {e}")
+        return {"history": [], "error": str(e)}
+
+
+@router.get("/network/uptime")
+async def get_network_uptime(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get WAN uptime percentages for 24h, 7d, 30d windows."""
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.isp_reliability_service import get_uptime_stats
+            return get_uptime_stats(db, network_name)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get uptime stats: {e}")
+        return {"error": str(e)}
+
+
+@router.get("/network/outages")
+async def get_network_outages(
+    days: int = 30,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get WAN outage events and daily uptime breakdown."""
+    days = min(days, 365)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.isp_reliability_service import (
+                detect_outages,
+                get_daily_uptime,
+            )
+            return {
+                "outages": detect_outages(db, network_name, days),
+                "daily_uptime": get_daily_uptime(db, network_name, days),
+                "period_days": days,
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get outages: {e}")
+        return {"outages": [], "daily_uptime": [], "error": str(e)}
+
+
 @router.get("/reports/bandwidth-summary")
 async def get_bandwidth_summary_report(
     period: str = "week",

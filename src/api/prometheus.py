@@ -167,6 +167,20 @@ node_restarts_total = Gauge(
     registry=registry
 )
 
+network_health_score = Gauge(
+    "eero_network_health_score",
+    "Overall network health score (0-100)",
+    ["network"],
+    registry=registry
+)
+
+network_wan_uptime_pct = Gauge(
+    "eero_network_wan_uptime_pct",
+    "WAN uptime percentage",
+    ["network", "window"],
+    registry=registry
+)
+
 
 def update_metrics() -> None:
     """Update all Prometheus metrics from database."""
@@ -483,6 +497,25 @@ def update_metrics() -> None:
                             ).set(counts.get(node.id, 0))
                 except Exception as restart_err:
                     logger.warning(f"Failed to compute restart metrics: {restart_err}")
+
+                # Health score and uptime metrics
+                try:
+                    from src.services.health_score_service import compute_health_score
+                    from src.services.isp_reliability_service import get_uptime_stats
+
+                    for net in networks:
+                        health = compute_health_score(db, net)
+                        network_health_score.labels(network=net).set(health["score"])
+
+                        uptime = get_uptime_stats(db, net)
+                        for window in ("24h", "7d", "30d"):
+                            pct = uptime.get(f"uptime_{window}_pct")
+                            if pct is not None:
+                                network_wan_uptime_pct.labels(
+                                    network=net, window=window
+                                ).set(pct)
+                except Exception as health_err:
+                    logger.warning(f"Failed to compute health/uptime metrics: {health_err}")
 
     except Exception as e:
         logger.error(f"Failed to update Prometheus metrics: {e}", exc_info=True)
