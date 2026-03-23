@@ -8,9 +8,10 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
-from sqlalchemy import case, cast, func, Integer
+from sqlalchemy import case, cast, func, Integer, text
 from sqlalchemy.orm import Session
 
+from src.config import get_settings
 from src.models.database import Device, DeviceConnection
 
 logger = logging.getLogger(__name__)
@@ -41,15 +42,19 @@ def get_activity_pattern(
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
-    # Use SQL to count readings per (day_of_week, hour) bucket.
-    # Since the collector typically only writes records when a device is seen,
-    # we measure activity as: readings in this hour / expected readings per hour.
-    # Expected readings = collection_interval (default 30s) = ~120 per hour.
+    # Compute UTC offset for configured timezone so SQL groups by local time
+    settings = get_settings()
+    tz = settings.get_timezone()
+    utc_offset_seconds = datetime.now(tz).utcoffset().total_seconds()
+    offset_str = f"{int(utc_offset_seconds)} seconds"
+
+    # Use SQL to count readings per (day_of_week, hour) bucket in local time.
     # We normalize against the max readings in any bucket for this device.
+    local_ts = func.datetime(DeviceConnection.timestamp, text(f"'{offset_str}'"))
     results = (
         db.query(
-            func.strftime('%w', DeviceConnection.timestamp).label('dow'),
-            func.strftime('%H', DeviceConnection.timestamp).label('hour'),
+            func.strftime('%w', local_ts).label('dow'),
+            func.strftime('%H', local_ts).label('hour'),
             func.count().label('total'),
             func.sum(
                 case(
