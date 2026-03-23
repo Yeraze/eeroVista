@@ -17,8 +17,9 @@
 
 eeroVista is a **read-only** web-based monitoring tool for Eero mesh networks. It provides:
 
-- 📊 **Real-time Dashboard** - View network status, connected devices, and bandwidth usage
+- 📊 **Real-time Dashboard** - View network status, connected devices, bandwidth usage, and network health score
 - 📈 **Historical Data** - Track device connections and network performance over time
+- 📋 **Reports & Analytics** - Bandwidth summary reports, ISP reliability tracking, signal quality trends, speedtest analysis, device activity patterns, and node load balancing
 - 🚀 **Speedtest History** - Monitor ISP performance with historical speedtest results
 - 🔔 **Notifications** - Configurable alerts via 100+ services (email, Slack, Discord, Telegram, webhooks, and more) powered by [Apprise](https://github.com/caronc/apprise)
 - 🔗 **Device Groups** - Combine multiple network interfaces from the same physical device into a single logical entry with aggregated bandwidth
@@ -29,13 +30,26 @@ eeroVista is a **read-only** web-based monitoring tool for Eero mesh networks. I
 ## Features
 
 ### Web Interface
-- Network overview dashboard with real-time statistics
+- Network overview dashboard with real-time statistics and health score
 - Device list with connection status, signal strength, and bandwidth
 - Device grouping to combine multiple interfaces (e.g., wired + wireless) into a single logical device
 - Network topology visualization showing mesh node connections
+- Reports page with bandwidth summaries, ISP reliability, and analytics
 - Speedtest history graphs and trends
+- Node restart detection and load balancing analysis
 - Notification management with rule configuration and history
 - Clean, accessible UI with Catppuccin Latte theme
+
+### Analytics & Reports
+- **Network Health Score** - Composite 0-100 score combining WAN uptime, node availability, mesh quality, and signal quality
+- **ISP Reliability Tracker** - WAN uptime percentages (24h/7d/30d), outage detection, daily uptime heatmap
+- **Bandwidth Summary Reports** - Weekly/monthly reports with top devices, daily breakdown, and period-over-period comparison
+- **Node Restart Detection** - Monitors uptime counter resets to identify node restarts and calculate mean time between restarts
+- **Signal Quality Trends** - Per-device signal history with quality bands and degradation detection
+- **Speedtest Performance Trends** - Time-of-day and day-of-week patterns with trend assessment
+- **Device Activity Patterns** - 7x24 heatmap showing when devices are typically online
+- **Node Load Balancing** - Device distribution across nodes with imbalance scoring and roaming detection
+- **Guest Network Usage** - Guest device count and bandwidth with guest vs non-guest ratio
 
 ### Notifications
 - **5 alert types**: Node offline, device offline, new device connected, high bandwidth usage, firmware updates available
@@ -171,10 +185,27 @@ See [Configuration Reference](docs/configuration.md) for all options.
 ## API Endpoints
 
 ### Web Interface
-- `/` - Dashboard
+- `/` - Dashboard (with health score and WAN uptime)
 - `/devices` - Device list
 - `/network` - Network topology
+- `/nodes` - Eero nodes (with restart detection)
+- `/reports` - Bandwidth reports and ISP reliability
 - `/speedtest` - Speedtest history
+
+### Analytics & Reports
+- `/api/network/health-score` - Network health score (0-100)
+- `/api/network/health-history` - Hourly health score trend
+- `/api/network/uptime` - WAN uptime percentages (24h/7d/30d)
+- `/api/network/outages` - Outage events and daily uptime
+- `/api/reports/bandwidth-summary` - Weekly/monthly bandwidth reports
+- `/api/nodes/{id}/restart-history` - Node restart events
+- `/api/nodes/restart-summary` - All nodes restart counts
+- `/api/nodes/load-analysis` - Node load distribution and roaming
+- `/api/devices/{mac}/signal-history` - Signal strength trends
+- `/api/devices/signal-summary` - Network-wide signal quality
+- `/api/devices/{mac}/activity-pattern` - Device activity heatmap
+- `/api/speedtest/analysis` - Speedtest performance trends
+- `/api/network/guest-usage` - Guest network bandwidth
 
 ### Notifications & Device Groups
 - `/api/notification-settings` - Apprise URL configuration (GET/PUT)

@@ -4,7 +4,8 @@ A read-only web-based monitoring tool for Eero mesh networks.
 
 ## Features
 
-- **Real-time Dashboard**: View network status, connected devices, and bandwidth usage
+- **Real-time Dashboard**: View network status, connected devices, bandwidth usage, and network health score
+- **Analytics & Reports**: Bandwidth summary reports, ISP reliability tracking, signal quality trends, speedtest analysis, device activity patterns, node restart detection, and load balancing insights
 - **Device Groups**: Combine multiple network interfaces (e.g. wired + wireless) from the same physical device into a single logical entry with aggregated bandwidth
 - **Notifications**: Configurable alerts for node/device offline, new devices, high bandwidth, and firmware updates -- delivered via 100+ services (email, Slack, Discord, Telegram, webhooks, etc.) powered by [Apprise](https://github.com/caronc/apprise)
 - **Historical Data**: Track device connections and network performance over time

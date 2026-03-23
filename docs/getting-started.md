@@ -115,10 +115,17 @@ See [API Reference](api-reference.md) for complete endpoint documentation.
 ![Dashboard](images/mainpage.png)
 
 After initial data collection completes, the dashboard will display:
+- **Network Health Score** (0-100) combining WAN uptime, node availability, mesh quality, and signal quality
+- **WAN Uptime** percentage with outage count
 - Real-time bandwidth usage graphs (hourly, 7-day, and 30-day views)
 - Top bandwidth consumers
 - Network statistics (online devices, total devices, WAN status)
 - Recent speedtest results
+
+### Reports
+The Reports page (`http://localhost:8080/reports`) provides:
+- **Bandwidth Summary Reports** - Weekly or monthly totals with top devices and period-over-period comparison
+- **ISP Reliability** - WAN uptime percentages (24h/7d/30d), daily uptime heatmap, and outage event log
 
 ### Device List
 ![Device List](images/devicelist.png)
