@@ -108,6 +108,12 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script>
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     let currentPeriod = 'week';
     let currentOffset = 0;
     let dailyChart = null;
