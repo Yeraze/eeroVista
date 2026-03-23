@@ -121,9 +121,10 @@ def get_bandwidth_heatmap(
         for b in range(BUCKETS_PER_DAY):
             entry = data.get((dow, b))
             if entry and (entry[0] > 0 or entry[1] > 0):
+                # Use 3 decimal places to preserve small IoT bandwidth values
                 buckets.append({
-                    "down": round(entry[0], 1),
-                    "up": round(entry[1], 1),
+                    "down": round(entry[0], 3),
+                    "up": round(entry[1], 3),
                 })
             else:
                 buckets.append(None)

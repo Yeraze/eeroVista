@@ -1184,7 +1184,8 @@
             }
 
             const maxBw = Math.max(data.max_down_mbps, data.max_up_mbps, 0.1);
-            legendEl.textContent = `Peak: ↓${data.max_down_mbps} ↑${data.max_up_mbps} Mbps`;
+            const fmtPeak = (v) => v >= 1 ? `${v.toFixed(1)} Mbps` : v > 0 ? `${(v * 1000).toFixed(0)} Kbps` : '0';
+            legendEl.textContent = `Peak: ↓${fmtPeak(data.max_down_mbps)} ↑${fmtPeak(data.max_up_mbps)}`;
 
             // Build the heatmap: rows = days, columns = 5-min buckets (288 per day)
             // Show hour markers every 3 hours
@@ -1208,13 +1209,15 @@
 
                 day.buckets.forEach((bucket, idx) => {
                     let bg = 'var(--surface0)';
-                    let title = `${Math.floor(idx / 12)}:${String((idx % 12) * 5).padStart(2, '0')} — No data`;
+                    const timeStr = `${Math.floor(idx / 12)}:${String((idx % 12) * 5).padStart(2, '0')}`;
+                    let title = `${timeStr} — No data`;
 
                     if (bucket) {
                         const combined = bucket.down + bucket.up;
                         const intensity = Math.min(combined / maxBw, 1);
-                        const timeStr = `${Math.floor(idx / 12)}:${String((idx % 12) * 5).padStart(2, '0')}`;
-                        title = `${timeStr} — ↓${bucket.down} ↑${bucket.up} Mbps`;
+                        // Format: use Kbps for small values
+                        const fmtBw = (v) => v >= 1 ? `${v.toFixed(1)} Mbps` : `${(v * 1000).toFixed(0)} Kbps`;
+                        title = `${timeStr} — ↓${fmtBw(bucket.down)} ↑${fmtBw(bucket.up)}`;
 
                         if (intensity > 0.7) {
                             bg = 'var(--red)';
