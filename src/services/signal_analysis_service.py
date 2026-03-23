@@ -59,22 +59,26 @@ def get_signal_history(
     if not device:
         return {"error": "Device not found"}
 
-    readings = (
+    # Use SQL for stats — avoid loading all rows
+    base_filter = [
+        DeviceConnection.device_id == device.id,
+        DeviceConnection.timestamp >= cutoff,
+        DeviceConnection.signal_strength.isnot(None),
+        DeviceConnection.is_connected == True,
+    ]
+
+    stats_row = (
         db.query(
-            DeviceConnection.timestamp,
-            DeviceConnection.signal_strength,
+            func.avg(DeviceConnection.signal_strength).label('mean'),
+            func.min(DeviceConnection.signal_strength).label('min'),
+            func.max(DeviceConnection.signal_strength).label('max'),
+            func.count(DeviceConnection.signal_strength).label('count'),
         )
-        .filter(
-            DeviceConnection.device_id == device.id,
-            DeviceConnection.timestamp >= cutoff,
-            DeviceConnection.signal_strength.isnot(None),
-            DeviceConnection.is_connected == True,
-        )
-        .order_by(DeviceConnection.timestamp.asc())
-        .all()
+        .filter(*base_filter)
+        .first()
     )
 
-    if not readings:
+    if not stats_row or not stats_row.count or stats_row.count == 0:
         return {
             "mac": mac_address,
             "hostname": device.hostname,
@@ -84,45 +88,83 @@ def get_signal_history(
             "history": [],
         }
 
-    signals = [r.signal_strength for r in readings]
-    mean_val = sum(signals) / len(signals)
-    min_val = min(signals)
-    max_val = max(signals)
-    variance = sum((s - mean_val) ** 2 for s in signals) / len(signals)
-    stddev = math.sqrt(variance)
+    mean_val = float(stats_row.mean)
+    min_val = int(stats_row.min)
+    max_val = int(stats_row.max)
+    count = int(stats_row.count)
 
-    # Trend: compare last 24h avg vs previous 24h avg
+    # Stddev via SQL (SQLite doesn't have built-in STDDEV, compute from variance)
+    var_row = (
+        db.query(
+            func.avg(
+                (DeviceConnection.signal_strength - mean_val)
+                * (DeviceConnection.signal_strength - mean_val)
+            ).label('variance')
+        )
+        .filter(*base_filter)
+        .first()
+    )
+    stddev = math.sqrt(float(var_row.variance)) if var_row and var_row.variance else 0
+
+    # Trend: compare last 24h avg vs previous 24h avg using SQL
     now = datetime.now(timezone.utc)
     recent_cutoff = now - timedelta(hours=24)
     prev_cutoff = now - timedelta(hours=48)
 
-    def _make_aware(ts: datetime) -> datetime:
-        return ts.replace(tzinfo=timezone.utc) if ts.tzinfo is None else ts
+    recent_avg_row = (
+        db.query(func.avg(DeviceConnection.signal_strength))
+        .filter(
+            DeviceConnection.device_id == device.id,
+            DeviceConnection.timestamp >= recent_cutoff,
+            DeviceConnection.signal_strength.isnot(None),
+            DeviceConnection.is_connected == True,
+        )
+        .scalar()
+    )
 
-    recent_signals = [r.signal_strength for r in readings if _make_aware(r.timestamp) >= recent_cutoff]
-    prev_signals = [
-        r.signal_strength for r in readings
-        if prev_cutoff <= _make_aware(r.timestamp) < recent_cutoff
-    ]
+    prev_avg_row = (
+        db.query(func.avg(DeviceConnection.signal_strength))
+        .filter(
+            DeviceConnection.device_id == device.id,
+            DeviceConnection.timestamp >= prev_cutoff,
+            DeviceConnection.timestamp < recent_cutoff,
+            DeviceConnection.signal_strength.isnot(None),
+            DeviceConnection.is_connected == True,
+        )
+        .scalar()
+    )
 
     trend = "stable"
-    if recent_signals and prev_signals:
-        recent_avg = sum(recent_signals) / len(recent_signals)
-        prev_avg = sum(prev_signals) / len(prev_signals)
-        diff = recent_avg - prev_avg
+    if recent_avg_row is not None and prev_avg_row is not None:
+        diff = float(recent_avg_row) - float(prev_avg_row)
         if diff < -5:
             trend = "degrading"
         elif diff > 5:
             trend = "improving"
 
-    # Downsample history for the response (max ~500 points)
-    step = max(1, len(readings) // 500)
+    # Fetch downsampled history — use SQL to pick every Nth row
+    # Get ~300 evenly spaced points
+    target_points = 300
+    step = max(1, count // target_points)
+
+    # Use ROW_NUMBER to downsample
+    from sqlalchemy import text
+    history_rows = db.execute(text("""
+        SELECT timestamp, signal_strength FROM (
+            SELECT timestamp, signal_strength,
+                   ROW_NUMBER() OVER (ORDER BY timestamp) as rn
+            FROM device_connections
+            WHERE device_id = :device_id
+              AND timestamp >= :cutoff
+              AND signal_strength IS NOT NULL
+              AND is_connected = 1
+        ) WHERE rn % :step = 0
+        ORDER BY timestamp
+    """), {"device_id": device.id, "cutoff": cutoff, "step": step}).fetchall()
+
     history = [
-        {
-            "timestamp": r.timestamp.isoformat(),
-            "signal_strength": r.signal_strength,
-        }
-        for i, r in enumerate(readings) if i % step == 0
+        {"timestamp": str(r[0]), "signal_strength": r[1]}
+        for r in history_rows
     ]
 
     return {
@@ -133,7 +175,7 @@ def get_signal_history(
             "min": min_val,
             "max": max_val,
             "stddev": round(stddev, 1),
-            "count": len(signals),
+            "count": count,
         },
         "quality_band": _classify_signal(mean_val),
         "trend": trend,
