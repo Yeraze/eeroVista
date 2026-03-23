@@ -160,6 +160,13 @@ node_update_available = Gauge(
     registry=registry
 )
 
+node_restarts_total = Gauge(
+    "eero_node_restarts_30d",
+    "Number of detected node restarts in the last 30 days",
+    ["network", "node_id", "location"],
+    registry=registry
+)
+
 
 def update_metrics() -> None:
     """Update all Prometheus metrics from database."""
@@ -459,6 +466,23 @@ def update_metrics() -> None:
                         model=model,
                         is_gateway=is_gateway
                     ).set(update_val)
+
+                # Node restart counts (30-day window)
+                try:
+                    from src.services.node_analysis_service import get_all_nodes_restart_counts
+                    # Group nodes by network
+                    networks = set(n.network_name for n in all_nodes)
+                    for net in networks:
+                        net_nodes = [n for n in all_nodes if n.network_name == net]
+                        counts = get_all_nodes_restart_counts(db, net, days=30)
+                        for node in net_nodes:
+                            node_restarts_total.labels(
+                                network=node.network_name,
+                                node_id=node.eero_id,
+                                location=node.location or f"Node {node.eero_id}",
+                            ).set(counts.get(node.id, 0))
+                except Exception as restart_err:
+                    logger.warning(f"Failed to compute restart metrics: {restart_err}")
 
     except Exception as e:
         logger.error(f"Failed to update Prometheus metrics: {e}", exc_info=True)

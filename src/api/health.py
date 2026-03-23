@@ -737,6 +737,135 @@ async def get_nodes(
         }
 
 
+@router.get("/nodes/{eero_id}/restart-history")
+async def get_node_restart_history(
+    eero_id: str,
+    days: int = 30,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get restart history for a specific eero node.
+
+    Detects restarts by monitoring uptime counter resets.
+
+    Args:
+        eero_id: The eero node's external ID.
+        days: Number of days to look back (default 30, max 365).
+        network: Optional network name filter.
+    """
+    days = min(days, 365)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.models.database import EeroNode
+            from src.services.node_analysis_service import get_node_restart_summary
+
+            node = (
+                db.query(EeroNode)
+                .filter(
+                    EeroNode.network_name == network_name,
+                    EeroNode.eero_id == eero_id,
+                )
+                .first()
+            )
+            if not node:
+                raise HTTPException(status_code=404, detail="Node not found")
+
+            return get_node_restart_summary(
+                db, node.id, node.location or f"Node {eero_id}", days
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get restart history for node {eero_id}: {e}")
+        return {"error": str(e), "restarts": [], "total_restarts": 0}
+
+
+@router.get("/nodes/restart-summary")
+async def get_nodes_restart_summary(
+    days: int = 30,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get restart counts for all nodes in a network.
+
+    Args:
+        days: Number of days to look back (default 30, max 365).
+        network: Optional network name filter.
+    """
+    days = min(days, 365)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {"nodes": [], "period_days": days}
+
+        with get_db_context() as db:
+            from src.models.database import EeroNode
+            from src.services.node_analysis_service import get_all_nodes_restart_counts
+
+            nodes = (
+                db.query(EeroNode)
+                .filter(EeroNode.network_name == network_name)
+                .all()
+            )
+            counts = get_all_nodes_restart_counts(db, network_name, days)
+
+            return {
+                "nodes": [
+                    {
+                        "eero_id": node.eero_id,
+                        "location": node.location,
+                        "restart_count": counts.get(node.id, 0),
+                    }
+                    for node in nodes
+                ],
+                "period_days": days,
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to get restart summary: {e}")
+        return {"nodes": [], "period_days": days, "error": str(e)}
+
+
+@router.get("/reports/bandwidth-summary")
+async def get_bandwidth_summary_report(
+    period: str = "week",
+    offset: int = 0,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get bandwidth summary report for a week or month.
+
+    Args:
+        period: 'week' or 'month'.
+        offset: How many periods back (0=current, 1=previous, etc).
+        network: Optional network name filter.
+    """
+    offset = max(0, min(offset, 52))  # Cap at 52 periods back
+    if period not in ("week", "month"):
+        raise HTTPException(status_code=400, detail="Period must be 'week' or 'month'")
+
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.bandwidth_report_service import get_bandwidth_summary
+
+            return get_bandwidth_summary(db, network_name, period, offset)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to generate bandwidth report: {e}")
+        return {"error": str(e)}
+
+
 @router.put("/devices/{mac_address}/aliases")
 async def update_device_aliases(
     mac_address: str,

@@ -133,6 +133,18 @@ async def nodes_page(
     )
 
 
+@router.get("/reports", response_class=HTMLResponse)
+async def reports_page(request: Request, client: EeroClientWrapper = Depends(get_eero_client)):
+    """Bandwidth reports page."""
+    if not client.is_authenticated():
+        return RedirectResponse(url="/setup", status_code=302)
+
+    return templates.TemplateResponse("reports.html", {
+        "request": request,
+        "authenticated": True,
+    })
+
+
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(
     request: Request,

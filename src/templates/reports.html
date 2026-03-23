@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}Reports - eeroVista{% endblock %}
+{% block content %}
+<h1 class="page-title">Bandwidth Reports</h1>
+
+<!-- Controls -->
+<div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap;">
+    <select id="network-selector" style="padding: 0.5rem 1rem; border: 1px solid var(--surface1); border-radius: 6px; background: var(--base); color: var(--text);">
+        <option value="">Loading...</option>
+    </select>
+    <div style="display: flex; gap: 0.5rem;">
+        <button id="btn-week" class="btn btn-primary" onclick="setPeriod('week')">Weekly</button>
+        <button id="btn-month" class="btn" onclick="setPeriod('month')">Monthly</button>
+    </div>
+    <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <button class="btn" onclick="navigate(1)" title="Previous period">&larr; Previous</button>
+        <span id="period-label" style="font-weight: 600; min-width: 200px; text-align: center;">--</span>
+        <button class="btn" onclick="navigate(-1)" title="Next period">Next &rarr;</button>
+    </div>
+</div>
+
+<!-- Summary Stats -->
+<div class="stats-grid" style="margin-bottom: 1.5rem;">
+    <div class="stat-card">
+        <div class="stat-value" id="total-download">--</div>
+        <div class="stat-label">Download</div>
+        <div class="stat-change" id="change-download"></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="total-upload">--</div>
+        <div class="stat-label">Upload</div>
+        <div class="stat-change" id="change-upload"></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="total-bandwidth">--</div>
+        <div class="stat-label">Total</div>
+        <div class="stat-change" id="change-total"></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="peak-day">--</div>
+        <div class="stat-label">Peak Day</div>
+    </div>
+</div>
+
+<!-- Daily Breakdown Chart -->
+<div class="card" style="margin-bottom: 1.5rem;">
+    <div class="card-title">Daily Bandwidth Usage</div>
+    <canvas id="daily-chart" height="250"></canvas>
+</div>
+
+<!-- Top Devices Table -->
+<div class="card">
+    <div class="card-title">Top Bandwidth Consumers</div>
+    <div id="top-devices-container">
+        <p style="text-align: center; color: var(--subtext1); padding: 2rem;">Loading...</p>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script>
+    let currentPeriod = 'week';
+    let currentOffset = 0;
+    let dailyChart = null;
+
+    function getSelectedNetwork() {
+        const selector = document.getElementById('network-selector');
+        return selector ? selector.value : null;
+    }
+
+    function setPeriod(period) {
+        currentPeriod = period;
+        currentOffset = 0;
+        document.getElementById('btn-week').className = period === 'week' ? 'btn btn-primary' : 'btn';
+        document.getElementById('btn-month').className = period === 'month' ? 'btn btn-primary' : 'btn';
+        loadReport();
+    }
+
+    function navigate(direction) {
+        currentOffset = Math.max(0, currentOffset + direction);
+        loadReport();
+    }
+
+    function formatGB(gb) {
+        if (gb >= 1000) return (gb / 1024).toFixed(1) + ' TB';
+        return gb.toFixed(1) + ' GB';
+    }
+
+    function formatChange(pct) {
+        if (pct === null || pct === undefined) return '';
+        const arrow = pct > 0 ? '&#9650;' : pct < 0 ? '&#9660;' : '';
+        const color = pct > 0 ? 'var(--peach)' : pct < 0 ? 'var(--green)' : 'var(--subtext1)';
+        return `<span style="color: ${color}; font-size: 0.8rem;">${arrow} ${Math.abs(pct)}% vs previous</span>`;
+    }
+
+    async function loadReport() {
+        const network = getSelectedNetwork();
+        const params = new URLSearchParams({
+            period: currentPeriod,
+            offset: currentOffset,
+        });
+        if (network) params.set('network', network);
+
+        try {
+            const response = await fetch(`/api/reports/bandwidth-summary?${params}`);
+            const data = await response.json();
+
+            if (data.error) {
+                showAlert(data.error, 'error');
+                return;
+            }
+
+            // Update period label
+            document.getElementById('period-label').textContent = data.period;
+
+            // Update stats
+            document.getElementById('total-download').textContent = formatGB(data.total_download_gb);
+            document.getElementById('total-upload').textContent = formatGB(data.total_upload_gb);
+            document.getElementById('total-bandwidth').textContent = formatGB(data.total_gb);
+            document.getElementById('change-download').innerHTML = formatChange(data.change_vs_previous.download_pct);
+            document.getElementById('change-upload').innerHTML = formatChange(data.change_vs_previous.upload_pct);
+            document.getElementById('change-total').innerHTML = formatChange(data.change_vs_previous.total_pct);
+
+            // Peak day
+            if (data.peak_day) {
+                document.getElementById('peak-day').textContent = `${data.peak_day.day} (${formatGB(data.peak_day.total_gb)})`;
+            } else {
+                document.getElementById('peak-day').textContent = 'N/A';
+            }
+
+            // Render chart
+            renderDailyChart(data.daily_breakdown);
+
+            // Render top devices
+            renderTopDevices(data.top_devices);
+
+        } catch (error) {
+            console.error('Failed to load report:', error);
+            showAlert('Failed to load bandwidth report.', 'error');
+        }
+    }
+
+    function renderDailyChart(daily) {
+        const ctx = document.getElementById('daily-chart').getContext('2d');
+
+        if (dailyChart) dailyChart.destroy();
+
+        const labels = daily.map(d => {
+            const dt = new Date(d.date + 'T00:00:00');
+            return dt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+        });
+
+        dailyChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Download (GB)',
+                        data: daily.map(d => d.download_gb),
+                        backgroundColor: 'rgba(30, 102, 245, 0.7)',
+                        borderRadius: 4,
+                    },
+                    {
+                        label: 'Upload (GB)',
+                        data: daily.map(d => d.upload_gb),
+                        backgroundColor: 'rgba(64, 160, 43, 0.7)',
+                        borderRadius: 4,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                },
+                scales: {
+                    x: { stacked: true, grid: { display: false } },
+                    y: {
+                        stacked: true,
+                        title: { display: true, text: 'GB' },
+                        beginAtZero: true,
+                    }
+                }
+            }
+        });
+    }
+
+    function renderTopDevices(devices) {
+        const container = document.getElementById('top-devices-container');
+        if (!devices || devices.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: var(--subtext1); padding: 2rem;">No bandwidth data for this period.</p>';
+            return;
+        }
+
+        const rows = devices.map((d, i) => `
+            <tr>
+                <td style="font-weight: 600;">${i + 1}</td>
+                <td>${escapeHtml(d.nickname || d.hostname || d.mac_address || 'Unknown')}</td>
+                <td style="text-align: right;">${d.download_gb.toFixed(1)} GB</td>
+                <td style="text-align: right;">${d.upload_gb.toFixed(1)} GB</td>
+                <td style="text-align: right; font-weight: 600;">${d.total_gb.toFixed(1)} GB</td>
+                <td style="text-align: right;">
+                    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem;">
+                        <div style="width: 60px; height: 8px; background: var(--surface1); border-radius: 4px; overflow: hidden;">
+                            <div style="width: ${d.pct_of_total}%; height: 100%; background: var(--blue); border-radius: 4px;"></div>
+                        </div>
+                        <span>${d.pct_of_total}%</span>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+        container.innerHTML = `
+            <table class="routing-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Device</th>
+                        <th style="text-align: right;">Download</th>
+                        <th style="text-align: right;">Upload</th>
+                        <th style="text-align: right;">Total</th>
+                        <th style="text-align: right;">Share</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    }
+
+    // Network selector
+    async function loadNetworks() {
+        try {
+            const response = await fetch('/api/networks');
+            const data = await response.json();
+            const selector = document.getElementById('network-selector');
+            selector.innerHTML = '';
+
+            if (data.networks && data.networks.length > 0) {
+                data.networks.forEach((net, i) => {
+                    const option = document.createElement('option');
+                    option.value = net.name || net;
+                    option.textContent = net.name || net;
+                    if (i === 0) option.selected = true;
+                    selector.appendChild(option);
+                });
+            } else {
+                selector.innerHTML = '<option value="">No networks</option>';
+            }
+
+            selector.addEventListener('change', loadReport);
+            loadReport();
+        } catch (error) {
+            console.error('Failed to load networks:', error);
+        }
+    }
+
+    // Initialize
+    loadNetworks();
+</script>
+{% endblock %}

@@ -291,11 +291,31 @@
 
 <script>
     let nodesData = [];
+    let restartCounts = {};  // eero_id -> restart_count
 
     // Get current selected network
     function getSelectedNetwork() {
         const selector = document.getElementById('network-selector');
         return selector ? selector.value : null;
+    }
+
+    // Fetch restart summary for all nodes
+    async function loadRestartSummary() {
+        try {
+            const network = getSelectedNetwork();
+            const url = network
+                ? `/api/nodes/restart-summary?days=30&network=${encodeURIComponent(network)}`
+                : '/api/nodes/restart-summary?days=30';
+            const response = await fetch(url);
+            const data = await response.json();
+
+            restartCounts = {};
+            (data.nodes || []).forEach(n => {
+                restartCounts[n.eero_id] = n.restart_count;
+            });
+        } catch (error) {
+            console.error('Failed to load restart summary:', error);
+        }
     }
 
     // Fetch nodes data
@@ -307,6 +327,9 @@
             const data = await response.json();
 
             nodesData = data.nodes || [];
+
+            // Also load restart data
+            await loadRestartSummary();
 
             // Update stats
             document.getElementById('total-nodes').textContent = nodesData.length;
@@ -393,6 +416,7 @@
                             <span class="node-detail-label">Last Seen</span>
                             <span class="node-detail-value">${formatTimestamp(node.last_seen)}</span>
                         </div>
+                        ${renderRestartInfo(node.eero_id)}
                     </div>
                 </div>
             `;
@@ -465,6 +489,104 @@
         }
 
         return `<div class="mesh-quality">${barsHTML.join('')}</div>`;
+    }
+
+    function renderRestartInfo(eeroId) {
+        const count = restartCounts[eeroId];
+        if (count === undefined || count === null) return '';
+
+        if (count === 0) {
+            return `
+                <div class="node-detail">
+                    <span class="node-detail-label">Restarts (30d)</span>
+                    <span class="node-detail-value" style="color: var(--green);">None detected</span>
+                </div>
+            `;
+        }
+
+        const color = count >= 5 ? 'var(--red)' : count >= 2 ? 'var(--peach)' : 'var(--yellow)';
+        return `
+            <div class="node-detail">
+                <span class="node-detail-label">Restarts (30d)</span>
+                <span class="node-detail-value" style="color: ${color}; cursor: pointer;" onclick="showRestartHistory('${eeroId}')" title="Click for details">
+                    ${count} restart${count !== 1 ? 's' : ''} detected
+                </span>
+            </div>
+        `;
+    }
+
+    async function showRestartHistory(eeroId) {
+        try {
+            const network = getSelectedNetwork();
+            const url = network
+                ? `/api/nodes/${encodeURIComponent(eeroId)}/restart-history?days=30&network=${encodeURIComponent(network)}`
+                : `/api/nodes/${encodeURIComponent(eeroId)}/restart-history?days=30`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (!data.restarts || data.restarts.length === 0) {
+                showAlert('No restarts detected for this node.', 'info');
+                return;
+            }
+
+            // Build a simple modal with restart details
+            const mtbr = data.mean_time_between_restarts_hours
+                ? `${data.mean_time_between_restarts_hours}h`
+                : 'N/A';
+
+            const rows = data.restarts.map(r => {
+                const prevUptime = formatUptime(r.previous_uptime_seconds);
+                return `<tr>
+                    <td>${new Date(r.estimated_restart_at).toLocaleString()}</td>
+                    <td>${new Date(r.detected_at).toLocaleString()}</td>
+                    <td>${prevUptime}</td>
+                </tr>`;
+            }).join('');
+
+            const modalHTML = `
+                <div id="restart-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;" onclick="if(event.target===this)this.remove()">
+                    <div style="background: var(--base); border-radius: 12px; padding: 2rem; max-width: 700px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.2);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <h2 style="margin: 0;">Restart History: ${escapeHtml(data.node_name)}</h2>
+                            <button onclick="document.getElementById('restart-modal').remove()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--subtext0);">&times;</button>
+                        </div>
+                        <div class="stats-grid" style="margin-bottom: 1.5rem;">
+                            <div class="stat-card">
+                                <div class="stat-value" style="color: ${data.total_restarts >= 5 ? 'var(--red)' : 'var(--peach)'};">${data.total_restarts}</div>
+                                <div class="stat-label">Total Restarts</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">${mtbr}</div>
+                                <div class="stat-label">Avg Time Between</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">${data.period_days}d</div>
+                                <div class="stat-label">Period</div>
+                            </div>
+                        </div>
+                        <table class="routing-table">
+                            <thead>
+                                <tr>
+                                    <th>Estimated Restart</th>
+                                    <th>Detected At</th>
+                                    <th>Previous Uptime</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            // Remove existing modal if any
+            const existing = document.getElementById('restart-modal');
+            if (existing) existing.remove();
+
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+        } catch (error) {
+            console.error('Failed to load restart history:', error);
+            showAlert('Failed to load restart history.', 'error');
+        }
     }
 
     // Routing data
