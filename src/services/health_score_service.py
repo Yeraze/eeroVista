@@ -73,7 +73,7 @@ def compute_health_score(
         .filter(
             NetworkMetric.network_name == network_name,
             NetworkMetric.timestamp >= cutoff,
-            NetworkMetric.wan_status == "connected",
+            NetworkMetric.wan_status.in_(["connected", "online"]),
         )
         .scalar()
     ) or 0
@@ -193,7 +193,7 @@ def compute_health_history(
                 NetworkMetric.network_name == network_name,
                 NetworkMetric.timestamp >= hour_start,
                 NetworkMetric.timestamp < hour_end,
-                NetworkMetric.wan_status == "connected",
+                NetworkMetric.wan_status.in_(["connected", "online"]),
             )
             .scalar()
         ) or 0

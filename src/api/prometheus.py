@@ -221,7 +221,7 @@ def update_metrics() -> None:
                 net = nm.network_name
                 network_devices_total.labels(network=net).set(nm.total_devices or 0)
                 network_devices_online.labels(network=net).set(nm.total_devices_online or 0)
-                network_status.labels(network=net).set(1 if nm.wan_status == "online" else 0)
+                network_status.labels(network=net).set(1 if nm.wan_status in ("online", "connected") else 0)
                 is_bridge = nm.connection_mode and nm.connection_mode.lower() == 'bridge'
                 network_bridge_mode.labels(network=net).set(1 if is_bridge else 0)
 

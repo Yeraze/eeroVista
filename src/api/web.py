@@ -64,9 +64,9 @@ async def dashboard(
     settings = get_settings()
 
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
-        {
-            "request": request,
+        context={
             "network_name": network_name,
             "authenticated": True,
             "version": __version__,
@@ -86,9 +86,9 @@ async def devices_page(
         return RedirectResponse(url="/setup", status_code=302)
 
     return templates.TemplateResponse(
+        request,
         "devices.html",
-        {
-            "request": request,
+        context={
             "authenticated": True,
             "version": __version__,
         },
@@ -105,9 +105,9 @@ async def network_page(
         return RedirectResponse(url="/setup", status_code=302)
 
     return templates.TemplateResponse(
+        request,
         "network.html",
-        {
-            "request": request,
+        context={
             "authenticated": True,
             "version": __version__,
         },
@@ -124,9 +124,9 @@ async def nodes_page(
         return RedirectResponse(url="/setup", status_code=302)
 
     return templates.TemplateResponse(
+        request,
         "nodes.html",
-        {
-            "request": request,
+        context={
             "authenticated": True,
             "version": __version__,
         },
@@ -139,9 +139,9 @@ async def reports_page(request: Request, client: EeroClientWrapper = Depends(get
     if not client.is_authenticated():
         return RedirectResponse(url="/setup", status_code=302)
 
-    return templates.TemplateResponse("reports.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "reports.html", context={
         "authenticated": True,
+        "version": __version__,
     })
 
 
@@ -159,9 +159,9 @@ async def settings_page(
     settings = get_settings()
 
     return templates.TemplateResponse(
+        request,
         "settings.html",
-        {
-            "request": request,
+        context={
             "authenticated": True,
             "settings": settings,
             "version": __version__,

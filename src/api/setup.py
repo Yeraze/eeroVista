@@ -31,7 +31,7 @@ async def setup_page(request: Request, client: EeroClientWrapper = Depends(get_e
         return RedirectResponse(url="/", status_code=302)
 
     return templates.TemplateResponse(
-        "setup.html", {"request": request, "step": "phone", "version": __version__}
+        request, "setup.html", context={"step": "phone", "version": __version__}
     )
 
 

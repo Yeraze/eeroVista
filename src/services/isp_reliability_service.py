@@ -77,7 +77,7 @@ def _count_wan_status(
             NetworkMetric.network_name == network_name,
             NetworkMetric.timestamp >= start,
             NetworkMetric.timestamp <= end,
-            NetworkMetric.wan_status == "connected",
+            NetworkMetric.wan_status.in_(["connected", "online"]),
         )
         .scalar()
     ) or 0
@@ -114,7 +114,7 @@ def detect_outages(
     outage_start = None
 
     for reading in readings:
-        is_online = reading.wan_status == "connected"
+        is_online = reading.wan_status in ("connected", "online")
 
         if not is_online and outage_start is None:
             outage_start = reading.timestamp
