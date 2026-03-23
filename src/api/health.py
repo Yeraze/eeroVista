@@ -930,6 +930,77 @@ async def get_network_outages(
         return {"outages": [], "daily_uptime": [], "error": str(e)}
 
 
+@router.get("/devices/{mac_address}/signal-history")
+async def get_device_signal_history(
+    mac_address: str,
+    hours: int = 168,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get signal strength history and trends for a device."""
+    hours = min(hours, 720)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.signal_analysis_service import get_signal_history
+            return get_signal_history(db, mac_address, network_name, hours)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get signal history for {mac_address}: {e}")
+        return {"error": str(e)}
+
+
+@router.get("/devices/signal-summary")
+async def get_devices_signal_summary(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get signal quality summary across all devices."""
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.signal_analysis_service import get_signal_summary
+            return get_signal_summary(db, network_name)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get signal summary: {e}")
+        return {"error": str(e)}
+
+
+@router.get("/speedtest/analysis")
+async def get_speedtest_analysis(
+    days: int = 30,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get speedtest performance trends and analysis."""
+    days = min(days, 365)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.speedtest_analysis_service import get_speedtest_analysis as analyze
+            return analyze(db, network_name, days)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to analyze speedtest data: {e}")
+        return {"error": str(e)}
+
+
 @router.get("/reports/bandwidth-summary")
 async def get_bandwidth_summary_report(
     period: str = "week",
