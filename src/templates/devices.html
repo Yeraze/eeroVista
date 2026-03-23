@@ -978,6 +978,19 @@
             </div>
         `;
 
+        // Bandwidth Utilization Heatmap section
+        detailsHtml += `
+            <div class="bandwidth-section" style="margin-top: 1.5rem;">
+                <div class="bandwidth-header">
+                    <div class="bandwidth-title">Bandwidth Utilization (7 days)</div>
+                    <div id="bw-heatmap-legend" style="font-size: 0.75rem; color: var(--subtext1);"></div>
+                </div>
+                <div id="bw-heatmap" style="padding: 0.5rem 0; overflow-x: auto;">
+                    <div style="text-align: center; padding: 1rem; color: var(--subtext0);">Loading...</div>
+                </div>
+            </div>
+        `;
+
         modalBody.innerHTML = detailsHtml;
 
         // Store device MAC for saving
@@ -1000,6 +1013,9 @@
 
         // Load activity heatmap
         loadActivityHeatmap(device.mac_address);
+
+        // Load bandwidth utilization heatmap
+        loadBandwidthHeatmap(device.mac_address);
     }
 
     let signalChart = null;
@@ -1149,6 +1165,94 @@
         } catch (error) {
             console.error('Failed to load activity heatmap:', error);
             document.getElementById('activity-heatmap').innerHTML = '<div style="text-align: center; padding: 1rem; color: var(--red);">Failed to load</div>';
+        }
+    }
+
+    async function loadBandwidthHeatmap(mac) {
+        try {
+            const network = getSelectedNetwork();
+            const params = network ? `?days=7&network=${encodeURIComponent(network)}` : '?days=7';
+            const response = await fetch(`/api/devices/${encodeURIComponent(mac)}/bandwidth-heatmap${params}`);
+            const data = await response.json();
+
+            const container = document.getElementById('bw-heatmap');
+            const legendEl = document.getElementById('bw-heatmap-legend');
+
+            if (!data.days || data.days.length === 0) {
+                container.innerHTML = '<div style="text-align: center; padding: 1rem; color: var(--subtext0);">No bandwidth data available</div>';
+                return;
+            }
+
+            const maxBw = Math.max(data.max_down_mbps, data.max_up_mbps, 0.1);
+            legendEl.textContent = `Peak: ↓${data.max_down_mbps} ↑${data.max_up_mbps} Mbps`;
+
+            // Build the heatmap: rows = days, columns = 5-min buckets (288 per day)
+            // Show hour markers every 3 hours
+            let html = '<div style="min-width: 700px;">';
+
+            // Hour header row
+            html += '<div style="display: flex; margin-bottom: 2px;">';
+            html += '<div style="width: 75px; flex-shrink: 0;"></div>';
+            for (let h = 0; h < 24; h++) {
+                // Each hour = 12 buckets, each bucket ~2.4px at 700px width
+                const width = `${(100 / 288) * 12}%`;
+                html += `<div style="width: ${width}; font-size: 0.6rem; color: var(--subtext0); text-align: left;">${h % 3 === 0 ? h + ':00' : ''}</div>`;
+            }
+            html += '</div>';
+
+            // Day rows
+            data.days.forEach(day => {
+                html += '<div style="display: flex; align-items: center; margin-bottom: 2px;">';
+                html += `<div style="width: 75px; flex-shrink: 0; font-size: 0.7rem; font-weight: 500; color: var(--subtext1); text-align: right; padding-right: 8px;">${escapeHtml(day.label)}</div>`;
+                html += '<div style="flex: 1; display: flex; gap: 0px; height: 18px;">';
+
+                day.buckets.forEach((bucket, idx) => {
+                    let bg = 'var(--surface0)';
+                    let title = `${Math.floor(idx / 12)}:${String((idx % 12) * 5).padStart(2, '0')} — No data`;
+
+                    if (bucket) {
+                        const combined = bucket.down + bucket.up;
+                        const intensity = Math.min(combined / maxBw, 1);
+                        const timeStr = `${Math.floor(idx / 12)}:${String((idx % 12) * 5).padStart(2, '0')}`;
+                        title = `${timeStr} — ↓${bucket.down} ↑${bucket.up} Mbps`;
+
+                        if (intensity > 0.7) {
+                            bg = 'var(--red)';
+                        } else if (intensity > 0.4) {
+                            bg = 'var(--peach)';
+                        } else if (intensity > 0.15) {
+                            bg = 'var(--yellow)';
+                        } else if (combined > 0) {
+                            bg = 'var(--green)';
+                        } else {
+                            bg = 'var(--surface1)';
+                        }
+                    }
+
+                    html += `<div style="flex: 1; background: ${bg}; cursor: default; min-width: 1px;" title="${title}"></div>`;
+                });
+
+                html += '</div></div>';
+            });
+
+            html += '</div>';
+
+            // Legend
+            html += `
+                <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 0.75rem; font-size: 0.7rem; color: var(--subtext0);">
+                    <span><span style="display: inline-block; width: 10px; height: 10px; background: var(--surface0); border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>No data</span>
+                    <span><span style="display: inline-block; width: 10px; height: 10px; background: var(--surface1); border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>Idle</span>
+                    <span><span style="display: inline-block; width: 10px; height: 10px; background: var(--green); border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>Low</span>
+                    <span><span style="display: inline-block; width: 10px; height: 10px; background: var(--yellow); border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>Moderate</span>
+                    <span><span style="display: inline-block; width: 10px; height: 10px; background: var(--peach); border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>High</span>
+                    <span><span style="display: inline-block; width: 10px; height: 10px; background: var(--red); border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>Peak</span>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        } catch (error) {
+            console.error('Failed to load bandwidth heatmap:', error);
+            document.getElementById('bw-heatmap').innerHTML = '<div style="text-align: center; padding: 1rem; color: var(--red);">Failed to load</div>';
         }
     }
 
