@@ -795,6 +795,7 @@
                 ? `/api/nodes/load-analysis?hours=24&network=${encodeURIComponent(network)}`
                 : '/api/nodes/load-analysis?hours=24';
             const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
 
             // Imbalance score

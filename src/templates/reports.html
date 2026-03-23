@@ -218,6 +218,7 @@
 
         try {
             const response = await fetch(`/api/reports/bandwidth-summary?${params}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
 
             if (data.error) {
@@ -383,6 +384,7 @@
         try {
             // Uptime stats
             const uptimeResp = await fetch(`/api/network/uptime${params}`);
+            if (!uptimeResp.ok) throw new Error(`HTTP ${uptimeResp.status}`);
             const uptime = await uptimeResp.json();
 
             function setUptime(id, pct) {
@@ -408,6 +410,7 @@
 
             // Outages and daily uptime
             const outageResp = await fetch(`/api/network/outages?days=30${network ? '&network=' + encodeURIComponent(network) : ''}`);
+            if (!outageResp.ok) throw new Error(`HTTP ${outageResp.status}`);
             const outageData = await outageResp.json();
 
             renderUptimeHeatmap(outageData.daily_uptime || []);
@@ -481,8 +484,13 @@
         const network = getSelectedNetwork();
         const params = network ? `?days=30&network=${encodeURIComponent(network)}` : '?days=30';
 
+        // Destroy old charts unconditionally to prevent stale data on network switch
+        if (speedTodChart) { speedTodChart.destroy(); speedTodChart = null; }
+        if (speedDowChart) { speedDowChart.destroy(); speedDowChart = null; }
+
         try {
             const response = await fetch(`/api/speedtest/analysis${params}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
 
             // Stats
@@ -563,6 +571,7 @@
 
         try {
             const response = await fetch(`/api/network/guest-usage${params}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
 
             document.getElementById('guest-device-count').textContent = data.guest_device_count || 0;
