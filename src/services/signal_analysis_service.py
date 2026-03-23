@@ -5,7 +5,7 @@ import math
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, text
 from sqlalchemy.orm import Session
 
 from src.models.database import Device, DeviceConnection
@@ -148,7 +148,7 @@ def get_signal_history(
     step = max(1, count // target_points)
 
     # Use ROW_NUMBER to downsample
-    from sqlalchemy import text
+    # rn starts at 1; use (rn - 1) % step = 0 to include first row and every Nth after
     history_rows = db.execute(text("""
         SELECT timestamp, signal_strength FROM (
             SELECT timestamp, signal_strength,
@@ -158,7 +158,7 @@ def get_signal_history(
               AND timestamp >= :cutoff
               AND signal_strength IS NOT NULL
               AND is_connected = 1
-        ) WHERE rn % :step = 0
+        ) WHERE (rn - 1) % :step = 0
         ORDER BY timestamp
     """), {"device_id": device.id, "cutoff": cutoff, "step": step}).fetchall()
 

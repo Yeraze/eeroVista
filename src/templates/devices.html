@@ -1025,6 +1025,7 @@
             const network = getSelectedNetwork();
             const params = network ? `?hours=168&network=${encodeURIComponent(network)}` : '?hours=168';
             const response = await fetch(`/api/devices/${encodeURIComponent(mac)}/signal-history${params}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
 
             if (!data.stats || !data.history || data.history.length === 0) {
@@ -1107,6 +1108,7 @@
             const network = getSelectedNetwork();
             const params = network ? `?days=7&network=${encodeURIComponent(network)}` : '?days=7';
             const response = await fetch(`/api/devices/${encodeURIComponent(mac)}/activity-pattern${params}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
 
             const container = document.getElementById('activity-heatmap');
@@ -1121,7 +1123,6 @@
 
             // Build heatmap grid
             const hours = Array.from({length: 24}, (_, i) => i);
-            const hourLabels = hours.map(h => h % 6 === 0 ? `${h}:00` : '');
 
             let html = '<div style="display: grid; grid-template-columns: 80px repeat(24, 1fr); gap: 2px; font-size: 0.7rem;">';
 
@@ -1138,7 +1139,7 @@
                     let bg = 'var(--surface0)';
                     let title = 'No data';
                     if (prob !== null) {
-                        title = `${(prob * 100).toFixed(0)}% online`;
+                        title = `${(prob * 100).toFixed(0)}% of peak activity`;
                         if (prob >= 0.9) bg = 'var(--green)';
                         else if (prob >= 0.5) bg = 'var(--teal)';
                         else if (prob > 0) bg = 'var(--yellow)';
@@ -1173,6 +1174,7 @@
             const network = getSelectedNetwork();
             const params = network ? `?days=7&network=${encodeURIComponent(network)}` : '?days=7';
             const response = await fetch(`/api/devices/${encodeURIComponent(mac)}/bandwidth-heatmap${params}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
 
             const container = document.getElementById('bw-heatmap');
@@ -1183,7 +1185,7 @@
                 return;
             }
 
-            const maxBw = Math.max(data.max_down_mbps, data.max_up_mbps, 0.1);
+            const maxBw = Math.max(data.max_down_mbps + data.max_up_mbps, 0.1);
             const fmtPeak = (v) => v >= 1 ? `${v.toFixed(1)} Mbps` : v > 0 ? `${(v * 1000).toFixed(0)} Kbps` : '0';
             legendEl.textContent = `Peak: ↓${fmtPeak(data.max_down_mbps)} ↑${fmtPeak(data.max_up_mbps)}`;
 
