@@ -1002,6 +1002,31 @@ async def get_speedtest_analysis(
         return {"error": str(e)}
 
 
+@router.get("/devices/{mac_address}/bandwidth-heatmap")
+async def get_device_bandwidth_heatmap(
+    mac_address: str,
+    days: int = 7,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get bandwidth utilization heatmap with 5-minute buckets."""
+    days = min(days, 14)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.bandwidth_heatmap_service import get_bandwidth_heatmap
+            return get_bandwidth_heatmap(db, mac_address, network_name, days)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get bandwidth heatmap for {mac_address}: {e}")
+        return {"error": str(e)}
+
+
 @router.get("/devices/{mac_address}/activity-pattern")
 async def get_device_activity_pattern(
     mac_address: str,

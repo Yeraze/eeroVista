@@ -106,6 +106,66 @@
     </div>
 </div>
 
+<!-- Speedtest Performance Trends -->
+<h1 class="page-title" style="margin-top: 3rem;">Speedtest Performance</h1>
+
+<div class="stats-grid" style="margin-bottom: 1.5rem;">
+    <div class="stat-card">
+        <div class="stat-value" id="speed-avg-down">--</div>
+        <div class="stat-label">Avg Download</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="speed-avg-up">--</div>
+        <div class="stat-label">Avg Upload</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="speed-avg-latency">--</div>
+        <div class="stat-label">Avg Latency</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="speed-trend">--</div>
+        <div class="stat-label">Trend (30d)</div>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+    <div class="card">
+        <div class="card-title">Speed by Time of Day</div>
+        <div style="position: relative; height: 250px;">
+            <canvas id="speed-tod-chart"></canvas>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-title">Speed by Day of Week</div>
+        <div style="position: relative; height: 250px;">
+            <canvas id="speed-dow-chart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Guest Network Usage -->
+<h1 class="page-title" style="margin-top: 3rem;">Guest Network</h1>
+
+<div class="stats-grid" style="margin-bottom: 1.5rem;">
+    <div class="stat-card">
+        <div class="stat-value" id="guest-device-count">--</div>
+        <div class="stat-label">Guest Devices</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="guest-bandwidth">--</div>
+        <div class="stat-label">Guest Bandwidth</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="guest-pct">--</div>
+        <div class="stat-label">% of Total</div>
+    </div>
+</div>
+
+<div class="card" id="guest-devices-card" style="display: none;">
+    <div class="card-title">Guest Devices</div>
+    <div id="guest-devices-list"></div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script>
     function escapeHtml(text) {
@@ -308,7 +368,7 @@
                 selector.innerHTML = '<option value="">No networks</option>';
             }
 
-            selector.addEventListener('change', () => { loadReport(); loadISPReliability(); });
+            selector.addEventListener('change', () => { loadReport(); loadISPReliability(); loadSpeedtestTrends(); loadGuestUsage(); });
             loadReport();
         } catch (error) {
             console.error('Failed to load networks:', error);
@@ -413,11 +473,133 @@
         `;
     }
 
+    // Speedtest Performance Trends
+    let speedTodChart = null;
+    let speedDowChart = null;
+
+    async function loadSpeedtestTrends() {
+        const network = getSelectedNetwork();
+        const params = network ? `?days=30&network=${encodeURIComponent(network)}` : '?days=30';
+
+        try {
+            const response = await fetch(`/api/speedtest/analysis${params}`);
+            const data = await response.json();
+
+            // Stats
+            document.getElementById('speed-avg-down').textContent = data.avg_download_mbps !== null ? `${data.avg_download_mbps} Mbps` : 'N/A';
+            document.getElementById('speed-avg-up').textContent = data.avg_upload_mbps !== null ? `${data.avg_upload_mbps} Mbps` : 'N/A';
+            document.getElementById('speed-avg-latency').textContent = data.avg_latency_ms !== null ? `${data.avg_latency_ms} ms` : 'N/A';
+
+            const trendEl = document.getElementById('speed-trend');
+            const trendMap = { stable: ['Stable', 'var(--green)'], degrading: ['Degrading ↓', 'var(--red)'], improving: ['Improving ↑', 'var(--blue)'], unknown: ['No Data', 'var(--subtext1)'] };
+            const [trendText, trendColor] = trendMap[data.trend] || trendMap.unknown;
+            trendEl.textContent = trendText;
+            trendEl.style.color = trendColor;
+
+            // Time of day chart
+            if (data.time_of_day_pattern && data.time_of_day_pattern.length > 0) {
+                const todCtx = document.getElementById('speed-tod-chart').getContext('2d');
+                if (speedTodChart) speedTodChart.destroy();
+
+                speedTodChart = new Chart(todCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.time_of_day_pattern.map(d => `${d.hour}:00`),
+                        datasets: [{
+                            label: 'Avg Download (Mbps)',
+                            data: data.time_of_day_pattern.map(d => d.avg_download),
+                            backgroundColor: 'rgba(30, 102, 245, 0.7)',
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { display: false } },
+                            y: { beginAtZero: true, title: { display: true, text: 'Mbps' } }
+                        }
+                    }
+                });
+            }
+
+            // Day of week chart
+            if (data.day_of_week_pattern && data.day_of_week_pattern.length > 0) {
+                const dowCtx = document.getElementById('speed-dow-chart').getContext('2d');
+                if (speedDowChart) speedDowChart.destroy();
+
+                speedDowChart = new Chart(dowCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.day_of_week_pattern.map(d => d.day.substring(0, 3)),
+                        datasets: [{
+                            label: 'Avg Download (Mbps)',
+                            data: data.day_of_week_pattern.map(d => d.avg_download),
+                            backgroundColor: 'rgba(136, 57, 239, 0.7)',
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { display: false } },
+                            y: { beginAtZero: true, title: { display: true, text: 'Mbps' } }
+                        }
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Failed to load speedtest trends:', error);
+        }
+    }
+
+    // Guest Network Usage
+    async function loadGuestUsage() {
+        const network = getSelectedNetwork();
+        const params = network ? `?hours=24&network=${encodeURIComponent(network)}` : '?hours=24';
+
+        try {
+            const response = await fetch(`/api/network/guest-usage${params}`);
+            const data = await response.json();
+
+            document.getElementById('guest-device-count').textContent = data.guest_device_count || 0;
+
+            const totalBw = (data.guest_bandwidth_down_mbps || 0) + (data.guest_bandwidth_up_mbps || 0);
+            document.getElementById('guest-bandwidth').textContent = totalBw > 0 ? `${totalBw.toFixed(1)} Mbps` : 'None';
+
+            const pctEl = document.getElementById('guest-pct');
+            pctEl.textContent = `${data.guest_pct_of_total || 0}%`;
+
+            // Guest devices list
+            const card = document.getElementById('guest-devices-card');
+            const list = document.getElementById('guest-devices-list');
+
+            if (data.guest_devices && data.guest_devices.length > 0) {
+                card.style.display = 'block';
+                list.innerHTML = data.guest_devices.map(d => `
+                    <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--surface0);">
+                        <span style="font-weight: 500;">${escapeHtml(d.hostname || d.mac || 'Unknown')}</span>
+                        <span style="color: var(--subtext1); font-size: 0.875rem;">${escapeHtml(d.type || 'unknown')}</span>
+                    </div>
+                `).join('');
+            } else {
+                card.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Failed to load guest usage:', error);
+        }
+    }
+
     // Initialize - loadNetworks() calls loadReport() on completion,
-    // then we also load ISP data
+    // then we also load ISP, speedtest, and guest data
     async function init() {
         await loadNetworks();
         loadISPReliability();
+        loadSpeedtestTrends();
+        loadGuestUsage();
     }
     init();
 </script>

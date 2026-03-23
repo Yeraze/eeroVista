@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
+from src.config import get_settings
 from src.models.database import Speedtest
 
 logger = logging.getLogger(__name__)
@@ -63,11 +64,16 @@ def get_speedtest_analysis(
     avg_up = round(sum(uploads) / len(uploads), 1) if uploads else None
     avg_lat = round(sum(latencies) / len(latencies), 1) if latencies else None
 
-    # Time-of-day pattern (hourly buckets)
+    # Convert timestamps to local time for time-of-day/day-of-week patterns
+    settings = get_settings()
+    tz = settings.get_timezone()
+
+    # Time-of-day pattern (hourly buckets in local time)
     hourly = {}
     for t in tests:
         if t.download_mbps is not None:
-            hour = t.timestamp.hour
+            local_ts = t.timestamp.replace(tzinfo=timezone.utc).astimezone(tz) if t.timestamp.tzinfo is None else t.timestamp.astimezone(tz)
+            hour = local_ts.hour
             hourly.setdefault(hour, []).append(t.download_mbps)
 
     time_of_day = [
@@ -79,11 +85,12 @@ def get_speedtest_analysis(
         for h, vals in sorted(hourly.items())
     ]
 
-    # Day-of-week pattern
+    # Day-of-week pattern (in local time)
     daily = {}
     for t in tests:
         if t.download_mbps is not None:
-            dow = t.timestamp.weekday()
+            local_ts = t.timestamp.replace(tzinfo=timezone.utc).astimezone(tz) if t.timestamp.tzinfo is None else t.timestamp.astimezone(tz)
+            dow = local_ts.weekday()
             daily.setdefault(dow, []).append(t.download_mbps)
 
     day_of_week = [

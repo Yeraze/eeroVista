@@ -75,34 +75,40 @@ class TestActivityPattern:
         # All connected readings → probability should be 1.0
         assert all(v == 1.0 for v in all_values)
 
-    def test_mixed_connectivity(self, db_session, setup):
+    def test_relative_activity_levels(self, db_session, setup):
+        """Hours with more connected readings show higher values."""
         device, node = setup
         now = datetime.now(timezone.utc)
 
-        # Same hour: 1 connected, 1 disconnected
-        hour_ts = now.replace(minute=0, second=0, microsecond=0)
+        # Hour A: 4 connected readings (peak)
+        hour_a = now.replace(hour=10, minute=0, second=0, microsecond=0)
+        for i in range(4):
+            db_session.add(DeviceConnection(
+                network_name="net",
+                device_id=device.id,
+                eero_node_id=node.id,
+                timestamp=hour_a + timedelta(minutes=i),
+                is_connected=True,
+            ))
+
+        # Hour B: 1 connected reading (low activity)
+        hour_b = now.replace(hour=3, minute=0, second=0, microsecond=0)
         db_session.add(DeviceConnection(
             network_name="net",
             device_id=device.id,
             eero_node_id=node.id,
-            timestamp=hour_ts,
+            timestamp=hour_b,
             is_connected=True,
-        ))
-        db_session.add(DeviceConnection(
-            network_name="net",
-            device_id=device.id,
-            eero_node_id=node.id,
-            timestamp=hour_ts + timedelta(minutes=1),
-            is_connected=False,
         ))
         db_session.commit()
 
         result = get_activity_pattern(db_session, "aa:bb:cc:dd:ee:ff", "net")
-        # Find the hour with data
-        dow = hour_ts.weekday()
-        hour = hour_ts.hour
-        prob = result["heatmap"][dow]["hours"][hour]
-        assert prob == 0.5  # 1 connected out of 2
+        dow = hour_a.weekday()
+        prob_a = result["heatmap"][dow]["hours"][10]
+        prob_b = result["heatmap"][dow]["hours"][3]
+        # Peak hour should be 1.0, low hour should be less
+        assert prob_a == 1.0
+        assert prob_b == 0.25
 
     def test_heatmap_structure(self, db_session, setup):
         result = get_activity_pattern(db_session, "aa:bb:cc:dd:ee:ff", "net")
