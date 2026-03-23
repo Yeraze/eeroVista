@@ -3,11 +3,12 @@
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src import __version__
@@ -1047,6 +1048,96 @@ async def get_nodes_load_analysis(
         raise
     except Exception as e:
         logger.error(f"Failed to get load analysis: {e}")
+        return {"error": str(e)}
+
+
+@router.get("/network/guest-usage")
+async def get_guest_network_usage(
+    hours: int = 24,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get guest network bandwidth and device usage."""
+    hours = min(hours, 720)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.models.database import Device, DeviceConnection
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+            # Guest device connections
+            guest_conns = (
+                db.query(
+                    func.count(DeviceConnection.id).label("readings"),
+                    func.count(func.nullif(DeviceConnection.is_connected, False)).label("connected"),
+                    func.sum(func.coalesce(DeviceConnection.bandwidth_down_mbps, 0)).label("down"),
+                    func.sum(func.coalesce(DeviceConnection.bandwidth_up_mbps, 0)).label("up"),
+                )
+                .filter(
+                    DeviceConnection.network_name == network_name,
+                    DeviceConnection.timestamp >= cutoff,
+                    DeviceConnection.is_guest == True,
+                )
+                .first()
+            )
+
+            # Total (all) connections for comparison
+            total_conns = (
+                db.query(
+                    func.sum(func.coalesce(DeviceConnection.bandwidth_down_mbps, 0)).label("down"),
+                    func.sum(func.coalesce(DeviceConnection.bandwidth_up_mbps, 0)).label("up"),
+                )
+                .filter(
+                    DeviceConnection.network_name == network_name,
+                    DeviceConnection.timestamp >= cutoff,
+                )
+                .first()
+            )
+
+            # Distinct guest devices currently connected
+            guest_devices = (
+                db.query(Device)
+                .join(DeviceConnection, Device.id == DeviceConnection.device_id)
+                .filter(
+                    DeviceConnection.network_name == network_name,
+                    DeviceConnection.timestamp >= cutoff,
+                    DeviceConnection.is_guest == True,
+                    DeviceConnection.is_connected == True,
+                )
+                .distinct()
+                .all()
+            )
+
+            guest_down = float(guest_conns.down or 0)
+            guest_up = float(guest_conns.up or 0)
+            total_down = float(total_conns.down or 0)
+            total_up = float(total_conns.up or 0)
+            total_bw = total_down + total_up
+
+            return {
+                "hours": hours,
+                "guest_device_count": len(guest_devices),
+                "guest_devices": [
+                    {"hostname": d.hostname, "mac": d.mac_address, "type": d.device_type}
+                    for d in guest_devices
+                ],
+                "guest_bandwidth_down_mbps": round(guest_down, 2),
+                "guest_bandwidth_up_mbps": round(guest_up, 2),
+                "guest_pct_of_total": round(
+                    (guest_down + guest_up) / total_bw * 100, 1
+                ) if total_bw > 0 else 0,
+                "non_guest_pct_of_total": round(
+                    (total_bw - guest_down - guest_up) / total_bw * 100, 1
+                ) if total_bw > 0 else 100,
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get guest usage: {e}")
         return {"error": str(e)}
 
 
