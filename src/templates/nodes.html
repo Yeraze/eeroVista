@@ -44,6 +44,37 @@
 </div>
 
 <div class="card" style="margin-top: 2rem;">
+    <div class="card-title">Node Load Distribution</div>
+    <p class="text-muted">Device distribution across nodes and roaming events (last 24 hours)</p>
+
+    <div class="stats-grid" style="margin-top: 1rem; margin-bottom: 1rem;">
+        <div class="stat-card">
+            <div class="stat-value" id="imbalance-score">--</div>
+            <div class="stat-label">Imbalance Score</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="roaming-events">--</div>
+            <div class="stat-label">Roaming Events</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="most-roaming">--</div>
+            <div class="stat-label">Most Roaming Device</div>
+        </div>
+    </div>
+
+    <!-- Node load bars -->
+    <div id="load-distribution" style="margin-top: 1rem;">
+        <div style="text-align: center; padding: 1rem; color: var(--subtext0);">Loading...</div>
+    </div>
+
+    <!-- Recent roaming events -->
+    <div id="roaming-container" style="margin-top: 1.5rem; display: none;">
+        <div style="font-weight: 600; color: var(--text); margin-bottom: 0.75rem;">Recent Roaming Events</div>
+        <div id="roaming-list"></div>
+    </div>
+</div>
+
+<div class="card" style="margin-top: 2rem;">
     <div class="card-title">Network Configuration</div>
     <p class="text-muted">IP reservations and port forwarding rules</p>
 
@@ -745,6 +776,7 @@
                     // Reload all data for the new network
                     loadNodes();
                     loadRoutingData();
+                    loadNodeLoadAnalysis();
                 });
             } else {
                 selector.innerHTML = '<option value="">No networks available</option>';
@@ -755,16 +787,93 @@
         }
     }
 
+    // Node Load Analysis
+    async function loadNodeLoadAnalysis() {
+        try {
+            const network = getSelectedNetwork();
+            const url = network
+                ? `/api/nodes/load-analysis?hours=24&network=${encodeURIComponent(network)}`
+                : '/api/nodes/load-analysis?hours=24';
+            const response = await fetch(url);
+            const data = await response.json();
+
+            // Imbalance score
+            const imbEl = document.getElementById('imbalance-score');
+            const imb = data.imbalance_score || 0;
+            imbEl.textContent = imb.toFixed(2);
+            imbEl.style.color = imb < 0.3 ? 'var(--green)' : imb < 0.7 ? 'var(--yellow)' : 'var(--red)';
+
+            // Roaming events count
+            const roamCount = data.roaming_summary ? data.roaming_summary.total_events : 0;
+            document.getElementById('roaming-events').textContent = roamCount;
+
+            // Most roaming device
+            const mostRoaming = data.roaming_summary && data.roaming_summary.most_roaming_device;
+            document.getElementById('most-roaming').textContent = mostRoaming
+                ? `${escapeHtml(mostRoaming.hostname || mostRoaming.mac)} (${mostRoaming.events}x)`
+                : 'None';
+
+            // Load distribution bars
+            const distContainer = document.getElementById('load-distribution');
+            if (data.nodes && data.nodes.length > 0) {
+                const maxAvg = Math.max(...data.nodes.map(n => n.avg_devices));
+
+                distContainer.innerHTML = data.nodes.map(n => {
+                    const barWidth = maxAvg > 0 ? (n.avg_devices / maxAvg * 100) : 0;
+                    return `
+                        <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;">
+                            <div style="width: 120px; text-align: right; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                ${escapeHtml(n.location || 'Unknown')}${n.is_gateway ? ' ⭐' : ''}
+                            </div>
+                            <div style="flex: 1;">
+                                <div style="height: 8px; background: var(--surface1); border-radius: 4px; overflow: hidden;">
+                                    <div style="height: 100%; width: ${barWidth}%; background: var(--blue); border-radius: 4px;"></div>
+                                </div>
+                            </div>
+                            <div style="width: 100px; font-size: 0.875rem; color: var(--subtext0);">
+                                avg ${n.avg_devices} (${n.pct_of_total}%)
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                distContainer.innerHTML = '<div style="text-align: center; padding: 1rem; color: var(--subtext0);">No load data available</div>';
+            }
+
+            // Roaming events list (show last 10)
+            const roamContainer = document.getElementById('roaming-container');
+            const roamList = document.getElementById('roaming-list');
+            const events = data.roaming_events || [];
+
+            if (events.length > 0) {
+                roamContainer.style.display = 'block';
+                roamList.innerHTML = events.slice(0, 10).map(e => `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0; border-bottom: 1px solid var(--surface0); font-size: 0.85rem;">
+                        <span style="font-weight: 500;">${escapeHtml(e.hostname || e.device_mac)}</span>
+                        <span style="color: var(--subtext1);">${escapeHtml(e.from_node)} → ${escapeHtml(e.to_node)}</span>
+                        <span style="color: var(--subtext0); font-size: 0.75rem;">${formatTimestamp(e.at)}</span>
+                    </div>
+                `).join('');
+            } else {
+                roamContainer.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Failed to load node load analysis:', error);
+        }
+    }
+
     // Initial load
     async function initialize() {
         await loadNetworks();  // Wait for networks to load first
         loadNodes();
         loadRoutingData();
+        loadNodeLoadAnalysis();
     }
     initialize();
 
     // Refresh every 30 seconds
     setInterval(loadNodes, 30000);
-    setInterval(loadRoutingData, 60000); // Routing data changes less frequently
+    setInterval(loadRoutingData, 60000);
+    setInterval(loadNodeLoadAnalysis, 60000);
 </script>
 {% endblock %}
