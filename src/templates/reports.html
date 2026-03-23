@@ -1,0 +1,424 @@
+{% extends "base.html" %}
+{% block title %}Reports - eeroVista{% endblock %}
+{% block content %}
+<h1 class="page-title">Bandwidth Reports</h1>
+
+<!-- Controls -->
+<div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap;">
+    <select id="network-selector" style="padding: 0.5rem 1rem; border: 1px solid var(--surface1); border-radius: 6px; background: var(--base); color: var(--text);">
+        <option value="">Loading...</option>
+    </select>
+    <div style="display: flex; gap: 0.5rem;">
+        <button id="btn-week" class="btn btn-primary" onclick="setPeriod('week')">Weekly</button>
+        <button id="btn-month" class="btn" onclick="setPeriod('month')">Monthly</button>
+    </div>
+    <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <button class="btn" onclick="navigate(1)" title="Previous period">&larr; Previous</button>
+        <span id="period-label" style="font-weight: 600; min-width: 200px; text-align: center;">--</span>
+        <button class="btn" onclick="navigate(-1)" title="Next period">Next &rarr;</button>
+    </div>
+</div>
+
+<!-- Summary Stats -->
+<div class="stats-grid" style="margin-bottom: 1.5rem;">
+    <div class="stat-card">
+        <div class="stat-value" id="total-download">--</div>
+        <div class="stat-label">Download</div>
+        <div class="stat-change" id="change-download"></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="total-upload">--</div>
+        <div class="stat-label">Upload</div>
+        <div class="stat-change" id="change-upload"></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="total-bandwidth">--</div>
+        <div class="stat-label">Total</div>
+        <div class="stat-change" id="change-total"></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="peak-day">--</div>
+        <div class="stat-label">Peak Day</div>
+    </div>
+</div>
+
+<!-- Daily Breakdown Chart -->
+<div class="card" style="margin-bottom: 1.5rem;">
+    <div class="card-title">Daily Bandwidth Usage</div>
+    <div style="position: relative; height: 300px;">
+        <canvas id="daily-chart"></canvas>
+    </div>
+</div>
+
+<!-- Top Devices Table -->
+<div class="card">
+    <div class="card-title">Top Bandwidth Consumers</div>
+    <div id="top-devices-container">
+        <p style="text-align: center; color: var(--subtext1); padding: 2rem;">Loading...</p>
+    </div>
+</div>
+
+<!-- ISP Reliability Section -->
+<h1 class="page-title" style="margin-top: 3rem;">ISP Reliability</h1>
+
+<div class="stats-grid" style="margin-bottom: 1.5rem;">
+    <div class="stat-card">
+        <div class="stat-value" id="uptime-24h">--</div>
+        <div class="stat-label">Uptime (24h)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="uptime-7d">--</div>
+        <div class="stat-label">Uptime (7d)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="uptime-30d">--</div>
+        <div class="stat-label">Uptime (30d)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="total-outages">--</div>
+        <div class="stat-label">Outages (30d)</div>
+        <div id="total-downtime" style="font-size: 0.75rem; color: var(--subtext1); margin-top: 0.25rem;"></div>
+    </div>
+</div>
+
+<!-- Daily Uptime Heatmap -->
+<div class="card" style="margin-bottom: 1.5rem;">
+    <div class="card-title">Daily Uptime (30 days)</div>
+    <div id="uptime-heatmap" style="display: flex; flex-wrap: wrap; gap: 3px; padding: 0.5rem 0;"></div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; font-size: 0.75rem; color: var(--subtext1);">
+        <span>30 days ago</span>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span>Less</span>
+            <div style="width: 12px; height: 12px; background: var(--red); border-radius: 2px;"></div>
+            <div style="width: 12px; height: 12px; background: var(--yellow); border-radius: 2px;"></div>
+            <div style="width: 12px; height: 12px; background: var(--green); border-radius: 2px;"></div>
+            <span>More uptime</span>
+        </div>
+        <span>Today</span>
+    </div>
+</div>
+
+<!-- Outage Events Table -->
+<div class="card">
+    <div class="card-title">Outage Events (30 days)</div>
+    <div id="outage-table-container">
+        <p style="text-align: center; color: var(--subtext1); padding: 2rem;">Loading...</p>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script>
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    let currentPeriod = 'week';
+    let currentOffset = 0;
+    let dailyChart = null;
+
+    function getSelectedNetwork() {
+        const selector = document.getElementById('network-selector');
+        return selector ? selector.value : null;
+    }
+
+    function setPeriod(period) {
+        currentPeriod = period;
+        currentOffset = 0;
+        document.getElementById('btn-week').className = period === 'week' ? 'btn btn-primary' : 'btn';
+        document.getElementById('btn-month').className = period === 'month' ? 'btn btn-primary' : 'btn';
+        loadReport();
+    }
+
+    function navigate(direction) {
+        currentOffset = Math.max(0, currentOffset + direction);
+        loadReport();
+    }
+
+    function formatGB(gb) {
+        if (gb >= 1000) return (gb / 1024).toFixed(1) + ' TB';
+        return gb.toFixed(1) + ' GB';
+    }
+
+    function formatChange(pct) {
+        if (pct === null || pct === undefined) return '';
+        const arrow = pct > 0 ? '&#9650;' : pct < 0 ? '&#9660;' : '';
+        const color = pct > 0 ? 'var(--peach)' : pct < 0 ? 'var(--green)' : 'var(--subtext1)';
+        return `<span style="color: ${color}; font-size: 0.8rem;">${arrow} ${Math.abs(pct)}% vs previous</span>`;
+    }
+
+    async function loadReport() {
+        const network = getSelectedNetwork();
+        const params = new URLSearchParams({
+            period: currentPeriod,
+            offset: currentOffset,
+        });
+        if (network) params.set('network', network);
+
+        try {
+            const response = await fetch(`/api/reports/bandwidth-summary?${params}`);
+            const data = await response.json();
+
+            if (data.error) {
+                showAlert(data.error, 'error');
+                return;
+            }
+
+            // Update period label
+            document.getElementById('period-label').textContent = data.period;
+
+            // Update stats
+            document.getElementById('total-download').textContent = formatGB(data.total_download_gb);
+            document.getElementById('total-upload').textContent = formatGB(data.total_upload_gb);
+            document.getElementById('total-bandwidth').textContent = formatGB(data.total_gb);
+            document.getElementById('change-download').innerHTML = formatChange(data.change_vs_previous.download_pct);
+            document.getElementById('change-upload').innerHTML = formatChange(data.change_vs_previous.upload_pct);
+            document.getElementById('change-total').innerHTML = formatChange(data.change_vs_previous.total_pct);
+
+            // Peak day
+            if (data.peak_day) {
+                document.getElementById('peak-day').textContent = `${data.peak_day.day} (${formatGB(data.peak_day.total_gb)})`;
+            } else {
+                document.getElementById('peak-day').textContent = 'N/A';
+            }
+
+            // Render chart
+            renderDailyChart(data.daily_breakdown);
+
+            // Render top devices
+            renderTopDevices(data.top_devices);
+
+        } catch (error) {
+            console.error('Failed to load report:', error);
+            showAlert('Failed to load bandwidth report.', 'error');
+        }
+    }
+
+    function renderDailyChart(daily) {
+        const ctx = document.getElementById('daily-chart').getContext('2d');
+
+        if (dailyChart) dailyChart.destroy();
+
+        const labels = daily.map(d => {
+            const dt = new Date(d.date + 'T00:00:00');
+            return dt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+        });
+
+        dailyChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Download (GB)',
+                        data: daily.map(d => d.download_gb),
+                        backgroundColor: 'rgba(30, 102, 245, 0.7)',
+                        borderRadius: 4,
+                    },
+                    {
+                        label: 'Upload (GB)',
+                        data: daily.map(d => d.upload_gb),
+                        backgroundColor: 'rgba(64, 160, 43, 0.7)',
+                        borderRadius: 4,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                },
+                scales: {
+                    x: { stacked: true, grid: { display: false } },
+                    y: {
+                        stacked: true,
+                        title: { display: true, text: 'GB' },
+                        beginAtZero: true,
+                    }
+                }
+            }
+        });
+    }
+
+    function renderTopDevices(devices) {
+        const container = document.getElementById('top-devices-container');
+        if (!devices || devices.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: var(--subtext1); padding: 2rem;">No bandwidth data for this period.</p>';
+            return;
+        }
+
+        const maxTotal = devices[0].total_gb;
+
+        const items = devices.map((d, i) => {
+            const barWidth = maxTotal > 0 ? (d.total_gb / maxTotal * 100) : 0;
+            const downPercent = d.total_gb > 0 ? (d.download_gb / d.total_gb * 100) : 0;
+            const name = escapeHtml(d.nickname || d.hostname || d.mac_address || 'Unknown');
+
+            return `
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <div style="width: 24px; text-align: center; font-weight: 600; color: var(--subtext0);">${i + 1}</div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                            <span style="font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</span>
+                            <span style="font-size: 0.875rem; color: var(--subtext0); white-space: nowrap; margin-left: 0.5rem;">
+                                ↓${d.download_gb.toFixed(1)} ↑${d.upload_gb.toFixed(1)} GB · ${d.pct_of_total}%
+                            </span>
+                        </div>
+                        <div style="height: 8px; background: var(--surface1); border-radius: 4px; overflow: hidden;">
+                            <div style="height: 100%; width: ${barWidth}%; display: flex; border-radius: 4px; overflow: hidden;">
+                                <div style="width: ${downPercent}%; background: var(--blue);"></div>
+                                <div style="flex: 1; background: var(--mauve);"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                ${items}
+                <div style="display: flex; gap: 1.5rem; justify-content: center; margin-top: 0.75rem; font-size: 0.75rem; color: var(--subtext0);">
+                    <span><span style="display: inline-block; width: 12px; height: 12px; background: var(--blue); border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>Download</span>
+                    <span><span style="display: inline-block; width: 12px; height: 12px; background: var(--mauve); border-radius: 2px; margin-right: 0.25rem; vertical-align: middle;"></span>Upload</span>
+                </div>
+            </div>
+        `;
+    }
+
+    // Network selector
+    async function loadNetworks() {
+        try {
+            const response = await fetch('/api/networks');
+            const data = await response.json();
+            const selector = document.getElementById('network-selector');
+            selector.innerHTML = '';
+
+            if (data.networks && data.networks.length > 0) {
+                data.networks.forEach((net, i) => {
+                    const option = document.createElement('option');
+                    option.value = net.name || net;
+                    option.textContent = net.name || net;
+                    if (i === 0) option.selected = true;
+                    selector.appendChild(option);
+                });
+            } else {
+                selector.innerHTML = '<option value="">No networks</option>';
+            }
+
+            selector.addEventListener('change', () => { loadReport(); loadISPReliability(); });
+            loadReport();
+        } catch (error) {
+            console.error('Failed to load networks:', error);
+        }
+    }
+
+    // ISP Reliability
+    async function loadISPReliability() {
+        const network = getSelectedNetwork();
+        const params = network ? `?network=${encodeURIComponent(network)}` : '';
+
+        try {
+            // Uptime stats
+            const uptimeResp = await fetch(`/api/network/uptime${params}`);
+            const uptime = await uptimeResp.json();
+
+            function setUptime(id, pct) {
+                const el = document.getElementById(id);
+                if (pct !== null && pct !== undefined) {
+                    el.textContent = pct + '%';
+                    el.style.color = pct >= 99.5 ? 'var(--green)' : pct >= 95 ? 'var(--yellow)' : 'var(--red)';
+                } else {
+                    el.textContent = 'N/A';
+                    el.style.color = '';
+                }
+            }
+
+            setUptime('uptime-24h', uptime.uptime_24h_pct);
+            setUptime('uptime-7d', uptime.uptime_7d_pct);
+            setUptime('uptime-30d', uptime.uptime_30d_pct);
+
+            document.getElementById('total-outages').textContent = uptime.total_outages_30d || 0;
+            const downtime = uptime.total_downtime_minutes_30d || 0;
+            document.getElementById('total-downtime').textContent = downtime > 0
+                ? `${downtime.toFixed(0)} min downtime`
+                : 'No downtime';
+
+            // Outages and daily uptime
+            const outageResp = await fetch(`/api/network/outages?days=30${network ? '&network=' + encodeURIComponent(network) : ''}`);
+            const outageData = await outageResp.json();
+
+            renderUptimeHeatmap(outageData.daily_uptime || []);
+            renderOutageTable(outageData.outages || []);
+
+        } catch (error) {
+            console.error('Failed to load ISP reliability:', error);
+        }
+    }
+
+    function renderUptimeHeatmap(daily) {
+        const container = document.getElementById('uptime-heatmap');
+        container.innerHTML = '';
+
+        daily.forEach(d => {
+            const cell = document.createElement('div');
+            const pct = d.uptime_pct;
+
+            let bg = 'var(--surface1)';
+            let title = `${d.date}: No data`;
+
+            if (pct !== null) {
+                title = `${d.date}: ${pct}% uptime`;
+                if (pct >= 99.5) bg = 'var(--green)';
+                else if (pct >= 95) bg = 'var(--yellow)';
+                else bg = 'var(--red)';
+            }
+
+            cell.style.cssText = `width: 20px; height: 20px; background: ${bg}; border-radius: 3px; cursor: default;`;
+            cell.title = title;
+            container.appendChild(cell);
+        });
+    }
+
+    function renderOutageTable(outages) {
+        const container = document.getElementById('outage-table-container');
+
+        if (outages.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: var(--green); padding: 2rem;">No outages detected in the last 30 days.</p>';
+            return;
+        }
+
+        const rows = outages.map(o => {
+            const start = new Date(o.start).toLocaleString();
+            const end = o.end ? new Date(o.end).toLocaleString() : '<span class="badge" style="background: var(--red); color: var(--base);">Ongoing</span>';
+            const duration = o.duration_minutes;
+            const durText = duration >= 60
+                ? `${Math.floor(duration / 60)}h ${Math.round(duration % 60)}m`
+                : `${Math.round(duration)}m`;
+
+            return `<tr>
+                <td>${start}</td>
+                <td>${end}</td>
+                <td>${durText}</td>
+            </tr>`;
+        }).join('');
+
+        container.innerHTML = `
+            <table class="routing-table">
+                <thead><tr><th>Start</th><th>End</th><th>Duration</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    }
+
+    // Initialize - loadNetworks() calls loadReport() on completion,
+    // then we also load ISP data
+    async function init() {
+        await loadNetworks();
+        loadISPReliability();
+    }
+    init();
+</script>
+{% endblock %}

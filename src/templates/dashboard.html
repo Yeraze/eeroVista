@@ -62,6 +62,16 @@
         </div>
         <div class="stat-label">Network Status</div>
     </div>
+    <div class="stat-card">
+        <div class="stat-value" id="health-score" style="font-size: 2rem;">--</div>
+        <div class="stat-label">Health Score</div>
+        <div id="health-components" style="font-size: 0.7rem; color: var(--subtext1); margin-top: 0.25rem;"></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="wan-uptime">--</div>
+        <div class="stat-label">WAN Uptime (24h)</div>
+        <div id="outage-count" style="font-size: 0.75rem; color: var(--subtext1); margin-top: 0.25rem;"></div>
+    </div>
 </div>
 
 <div class="card">
@@ -1078,11 +1088,70 @@
         }
     }
 
+    // Health score and ISP uptime
+    async function loadHealthScore() {
+        try {
+            const network = getSelectedNetwork();
+            const params = network ? `?network=${encodeURIComponent(network)}` : '';
+            const response = await fetch(`/api/network/health-score${params}`);
+            const data = await response.json();
+
+            const el = document.getElementById('health-score');
+            const compEl = document.getElementById('health-components');
+
+            if (data.score !== null && data.score !== undefined) {
+                el.textContent = Math.round(data.score);
+                const color = data.color === 'green' ? 'var(--green)' : data.color === 'yellow' ? 'var(--yellow)' : 'var(--red)';
+                el.style.color = color;
+
+                const c = data.components;
+                compEl.innerHTML = `WAN ${c.wan_uptime.score}% · Nodes ${c.node_availability.score}% · Mesh ${c.mesh_quality.score}% · Signal ${c.signal_quality.score}%`;
+            } else {
+                el.textContent = '--';
+                el.style.color = '';
+                compEl.innerHTML = '';
+            }
+        } catch (error) {
+            console.error('Failed to load health score:', error);
+        }
+    }
+
+    async function loadUptimeStats() {
+        try {
+            const network = getSelectedNetwork();
+            const params = network ? `?network=${encodeURIComponent(network)}` : '';
+            const response = await fetch(`/api/network/uptime${params}`);
+            const data = await response.json();
+
+            const el = document.getElementById('wan-uptime');
+            const outageEl = document.getElementById('outage-count');
+
+            if (data.uptime_24h_pct !== null && data.uptime_24h_pct !== undefined) {
+                el.textContent = data.uptime_24h_pct + '%';
+                el.style.color = data.uptime_24h_pct >= 99.5 ? 'var(--green)' : data.uptime_24h_pct >= 95 ? 'var(--yellow)' : 'var(--red)';
+
+                if (data.total_outages_30d > 0) {
+                    outageEl.textContent = `${data.total_outages_30d} outage${data.total_outages_30d !== 1 ? 's' : ''} (30d)`;
+                } else {
+                    outageEl.textContent = 'No outages (30d)';
+                }
+            } else {
+                el.textContent = '--';
+                el.style.color = '';
+                outageEl.textContent = '';
+            }
+        } catch (error) {
+            console.error('Failed to load uptime stats:', error);
+        }
+    }
+
     // Update all data
     function updateAll() {
         updateDashboardStats();
         updateCollectionStatus();
         loadFirmwareUpdateInfo();
+        loadHealthScore();
+        loadUptimeStats();
 
         // Load appropriate chart based on current mode
         if (currentMode === 'hourly') {

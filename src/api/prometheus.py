@@ -160,6 +160,27 @@ node_update_available = Gauge(
     registry=registry
 )
 
+node_restarts_total = Gauge(
+    "eero_node_restarts_30d",
+    "Number of detected node restarts in the last 30 days",
+    ["network", "node_id", "location"],
+    registry=registry
+)
+
+network_health_score = Gauge(
+    "eero_network_health_score",
+    "Overall network health score (0-100)",
+    ["network"],
+    registry=registry
+)
+
+network_wan_uptime_pct = Gauge(
+    "eero_network_wan_uptime_pct",
+    "WAN uptime percentage",
+    ["network", "window"],
+    registry=registry
+)
+
 
 def update_metrics() -> None:
     """Update all Prometheus metrics from database."""
@@ -200,7 +221,7 @@ def update_metrics() -> None:
                 net = nm.network_name
                 network_devices_total.labels(network=net).set(nm.total_devices or 0)
                 network_devices_online.labels(network=net).set(nm.total_devices_online or 0)
-                network_status.labels(network=net).set(1 if nm.wan_status == "online" else 0)
+                network_status.labels(network=net).set(1 if nm.wan_status in ("online", "connected") else 0)
                 is_bridge = nm.connection_mode and nm.connection_mode.lower() == 'bridge'
                 network_bridge_mode.labels(network=net).set(1 if is_bridge else 0)
 
@@ -459,6 +480,42 @@ def update_metrics() -> None:
                         model=model,
                         is_gateway=is_gateway
                     ).set(update_val)
+
+                # Node restart counts (30-day window)
+                try:
+                    from src.services.node_analysis_service import get_all_nodes_restart_counts
+                    # Group nodes by network
+                    networks = set(n.network_name for n in all_nodes)
+                    for net in networks:
+                        net_nodes = [n for n in all_nodes if n.network_name == net]
+                        counts = get_all_nodes_restart_counts(db, net, days=30)
+                        for node in net_nodes:
+                            node_restarts_total.labels(
+                                network=node.network_name,
+                                node_id=node.eero_id,
+                                location=node.location or f"Node {node.eero_id}",
+                            ).set(counts.get(node.id, 0))
+                except Exception as restart_err:
+                    logger.warning(f"Failed to compute restart metrics: {restart_err}")
+
+                # Health score and uptime metrics
+                try:
+                    from src.services.health_score_service import compute_health_score
+                    from src.services.isp_reliability_service import get_uptime_stats
+
+                    for net in networks:
+                        health = compute_health_score(db, net)
+                        network_health_score.labels(network=net).set(health["score"])
+
+                        uptime = get_uptime_stats(db, net)
+                        for window in ("24h", "7d", "30d"):
+                            pct = uptime.get(f"uptime_{window}_pct")
+                            if pct is not None:
+                                network_wan_uptime_pct.labels(
+                                    network=net, window=window
+                                ).set(pct)
+                except Exception as health_err:
+                    logger.warning(f"Failed to compute health/uptime metrics: {health_err}")
 
     except Exception as e:
         logger.error(f"Failed to update Prometheus metrics: {e}", exc_info=True)

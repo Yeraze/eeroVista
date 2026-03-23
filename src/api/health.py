@@ -3,11 +3,12 @@
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src import __version__
@@ -735,6 +736,444 @@ async def get_nodes(
             "total": 0,
             "error": str(e),
         }
+
+
+@router.get("/nodes/{eero_id}/restart-history")
+async def get_node_restart_history(
+    eero_id: str,
+    days: int = 30,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get restart history for a specific eero node.
+
+    Detects restarts by monitoring uptime counter resets.
+
+    Args:
+        eero_id: The eero node's external ID.
+        days: Number of days to look back (default 30, max 365).
+        network: Optional network name filter.
+    """
+    days = min(days, 365)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.models.database import EeroNode
+            from src.services.node_analysis_service import get_node_restart_summary
+
+            node = (
+                db.query(EeroNode)
+                .filter(
+                    EeroNode.network_name == network_name,
+                    EeroNode.eero_id == eero_id,
+                )
+                .first()
+            )
+            if not node:
+                raise HTTPException(status_code=404, detail="Node not found")
+
+            return get_node_restart_summary(
+                db, node.id, node.location or f"Node {eero_id}", days
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get restart history for node {eero_id}: {e}")
+        return {"error": str(e), "restarts": [], "total_restarts": 0}
+
+
+@router.get("/nodes/restart-summary")
+async def get_nodes_restart_summary(
+    days: int = 30,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get restart counts for all nodes in a network.
+
+    Args:
+        days: Number of days to look back (default 30, max 365).
+        network: Optional network name filter.
+    """
+    days = min(days, 365)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            return {"nodes": [], "period_days": days}
+
+        with get_db_context() as db:
+            from src.models.database import EeroNode
+            from src.services.node_analysis_service import get_all_nodes_restart_counts
+
+            nodes = (
+                db.query(EeroNode)
+                .filter(EeroNode.network_name == network_name)
+                .all()
+            )
+            counts = get_all_nodes_restart_counts(db, network_name, days)
+
+            return {
+                "nodes": [
+                    {
+                        "eero_id": node.eero_id,
+                        "location": node.location,
+                        "restart_count": counts.get(node.id, 0),
+                    }
+                    for node in nodes
+                ],
+                "period_days": days,
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to get restart summary: {e}")
+        return {"nodes": [], "period_days": days, "error": str(e)}
+
+
+@router.get("/network/health-score")
+async def get_network_health_score(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get current network health score (0-100)."""
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.health_score_service import compute_health_score
+            return compute_health_score(db, network_name)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to compute health score: {e}")
+        return {"score": None, "error": str(e)}
+
+
+@router.get("/network/health-history")
+async def get_network_health_history(
+    hours: int = 168,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get hourly health score history for trend display."""
+    hours = min(hours, 720)  # Cap at 30 days
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.health_score_service import compute_health_history
+            return {"history": compute_health_history(db, network_name, hours)}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to compute health history: {e}")
+        return {"history": [], "error": str(e)}
+
+
+@router.get("/network/uptime")
+async def get_network_uptime(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get WAN uptime percentages for 24h, 7d, 30d windows."""
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.isp_reliability_service import get_uptime_stats
+            return get_uptime_stats(db, network_name)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get uptime stats: {e}")
+        return {"error": str(e)}
+
+
+@router.get("/network/outages")
+async def get_network_outages(
+    days: int = 30,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get WAN outage events and daily uptime breakdown."""
+    days = min(days, 365)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.isp_reliability_service import (
+                detect_outages,
+                get_daily_uptime,
+            )
+            return {
+                "outages": detect_outages(db, network_name, days),
+                "daily_uptime": get_daily_uptime(db, network_name, days),
+                "period_days": days,
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get outages: {e}")
+        return {"outages": [], "daily_uptime": [], "error": str(e)}
+
+
+@router.get("/devices/{mac_address}/signal-history")
+async def get_device_signal_history(
+    mac_address: str,
+    hours: int = 168,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get signal strength history and trends for a device."""
+    hours = min(hours, 720)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.signal_analysis_service import get_signal_history
+            return get_signal_history(db, mac_address, network_name, hours)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get signal history for {mac_address}: {e}")
+        return {"error": str(e)}
+
+
+@router.get("/devices/signal-summary")
+async def get_devices_signal_summary(
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get signal quality summary across all devices."""
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.signal_analysis_service import get_signal_summary
+            return get_signal_summary(db, network_name)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get signal summary: {e}")
+        return {"error": str(e)}
+
+
+@router.get("/speedtest/analysis")
+async def get_speedtest_analysis(
+    days: int = 30,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get speedtest performance trends and analysis."""
+    days = min(days, 365)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.speedtest_analysis_service import get_speedtest_analysis as analyze
+            return analyze(db, network_name, days)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to analyze speedtest data: {e}")
+        return {"error": str(e)}
+
+
+@router.get("/devices/{mac_address}/activity-pattern")
+async def get_device_activity_pattern(
+    mac_address: str,
+    days: int = 7,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get device activity heatmap (7x24 connection probability)."""
+    days = min(days, 30)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.activity_pattern_service import get_activity_pattern
+            return get_activity_pattern(db, mac_address, network_name, days)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get activity pattern for {mac_address}: {e}")
+        return {"error": str(e)}
+
+
+@router.get("/nodes/load-analysis")
+async def get_nodes_load_analysis(
+    hours: int = 24,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get node load distribution and roaming analysis."""
+    hours = min(hours, 720)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.load_analysis_service import get_load_analysis
+            return get_load_analysis(db, network_name, hours)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get load analysis: {e}")
+        return {"error": str(e)}
+
+
+@router.get("/network/guest-usage")
+async def get_guest_network_usage(
+    hours: int = 24,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get guest network bandwidth and device usage."""
+    hours = min(hours, 720)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.models.database import Device, DeviceConnection
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+            # Guest device connections
+            guest_conns = (
+                db.query(
+                    func.count(DeviceConnection.id).label("readings"),
+                    func.count(func.nullif(DeviceConnection.is_connected, False)).label("connected"),
+                    func.sum(func.coalesce(DeviceConnection.bandwidth_down_mbps, 0)).label("down"),
+                    func.sum(func.coalesce(DeviceConnection.bandwidth_up_mbps, 0)).label("up"),
+                )
+                .filter(
+                    DeviceConnection.network_name == network_name,
+                    DeviceConnection.timestamp >= cutoff,
+                    DeviceConnection.is_guest == True,
+                )
+                .first()
+            )
+
+            # Total (all) connections for comparison
+            total_conns = (
+                db.query(
+                    func.sum(func.coalesce(DeviceConnection.bandwidth_down_mbps, 0)).label("down"),
+                    func.sum(func.coalesce(DeviceConnection.bandwidth_up_mbps, 0)).label("up"),
+                )
+                .filter(
+                    DeviceConnection.network_name == network_name,
+                    DeviceConnection.timestamp >= cutoff,
+                )
+                .first()
+            )
+
+            # Distinct guest devices currently connected
+            guest_devices = (
+                db.query(Device)
+                .join(DeviceConnection, Device.id == DeviceConnection.device_id)
+                .filter(
+                    DeviceConnection.network_name == network_name,
+                    DeviceConnection.timestamp >= cutoff,
+                    DeviceConnection.is_guest == True,
+                    DeviceConnection.is_connected == True,
+                )
+                .distinct()
+                .all()
+            )
+
+            guest_down = float(guest_conns.down or 0)
+            guest_up = float(guest_conns.up or 0)
+            total_down = float(total_conns.down or 0)
+            total_up = float(total_conns.up or 0)
+            total_bw = total_down + total_up
+
+            return {
+                "hours": hours,
+                "guest_device_count": len(guest_devices),
+                "guest_devices": [
+                    {"hostname": d.hostname, "mac": d.mac_address, "type": d.device_type}
+                    for d in guest_devices
+                ],
+                "guest_bandwidth_down_mbps": round(guest_down, 2),
+                "guest_bandwidth_up_mbps": round(guest_up, 2),
+                "guest_pct_of_total": round(
+                    (guest_down + guest_up) / total_bw * 100, 1
+                ) if total_bw > 0 else 0,
+                "non_guest_pct_of_total": round(
+                    (total_bw - guest_down - guest_up) / total_bw * 100, 1
+                ) if total_bw > 0 else 100,
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get guest usage: {e}")
+        return {"error": str(e)}
+
+
+@router.get("/reports/bandwidth-summary")
+async def get_bandwidth_summary_report(
+    period: str = "week",
+    offset: int = 0,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get bandwidth summary report for a week or month.
+
+    Args:
+        period: 'week' or 'month'.
+        offset: How many periods back (0=current, 1=previous, etc).
+        network: Optional network name filter.
+    """
+    offset = max(0, min(offset, 52))  # Cap at 52 periods back
+    if period not in ("week", "month"):
+        raise HTTPException(status_code=400, detail="Period must be 'week' or 'month'")
+
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.bandwidth_report_service import get_bandwidth_summary
+
+            return get_bandwidth_summary(db, network_name, period, offset)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to generate bandwidth report: {e}")
+        return {"error": str(e)}
 
 
 @router.put("/devices/{mac_address}/aliases")
