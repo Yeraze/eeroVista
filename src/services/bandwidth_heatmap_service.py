@@ -5,7 +5,7 @@ peak download/upload bandwidth for a device, aggregated across weeks.
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date as date_type, datetime, timedelta, timezone
 from typing import Any, Dict, List
 
 from sqlalchemy import text
