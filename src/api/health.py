@@ -1001,6 +1001,55 @@ async def get_speedtest_analysis(
         return {"error": str(e)}
 
 
+@router.get("/devices/{mac_address}/activity-pattern")
+async def get_device_activity_pattern(
+    mac_address: str,
+    days: int = 7,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get device activity heatmap (7x24 connection probability)."""
+    days = min(days, 30)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.activity_pattern_service import get_activity_pattern
+            return get_activity_pattern(db, mac_address, network_name, days)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get activity pattern for {mac_address}: {e}")
+        return {"error": str(e)}
+
+
+@router.get("/nodes/load-analysis")
+async def get_nodes_load_analysis(
+    hours: int = 24,
+    network: Optional[str] = None,
+    client: EeroClientWrapper = Depends(get_eero_client),
+) -> Dict[str, Any]:
+    """Get node load distribution and roaming analysis."""
+    hours = min(hours, 720)
+    try:
+        network_name = get_network_name_filter(network, client)
+        if not network_name:
+            raise HTTPException(status_code=404, detail="No network found")
+
+        with get_db_context() as db:
+            from src.services.load_analysis_service import get_load_analysis
+            return get_load_analysis(db, network_name, hours)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get load analysis: {e}")
+        return {"error": str(e)}
+
+
 @router.get("/reports/bandwidth-summary")
 async def get_bandwidth_summary_report(
     period: str = "week",
