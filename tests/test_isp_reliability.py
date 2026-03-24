@@ -61,13 +61,17 @@ class TestOutageDetection:
         self._add_reading(db_session, 60, "connected")
         self._add_reading(db_session, 55, "disconnected")
         self._add_reading(db_session, 50, "connected")  # end outage 1
+        self._add_reading(db_session, 45, "connected")  # fill gap to avoid gap detection
+        self._add_reading(db_session, 40, "connected")
+        self._add_reading(db_session, 35, "connected")
         self._add_reading(db_session, 30, "connected")
         self._add_reading(db_session, 25, "disconnected")
         self._add_reading(db_session, 20, "connected")  # end outage 2
         db_session.commit()
 
         outages = detect_outages(db_session, "net", days=1)
-        assert len(outages) == 2
+        status_outages = [o for o in outages if o.get("type") == "status"]
+        assert len(status_outages) == 2
 
     def test_ongoing_outage(self, db_session):
         self._add_reading(db_session, 10, "connected")
@@ -79,6 +83,23 @@ class TestOutageDetection:
         assert len(outages) == 1
         assert outages[0].get("ongoing") is True
         assert outages[0]["end"] is None
+
+    def test_detects_gap_outage(self, db_session):
+        """A large gap in readings indicates the collector couldn't reach the API."""
+        # Readings 1 min apart, then a 10-min gap, then readings resume
+        self._add_reading(db_session, 20, "connected")
+        self._add_reading(db_session, 19, "connected")
+        self._add_reading(db_session, 18, "connected")
+        # 10-minute gap here (WAN was down, collector couldn't reach API)
+        self._add_reading(db_session, 8, "connected")
+        self._add_reading(db_session, 7, "connected")
+        self._add_reading(db_session, 6, "connected")
+        db_session.commit()
+
+        outages = detect_outages(db_session, "net", days=1)
+        gap_outages = [o for o in outages if o.get("type") == "gap"]
+        assert len(gap_outages) == 1
+        assert gap_outages[0]["duration_minutes"] >= 9
 
     def test_no_data_returns_empty(self, db_session):
         outages = detect_outages(db_session, "net", days=1)
