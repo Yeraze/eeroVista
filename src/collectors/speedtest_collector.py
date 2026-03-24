@@ -1,6 +1,7 @@
 """Speedtest collector for passive speedtest result collection."""
 
 import logging
+import re
 from datetime import datetime, timezone
 
 from src.collectors.base import BaseCollector
@@ -62,72 +63,204 @@ class SpeedtestCollector(BaseCollector):
             return {"items_collected": 0, "errors": 1, "networks": 0}
 
     def _collect_for_network(self, network_name: str) -> dict:
-        """Collect speedtest results for a specific network."""
+        """Collect speedtest results for a specific network.
+
+        The eero API returns a list of recent speedtest results at the
+        /speedtest endpoint. We try the eero-client library first, and
+        fall back to a raw API call if the Pydantic model fails to parse.
+        """
         try:
-            # Try to get speedtest results from network client
-            network_client = self.eero_client.get_network_client(network_name)
+            speedtest_list = self._fetch_speedtest_data(network_name)
 
-            if not network_client:
-                logger.warning(f"Network client for '{network_name}' not found")
-                return {"items_collected": 0, "errors": 1}
-
-            # Get speedtest data from network details
-            speedtest_data = network_client.speedtest
-
-            if not speedtest_data:
-                # No speedtest data available
+            if not speedtest_list:
                 logger.debug(f"No speedtest data available for network '{network_name}'")
                 return {"items_collected": 0, "errors": 0}
 
-            # Handle both dict (eero_patch fallback) and Pydantic model
-            if isinstance(speedtest_data, dict):
-                test_date = speedtest_data.get('date')
-                down_data = speedtest_data.get('down') or {}
-                up_data = speedtest_data.get('up') or {}
-                download_mbps = down_data.get('value') if isinstance(down_data, dict) else None
-                upload_mbps = up_data.get('value') if isinstance(up_data, dict) else None
-                latency_ms = speedtest_data.get('latency')
-            else:
-                # Pydantic model
-                test_date = speedtest_data.date
-                download_mbps = speedtest_data.down.value if speedtest_data.down else None
-                upload_mbps = speedtest_data.up.value if speedtest_data.up else None
-                latency_ms = None  # Not typically provided by Eero via model
+            collected = 0
+            for entry in speedtest_list:
+                test_date = self._parse_date(entry.get("date"))
+                download_mbps = entry.get("down_mbps")
+                upload_mbps = entry.get("up_mbps")
 
-            # Check if we already have this speedtest result (to avoid duplicates)
-            if test_date:
-                # Check if we already have a test from this time for this network
+                if not test_date:
+                    continue
+
+                # Deduplicate: check if we already have this exact timestamp
                 existing = (
                     self.db.query(Speedtest)
-                    .filter(Speedtest.network_name == network_name)
-                    .filter(Speedtest.timestamp >= test_date)
+                    .filter(
+                        Speedtest.network_name == network_name,
+                        Speedtest.timestamp == test_date,
+                    )
                     .first()
                 )
-
                 if existing:
-                    # Already have this result
-                    logger.debug(f"Speedtest result for network '{network_name}' already exists")
-                    return {"items_collected": 0, "errors": 0}
+                    continue
 
-            # Create speedtest record
-            speedtest = Speedtest(
-                network_name=network_name,
-                timestamp=test_date if test_date else datetime.now(timezone.utc),
-                download_mbps=download_mbps,
-                upload_mbps=upload_mbps,
-                latency_ms=latency_ms,
-                jitter_ms=None,  # Not typically provided by Eero
-                server_location=None,  # Not in the Speed model
-                isp=None,  # Not in the Speed model
-            )
-            self.db.add(speedtest)
-            self.db.commit()
+                speedtest = Speedtest(
+                    network_name=network_name,
+                    timestamp=test_date,
+                    download_mbps=download_mbps,
+                    upload_mbps=upload_mbps,
+                    latency_ms=None,
+                    jitter_ms=None,
+                    server_location=None,
+                    isp=None,
+                )
+                self.db.add(speedtest)
+                collected += 1
 
-            logger.info(f"Network '{network_name}' speedtest result collected")
-            return {"items_collected": 1, "errors": 0}
+            if collected > 0:
+                self.db.commit()
+                logger.info(
+                    f"Network '{network_name}': {collected} new speedtest result(s) collected"
+                )
+
+            return {"items_collected": collected, "errors": 0}
 
         except Exception as e:
             self.db.rollback()
-            # Speedtest endpoint might not be available or data format might differ
             logger.warning(f"Could not fetch speedtest data for network '{network_name}': {e}")
             return {"items_collected": 0, "errors": 0}
+
+    @staticmethod
+    def _parse_date(date_val) -> datetime:
+        """Parse a date value into a datetime object."""
+        if date_val is None:
+            return None
+        if isinstance(date_val, datetime):
+            return date_val
+        if isinstance(date_val, str):
+            try:
+                # Handle "+0000" timezone format (no colon) by normalizing
+                # "2026-03-24T10:13:10+0000" -> "2026-03-24T10:13:10+00:00"
+                normalized = re.sub(r'([+-])(\d{2})(\d{2})$', r'\1\2:\3', date_val)
+                return datetime.fromisoformat(normalized)
+            except ValueError:
+                pass
+            try:
+                return datetime.strptime(date_val, "%Y-%m-%dT%H:%M:%S%z")
+            except ValueError:
+                pass
+            try:
+                return datetime.strptime(date_val, "%Y-%m-%dT%H:%M:%S")
+            except ValueError:
+                pass
+        logger.warning(f"Could not parse speedtest date: {date_val}")
+        return None
+
+    def _fetch_speedtest_data(self, network_name: str) -> list:
+        """Fetch speedtest results, with raw API fallback.
+
+        Returns a normalized list of dicts with keys: date, down_mbps, up_mbps.
+        """
+        # Try the eero-client library first
+        try:
+            network_client = self.eero_client.get_network_client(network_name)
+            if network_client:
+                speedtest_data = network_client.speedtest
+                if speedtest_data:
+                    return self._normalize_speedtest(speedtest_data)
+        except Exception as e:
+            logger.debug(f"eero-client speedtest failed for '{network_name}': {e}")
+
+        # Fallback: raw API call to /speedtest endpoint
+        return self._fetch_speedtest_raw(network_name)
+
+    def _fetch_speedtest_raw(self, network_name: str) -> list:
+        """Fetch speedtest data via raw HTTP, bypassing eero-client models.
+
+        The speedtest endpoint returns raw JSON without the standard eero
+        meta/data wrapper, so we use requests directly instead of APIClient.
+        """
+        try:
+            import requests
+            from src.eero_client.auth import AuthManager
+
+            am = AuthManager(self.db)
+            token = am.get_session_token()
+            if not token:
+                return []
+
+            session = requests.Session()
+            session.cookies.set('s', token)
+
+            # Get account to find network URL
+            r = session.get('https://api-user.e2ro.com/2.2/account')
+            if not r.ok:
+                return []
+
+            account = r.json()
+            net_data = account.get('data', {}).get('networks', {}).get('data', [])
+
+            net_url = None
+            for net in net_data:
+                if net.get('name') == network_name:
+                    net_url = net.get('url')
+                    break
+
+            if not net_url and net_data:
+                net_url = net_data[0].get('url')
+
+            if not net_url:
+                return []
+
+            # Fetch speedtest results
+            r2 = session.get(f'https://api-user.e2ro.com{net_url}/speedtest')
+            if not r2.ok:
+                return []
+
+            raw = r2.json()
+            # Response may be wrapped in {data: [...]} or be a bare list
+            if isinstance(raw, dict):
+                raw = raw.get('data', raw)
+
+            if isinstance(raw, list):
+                return [
+                    {
+                        "date": entry.get("date"),
+                        "down_mbps": entry.get("down_mbps"),
+                        "up_mbps": entry.get("up_mbps"),
+                    }
+                    for entry in raw
+                    if entry.get("date")
+                ]
+
+            return []
+
+        except Exception as e:
+            logger.debug(f"Raw speedtest API fallback failed for '{network_name}': {e}")
+            return []
+
+    def _normalize_speedtest(self, data) -> list:
+        """Normalize speedtest data from eero-client into standard format."""
+        if isinstance(data, list):
+            results = []
+            for entry in data:
+                if isinstance(entry, dict):
+                    results.append({
+                        "date": entry.get("date"),
+                        "down_mbps": entry.get("down_mbps") or (entry.get("down", {}) or {}).get("value"),
+                        "up_mbps": entry.get("up_mbps") or (entry.get("up", {}) or {}).get("value"),
+                    })
+                else:
+                    results.append({
+                        "date": getattr(entry, "date", None),
+                        "down_mbps": entry.down.value if hasattr(entry, "down") and entry.down else None,
+                        "up_mbps": entry.up.value if hasattr(entry, "up") and entry.up else None,
+                    })
+            return results
+
+        if isinstance(data, dict):
+            return [{
+                "date": data.get("date"),
+                "down_mbps": data.get("down_mbps") or (data.get("down", {}) or {}).get("value"),
+                "up_mbps": data.get("up_mbps") or (data.get("up", {}) or {}).get("value"),
+            }]
+
+        # Pydantic model (single result)
+        return [{
+            "date": getattr(data, "date", None),
+            "down_mbps": data.down.value if hasattr(data, "down") and data.down else None,
+            "up_mbps": data.up.value if hasattr(data, "up") and data.up else None,
+        }]
