@@ -57,7 +57,12 @@ def _count_wan_status(
     start: datetime,
     end: datetime,
 ) -> tuple[int, int]:
-    """Count total and online WAN status readings in a window."""
+    """Count total and online WAN status readings in a window.
+
+    Also accounts for data gaps > GAP_THRESHOLD_MINUTES as downtime.
+    When the WAN is down, the collector can't reach the eero API,
+    so outages appear as gaps in readings rather than offline status values.
+    """
     total = (
         db.query(func.count())
         .select_from(NetworkMetric)
@@ -82,7 +87,29 @@ def _count_wan_status(
         .scalar()
     ) or 0
 
+    # Account for data gaps as downtime.
+    # Each gap > threshold represents missed readings that would have been
+    # collected if WAN was up. Estimate how many readings were missed.
+    gap_outages = _detect_gap_outages(db, network_name, start, end)
+    if gap_outages and total > 0:
+        # Estimate collection interval from actual data
+        window_seconds = (end - start).total_seconds()
+        avg_interval = window_seconds / total if total > 0 else 60
+
+        missed_readings = 0
+        for gap in gap_outages:
+            missed_readings += int(gap["duration_seconds"] / avg_interval)
+
+        total += missed_readings
+        # missed readings count as NOT online
+
     return total, online
+
+
+# Gap detection uses a multiplier of the average collection interval.
+# If the gap between two readings exceeds AVG_INTERVAL * GAP_MULTIPLIER,
+# it's treated as an outage (collector couldn't reach the eero API).
+GAP_MULTIPLIER = 3
 
 
 def detect_outages(
@@ -90,15 +117,18 @@ def detect_outages(
     network_name: str,
     days: int = 30,
 ) -> List[Dict[str, Any]]:
-    """Detect WAN outage events from consecutive offline readings.
+    """Detect WAN outage events from offline readings AND data gaps.
 
-    An outage starts when wan_status != 'connected' and ends when
-    wan_status == 'connected' resumes.
+    Outages are detected two ways:
+    1. Consecutive wan_status != 'online'/'connected' readings
+    2. Gaps > GAP_THRESHOLD_SECONDS between readings (collector couldn't
+       reach the cloud API because WAN was down)
 
     Returns list of outage events with start, end, and duration.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
+    # Status-based outages (original logic)
     readings = (
         db.query(NetworkMetric.timestamp, NetworkMetric.wan_status)
         .filter(
@@ -124,13 +154,13 @@ def detect_outages(
                 "start": outage_start.isoformat(),
                 "end": reading.timestamp.isoformat(),
                 "duration_minutes": round(duration, 1),
+                "type": "status",
             })
             outage_start = None
 
-    # Handle ongoing outage
+    # Handle ongoing status-based outage
     if outage_start is not None:
         now = datetime.now(timezone.utc)
-        # Ensure timezone-aware comparison
         if outage_start.tzinfo is None:
             outage_start = outage_start.replace(tzinfo=timezone.utc)
         duration = (now - outage_start).total_seconds() / 60
@@ -139,9 +169,83 @@ def detect_outages(
             "end": None,
             "duration_minutes": round(duration, 1),
             "ongoing": True,
+            "type": "status",
         })
 
+    # Gap-based outages
+    gap_outages = _detect_gap_outages(db, network_name, cutoff, datetime.now(timezone.utc))
+    for gap in gap_outages:
+        outages.append({
+            "start": gap["start"],
+            "end": gap["end"],
+            "duration_minutes": round(gap["duration_seconds"] / 60, 1),
+            "type": "gap",
+        })
+
+    # Sort by start time and deduplicate overlapping outages
+    outages.sort(key=lambda o: o["start"])
+
     return outages
+
+
+def _detect_gap_outages(
+    db: Session,
+    network_name: str,
+    start: datetime,
+    end: datetime,
+) -> List[Dict[str, Any]]:
+    """Detect outages from gaps in data collection.
+
+    When WAN is down, the collector can't reach the eero cloud API,
+    resulting in gaps between readings. The threshold is dynamically
+    computed as GAP_MULTIPLIER * median interval between readings.
+    """
+    from sqlalchemy import text
+
+    rows = db.execute(text("""
+        SELECT timestamp,
+               LAG(timestamp) OVER (ORDER BY timestamp) as prev_ts
+        FROM network_metrics
+        WHERE network_name = :network
+          AND timestamp >= :start
+          AND timestamp <= :end
+        ORDER BY timestamp
+    """), {"network": network_name, "start": start, "end": end}).fetchall()
+
+    # Compute all intervals to find the median (typical collection interval)
+    intervals = []
+    parsed_rows = []
+    for row in rows:
+        if row[1] is None:
+            continue
+        curr_ts = row[0]
+        prev_ts = row[1]
+        if isinstance(curr_ts, str):
+            curr_ts = datetime.fromisoformat(curr_ts)
+        if isinstance(prev_ts, str):
+            prev_ts = datetime.fromisoformat(prev_ts)
+        gap = (curr_ts - prev_ts).total_seconds()
+        intervals.append(gap)
+        parsed_rows.append((prev_ts, curr_ts, gap))
+
+    if not intervals:
+        return []
+
+    # Use median interval as the baseline (robust against outliers)
+    sorted_intervals = sorted(intervals)
+    median_interval = sorted_intervals[len(sorted_intervals) // 2]
+    threshold = median_interval * GAP_MULTIPLIER
+
+    gaps = []
+    for prev_ts, curr_ts, gap_seconds in parsed_rows:
+        if gap_seconds > threshold:
+            gaps.append({
+                "start": prev_ts.isoformat(),
+                "end": curr_ts.isoformat(),
+                "duration_seconds": gap_seconds,
+            })
+
+    return gaps
 
 
 def get_daily_uptime(
