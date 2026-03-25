@@ -85,12 +85,15 @@ class SpeedtestCollector(BaseCollector):
                 if not test_date:
                     continue
 
+                # Strip timezone for SQLite comparison (DB stores naive datetimes)
+                test_date_naive = test_date.replace(tzinfo=None) if test_date.tzinfo else test_date
+
                 # Deduplicate: check if we already have this exact timestamp
                 existing = (
                     self.db.query(Speedtest)
                     .filter(
                         Speedtest.network_name == network_name,
-                        Speedtest.timestamp == test_date,
+                        Speedtest.timestamp == test_date_naive,
                     )
                     .first()
                 )
@@ -104,7 +107,7 @@ class SpeedtestCollector(BaseCollector):
 
                 speedtest = Speedtest(
                     network_name=network_name,
-                    timestamp=test_date,
+                    timestamp=test_date_naive,
                     download_mbps=download_mbps,
                     upload_mbps=upload_mbps,
                     latency_ms=None,
