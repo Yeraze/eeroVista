@@ -165,12 +165,16 @@ class SpeedtestCollector(BaseCollector):
             if network_client:
                 speedtest_data = network_client.speedtest
                 if speedtest_data:
-                    return self._normalize_speedtest(speedtest_data)
+                    results = self._normalize_speedtest(speedtest_data)
+                    logger.info(f"Speedtest: got {len(results)} results via eero-client for '{network_name}'")
+                    return results
         except Exception as e:
-            logger.debug(f"eero-client speedtest failed for '{network_name}': {e}")
+            logger.info(f"Speedtest: eero-client failed for '{network_name}', trying raw API fallback")
 
         # Fallback: raw API call to /speedtest endpoint
-        return self._fetch_speedtest_raw(network_name)
+        results = self._fetch_speedtest_raw(network_name)
+        logger.info(f"Speedtest: raw API returned {len(results)} results for '{network_name}'")
+        return results
 
     def _fetch_speedtest_raw(self, network_name: str) -> list:
         """Fetch speedtest data via raw HTTP, bypassing eero-client models.
@@ -234,7 +238,7 @@ class SpeedtestCollector(BaseCollector):
             return []
 
         except Exception as e:
-            logger.debug(f"Raw speedtest API fallback failed for '{network_name}': {e}")
+            logger.warning(f"Speedtest: raw API fallback failed for '{network_name}': {e}")
             return []
 
     def _normalize_speedtest(self, data) -> list:
