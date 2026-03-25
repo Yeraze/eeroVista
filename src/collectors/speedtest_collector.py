@@ -170,6 +170,8 @@ class SpeedtestCollector(BaseCollector):
                 if speedtest_data:
                     results = self._normalize_speedtest(speedtest_data)
                     logger.info(f"Speedtest: got {len(results)} results via eero-client for '{network_name}'")
+                    if results:
+                        logger.info(f"Speedtest: first result: {results[0]}")
                     return results
         except Exception as e:
             logger.info(f"Speedtest: eero-client failed for '{network_name}', trying raw API fallback")
@@ -250,10 +252,13 @@ class SpeedtestCollector(BaseCollector):
             results = []
             for entry in data:
                 if isinstance(entry, dict):
+                    # Log first entry's keys for debugging
+                    if not results:
+                        logger.info(f"Speedtest: eero-client dict keys: {list(entry.keys())}")
                     results.append({
                         "date": entry.get("date"),
-                        "down_mbps": entry.get("down_mbps") or (entry.get("down", {}) or {}).get("value"),
-                        "up_mbps": entry.get("up_mbps") or (entry.get("up", {}) or {}).get("value"),
+                        "down_mbps": entry.get("down_mbps", entry.get("down")),
+                        "up_mbps": entry.get("up_mbps", entry.get("up")),
                     })
                 else:
                     results.append({
@@ -264,10 +269,11 @@ class SpeedtestCollector(BaseCollector):
             return results
 
         if isinstance(data, dict):
+            logger.info(f"Speedtest: eero-client single dict keys: {list(data.keys())}")
             return [{
                 "date": data.get("date"),
-                "down_mbps": data.get("down_mbps") or (data.get("down", {}) or {}).get("value"),
-                "up_mbps": data.get("up_mbps") or (data.get("up", {}) or {}).get("value"),
+                "down_mbps": data.get("down_mbps", data.get("down")),
+                "up_mbps": data.get("up_mbps", data.get("up")),
             }]
 
         # Pydantic model (single result)
