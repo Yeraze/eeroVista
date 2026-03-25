@@ -224,6 +224,11 @@ def _detect_gap_outages(
             curr_ts = datetime.fromisoformat(curr_ts)
         if isinstance(prev_ts, str):
             prev_ts = datetime.fromisoformat(prev_ts)
+        # Ensure both are timezone-aware (SQLite returns naive datetimes)
+        if curr_ts.tzinfo is None:
+            curr_ts = curr_ts.replace(tzinfo=timezone.utc)
+        if prev_ts.tzinfo is None:
+            prev_ts = prev_ts.replace(tzinfo=timezone.utc)
         gap = (curr_ts - prev_ts).total_seconds()
         intervals.append(gap)
         parsed_rows.append((prev_ts, curr_ts, gap))
@@ -248,6 +253,13 @@ def _detect_gap_outages(
     return gaps
 
 
+def _ensure_aware(dt: datetime) -> datetime:
+    """Ensure a datetime is timezone-aware (assume UTC if naive)."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def get_daily_uptime(
     db: Session,
     network_name: str,
@@ -260,6 +272,9 @@ def get_daily_uptime(
     today = date.today()
     daily = []
 
+    # Pre-fetch outages once instead of per-day
+    outages = detect_outages(db, network_name, days=days)
+
     for d in range(days - 1, -1, -1):
         day = today - timedelta(days=d)
         day_start = datetime.combine(day, datetime.min.time()).replace(tzinfo=timezone.utc)
@@ -269,11 +284,10 @@ def get_daily_uptime(
         pct = round(online / total * 100, 2) if total > 0 else None
 
         # Count outages that overlap this day
-        outages = detect_outages(db, network_name, days=days)
         day_outages = 0
         for o in outages:
-            o_start = datetime.fromisoformat(o["start"])
-            o_end = datetime.fromisoformat(o["end"]) if o.get("end") else datetime.now(timezone.utc)
+            o_start = _ensure_aware(datetime.fromisoformat(o["start"]))
+            o_end = _ensure_aware(datetime.fromisoformat(o["end"])) if o.get("end") else datetime.now(timezone.utc)
             if o_start < day_end and o_end > day_start:
                 day_outages += 1
 
