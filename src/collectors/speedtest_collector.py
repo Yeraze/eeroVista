@@ -261,11 +261,8 @@ class SpeedtestCollector(BaseCollector):
                         "up_mbps": entry.get("up_mbps", entry.get("up")),
                     })
                 else:
-                    results.append({
-                        "date": getattr(entry, "date", None),
-                        "down_mbps": entry.down.value if hasattr(entry, "down") and entry.down else None,
-                        "up_mbps": entry.up.value if hasattr(entry, "up") and entry.up else None,
-                    })
+                    # Pydantic model - could be Speedtest (up_mbps/down_mbps) or Speed (up.value/down.value)
+                    results.append(self._extract_speed_fields(entry))
             return results
 
         if isinstance(data, dict):
@@ -276,9 +273,22 @@ class SpeedtestCollector(BaseCollector):
                 "up_mbps": data.get("up_mbps", data.get("up")),
             }]
 
-        # Pydantic model (single result)
-        return [{
-            "date": getattr(data, "date", None),
-            "down_mbps": data.down.value if hasattr(data, "down") and data.down else None,
-            "up_mbps": data.up.value if hasattr(data, "up") and data.up else None,
-        }]
+        # Single Pydantic model
+        return [self._extract_speed_fields(data)]
+
+    @staticmethod
+    def _extract_speed_fields(entry) -> dict:
+        """Extract speed fields from a Pydantic model (Speedtest or Speed)."""
+        date = getattr(entry, "date", None)
+
+        # Try Speedtest model fields first (up_mbps, down_mbps)
+        down = getattr(entry, "down_mbps", None)
+        up = getattr(entry, "up_mbps", None)
+
+        # Fall back to Speed model fields (down.value, up.value)
+        if down is None and hasattr(entry, "down") and entry.down:
+            down = getattr(entry.down, "value", None)
+        if up is None and hasattr(entry, "up") and entry.up:
+            up = getattr(entry.up, "value", None)
+
+        return {"date": date, "down_mbps": down, "up_mbps": up}
