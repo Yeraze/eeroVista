@@ -95,6 +95,11 @@ class SpeedtestCollector(BaseCollector):
                     .first()
                 )
                 if existing:
+                    # If existing record has NULL values, update it with real data
+                    if existing.download_mbps is None and download_mbps is not None:
+                        existing.download_mbps = download_mbps
+                        existing.upload_mbps = upload_mbps
+                        collected += 1
                     continue
 
                 speedtest = Speedtest(
