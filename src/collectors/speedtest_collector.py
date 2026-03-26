@@ -170,6 +170,8 @@ class SpeedtestCollector(BaseCollector):
                 if speedtest_data:
                     results = self._normalize_speedtest(speedtest_data)
                     logger.info(f"Speedtest: got {len(results)} results via eero-client for '{network_name}'")
+                    if results:
+                        logger.info(f"Speedtest: first result: {results[0]}")
                     return results
         except Exception as e:
             logger.info(f"Speedtest: eero-client failed for '{network_name}', trying raw API fallback")
@@ -250,29 +252,43 @@ class SpeedtestCollector(BaseCollector):
             results = []
             for entry in data:
                 if isinstance(entry, dict):
+                    # Log first entry's keys for debugging
+                    if not results:
+                        logger.info(f"Speedtest: eero-client dict keys: {list(entry.keys())}")
                     results.append({
                         "date": entry.get("date"),
-                        "down_mbps": entry.get("down_mbps") or (entry.get("down", {}) or {}).get("value"),
-                        "up_mbps": entry.get("up_mbps") or (entry.get("up", {}) or {}).get("value"),
+                        "down_mbps": entry.get("down_mbps", entry.get("down")),
+                        "up_mbps": entry.get("up_mbps", entry.get("up")),
                     })
                 else:
-                    results.append({
-                        "date": getattr(entry, "date", None),
-                        "down_mbps": entry.down.value if hasattr(entry, "down") and entry.down else None,
-                        "up_mbps": entry.up.value if hasattr(entry, "up") and entry.up else None,
-                    })
+                    # Pydantic model - could be Speedtest (up_mbps/down_mbps) or Speed (up.value/down.value)
+                    results.append(self._extract_speed_fields(entry))
             return results
 
         if isinstance(data, dict):
+            logger.info(f"Speedtest: eero-client single dict keys: {list(data.keys())}")
             return [{
                 "date": data.get("date"),
-                "down_mbps": data.get("down_mbps") or (data.get("down", {}) or {}).get("value"),
-                "up_mbps": data.get("up_mbps") or (data.get("up", {}) or {}).get("value"),
+                "down_mbps": data.get("down_mbps", data.get("down")),
+                "up_mbps": data.get("up_mbps", data.get("up")),
             }]
 
-        # Pydantic model (single result)
-        return [{
-            "date": getattr(data, "date", None),
-            "down_mbps": data.down.value if hasattr(data, "down") and data.down else None,
-            "up_mbps": data.up.value if hasattr(data, "up") and data.up else None,
-        }]
+        # Single Pydantic model
+        return [self._extract_speed_fields(data)]
+
+    @staticmethod
+    def _extract_speed_fields(entry) -> dict:
+        """Extract speed fields from a Pydantic model (Speedtest or Speed)."""
+        date = getattr(entry, "date", None)
+
+        # Try Speedtest model fields first (up_mbps, down_mbps)
+        down = getattr(entry, "down_mbps", None)
+        up = getattr(entry, "up_mbps", None)
+
+        # Fall back to Speed model fields (down.value, up.value)
+        if down is None and hasattr(entry, "down") and entry.down:
+            down = getattr(entry.down, "value", None)
+        if up is None and hasattr(entry, "up") and entry.up:
+            up = getattr(entry.up, "value", None)
+
+        return {"date": date, "down_mbps": down, "up_mbps": up}
