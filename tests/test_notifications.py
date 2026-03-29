@@ -134,13 +134,18 @@ class TestNotificationService:
         db_session.add(node)
         db_session.commit()
 
-        # Add a metric record showing the node is offline
-        metric = EeroNodeMetric(
+        # Add two consecutive offline metric records (debounce requires 2+)
+        metric1 = EeroNodeMetric(
+            eero_node_id=node.id,
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=1),
+            status="offline",
+        )
+        metric2 = EeroNodeMetric(
             eero_node_id=node.id,
             timestamp=datetime.now(timezone.utc),
             status="offline",
         )
-        db_session.add(metric)
+        db_session.add_all([metric1, metric2])
         db_session.commit()
 
         # Create an offline rule
@@ -169,12 +174,17 @@ class TestNotificationService:
         db_session.add(node)
         db_session.commit()
 
-        metric = EeroNodeMetric(
+        metric1 = EeroNodeMetric(
+            eero_node_id=node.id,
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=1),
+            status="offline",
+        )
+        metric2 = EeroNodeMetric(
             eero_node_id=node.id,
             timestamp=datetime.now(timezone.utc),
             status="offline",
         )
-        db_session.add(metric)
+        db_session.add_all([metric1, metric2])
         db_session.commit()
 
         rule = NotificationRule(
@@ -196,7 +206,7 @@ class TestNotificationService:
         service._apprise.notify.assert_not_called()
 
     def test_node_online_resolves(self, db_session, config):
-        """A node coming back online should resolve the event."""
+        """A node coming back online should resolve the event and send recovery notification."""
         node = EeroNode(
             network_name="home",
             eero_id="node1",
@@ -206,12 +216,18 @@ class TestNotificationService:
         db_session.add(node)
         db_session.commit()
 
-        metric = EeroNodeMetric(
+        # Two consecutive offline readings (debounce requires 2+)
+        metric1 = EeroNodeMetric(
+            eero_node_id=node.id,
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=6),
+            status="offline",
+        )
+        metric2 = EeroNodeMetric(
             eero_node_id=node.id,
             timestamp=datetime.now(timezone.utc) - timedelta(minutes=5),
             status="offline",
         )
-        db_session.add(metric)
+        db_session.add_all([metric1, metric2])
         db_session.commit()
 
         rule = NotificationRule(
@@ -235,11 +251,24 @@ class TestNotificationService:
         db_session.add(metric_online)
         db_session.commit()
 
+        service._apprise.notify.reset_mock()
         service.check_all_rules()
 
-        # History entry should be resolved
-        history = db_session.query(NotificationHistory).first()
+        # Original offline history entry should be resolved
+        history = db_session.query(NotificationHistory).filter(
+            NotificationHistory.event_key == f"node_offline:{node.id}",
+        ).first()
         assert history.resolved_at is not None
+
+        # Recovery notification should have been sent
+        recovery = db_session.query(NotificationHistory).filter(
+            NotificationHistory.event_key.like("%recovered"),
+        ).first()
+        assert recovery is not None
+        assert "back online" in recovery.message
+
+        # Apprise should have been called for the recovery
+        service._apprise.notify.assert_called_once()
 
     def test_new_device_detection(self, db_session, config):
         # Create a rule first
@@ -427,7 +456,7 @@ class TestNotificationService:
         service._apprise.notify.assert_called_once()
 
     def test_device_offline_detection(self, db_session, config):
-        """Device with is_connected=False should trigger offline notification."""
+        """Device with 2+ consecutive is_connected=False should trigger offline notification."""
         device = Device(
             network_name="home",
             mac_address="aa:bb:cc:dd:ee:ff",
@@ -437,14 +466,20 @@ class TestNotificationService:
         db_session.add(device)
         db_session.commit()
 
-        # Latest connection shows device disconnected
-        conn = DeviceConnection(
+        # Two consecutive disconnected readings (debounce requires 2+)
+        conn1 = DeviceConnection(
+            device_id=device.id,
+            network_name="home",
+            is_connected=False,
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=1),
+        )
+        conn2 = DeviceConnection(
             device_id=device.id,
             network_name="home",
             is_connected=False,
             timestamp=datetime.now(timezone.utc),
         )
-        db_session.add(conn)
+        db_session.add_all([conn1, conn2])
         db_session.commit()
 
         rule = NotificationRule(
@@ -462,7 +497,7 @@ class TestNotificationService:
         service._apprise.notify.assert_called_once()
 
     def test_device_offline_no_connection_record(self, db_session, config):
-        """Device with no connection records should trigger offline notification."""
+        """Device with no connection records should NOT trigger (need 2+ readings to confirm)."""
         device = Device(
             network_name="home",
             mac_address="aa:bb:cc:dd:ee:ff",
@@ -482,7 +517,7 @@ class TestNotificationService:
 
         service = self._make_service(db_session, config)
         result = service.check_all_rules()
-        assert result["notifications_sent"] == 1
+        assert result["notifications_sent"] == 0
 
     def test_device_offline_online_device_no_alert(self, db_session, config):
         """Device with is_connected=True should not trigger notification."""
@@ -518,7 +553,7 @@ class TestNotificationService:
         assert result["notifications_sent"] == 0
 
     def test_device_offline_resolves_when_online(self, db_session, config):
-        """Device coming back online should resolve the event."""
+        """Device coming back online should resolve the event and send recovery notification."""
         device = Device(
             network_name="home",
             mac_address="aa:bb:cc:dd:ee:ff",
@@ -528,14 +563,20 @@ class TestNotificationService:
         db_session.add(device)
         db_session.commit()
 
-        # Start disconnected
-        conn = DeviceConnection(
+        # Two consecutive disconnected readings (debounce requires 2+)
+        conn1 = DeviceConnection(
+            device_id=device.id,
+            network_name="home",
+            is_connected=False,
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=3),
+        )
+        conn2 = DeviceConnection(
             device_id=device.id,
             network_name="home",
             is_connected=False,
             timestamp=datetime.now(timezone.utc) - timedelta(minutes=2),
         )
-        db_session.add(conn)
+        db_session.add_all([conn1, conn2])
         db_session.commit()
 
         rule = NotificationRule(
@@ -551,19 +592,30 @@ class TestNotificationService:
         service.check_all_rules()
 
         # Device comes back online - new connection record
-        conn2 = DeviceConnection(
+        conn3 = DeviceConnection(
             device_id=device.id,
             network_name="home",
             is_connected=True,
             timestamp=datetime.now(timezone.utc),
         )
-        db_session.add(conn2)
+        db_session.add(conn3)
         db_session.commit()
 
+        service._apprise.notify.reset_mock()
         service.check_all_rules()
 
-        history = db_session.query(NotificationHistory).first()
+        # Original offline history entry should be resolved
+        history = db_session.query(NotificationHistory).filter(
+            NotificationHistory.event_key == f"device_offline:{device.id}",
+        ).first()
         assert history.resolved_at is not None
+
+        # Recovery notification should have been sent
+        recovery = db_session.query(NotificationHistory).filter(
+            NotificationHistory.event_key.like("%recovered"),
+        ).first()
+        assert recovery is not None
+        assert "back online" in recovery.message
 
     def test_disabled_rule_skipped(self, db_session, config):
         """Disabled rules should not be checked."""
