@@ -138,8 +138,68 @@ class NotificationService:
         if active:
             self.db.commit()
 
+    def _resolve_cleared_with_recovery(self, rule: NotificationRule, current_event_keys: set, entity_type: str) -> int:
+        """Mark resolved any active events that are no longer occurring and send recovery notifications.
+
+        Args:
+            rule: The notification rule.
+            current_event_keys: Set of event keys that are still active (offline).
+            entity_type: 'node' or 'device' for the notification title.
+
+        Returns:
+            Number of recovery notifications sent.
+        """
+        active = self.db.query(NotificationHistory).filter(
+            NotificationHistory.rule_id == rule.id,
+            NotificationHistory.resolved_at.is_(None),
+        ).all()
+
+        now = datetime.now(timezone.utc)
+        sent = 0
+
+        for entry in active:
+            if entry.event_key not in current_event_keys:
+                entry.resolved_at = now
+
+                # Send recovery notification
+                # Extract the entity name from the original message
+                original_name = self._extract_name_from_message(entry.message)
+                title = f"eeroVista: {'Node' if entity_type == 'node' else 'Device'} Back Online"
+                body = f"{original_name} is back online"
+                if self._send(title, body):
+                    # Record the recovery notification (resolved immediately)
+                    recovery_key = f"{entry.event_key}:recovered"
+                    recovery = NotificationHistory(
+                        rule_id=rule.id,
+                        event_key=recovery_key,
+                        message=body,
+                        resolved_at=now,
+                    )
+                    self.db.add(recovery)
+                    sent += 1
+
+        if active:
+            self.db.commit()
+
+        return sent
+
+    @staticmethod
+    def _extract_name_from_message(message: str) -> str:
+        """Extract entity name from an offline notification message.
+
+        Messages look like:
+          "Eero node 'Living Room' has been offline since ..."
+          "Device 'MyPhone' (AA:BB:CC:DD:EE:FF) has been offline since ..."
+        """
+        match = re.search(r"'([^']+)'", message or "")
+        return match.group(1) if match else "Unknown"
+
     def _check_node_offline(self, rule: NotificationRule) -> int:
-        """Check for offline eero nodes using the latest metric status."""
+        """Check for offline eero nodes using the latest metric status.
+
+        Requires 2+ consecutive offline readings to suppress transient blips.
+        Sends a recovery notification when a node comes back online.
+        """
         config = json.loads(rule.config_json)
         node_ids = config.get("node_ids", [])
 
@@ -155,12 +215,17 @@ class NotificationService:
         current_keys = set()
 
         for node in nodes:
-            # Get the latest metric record for this node
-            latest_metric = self.db.query(EeroNodeMetric).filter(
+            # Get the two most recent metric records for this node
+            recent_metrics = self.db.query(EeroNodeMetric).filter(
                 EeroNodeMetric.eero_node_id == node.id,
-            ).order_by(EeroNodeMetric.timestamp.desc()).first()
+            ).order_by(EeroNodeMetric.timestamp.desc()).limit(2).all()
 
-            is_offline = latest_metric is None or latest_metric.status != "online"
+            # Require 2 consecutive offline readings to debounce
+            is_offline = (
+                len(recent_metrics) >= 2
+                and recent_metrics[0].status != "online"
+                and recent_metrics[1].status != "online"
+            )
             event_key = f"node_offline:{node.id}"
 
             if is_offline:
@@ -172,7 +237,7 @@ class NotificationService:
                         self._record_notification(rule, event_key, body)
                         sent += 1
 
-        self._resolve_cleared(rule, current_keys)
+        sent += self._resolve_cleared_with_recovery(rule, current_keys, "node")
         return sent
 
     def _check_high_bandwidth(self, rule: NotificationRule) -> int:
@@ -293,7 +358,11 @@ class NotificationService:
         return sent
 
     def _check_device_offline(self, rule: NotificationRule) -> int:
-        """Check for offline devices based on latest collection status."""
+        """Check for offline devices based on latest collection status.
+
+        Requires 2+ consecutive offline readings to suppress transient blips.
+        Sends a recovery notification when a device comes back online.
+        """
         config = json.loads(rule.config_json)
         device_ids = config.get("device_ids", [])
 
@@ -309,13 +378,18 @@ class NotificationService:
         current_keys = set()
 
         for device in devices:
-            # Check the most recent connection record for this device
-            latest_conn = self.db.query(DeviceConnection).filter(
+            # Get the two most recent connection records for this device
+            recent_conns = self.db.query(DeviceConnection).filter(
                 DeviceConnection.device_id == device.id,
                 DeviceConnection.network_name == rule.network_name,
-            ).order_by(DeviceConnection.timestamp.desc()).first()
+            ).order_by(DeviceConnection.timestamp.desc()).limit(2).all()
 
-            is_offline = latest_conn is None or not latest_conn.is_connected
+            # Require 2 consecutive offline readings to debounce
+            is_offline = (
+                len(recent_conns) >= 2
+                and not recent_conns[0].is_connected
+                and not recent_conns[1].is_connected
+            )
             event_key = f"device_offline:{device.id}"
 
             if is_offline:
@@ -328,7 +402,7 @@ class NotificationService:
                         self._record_notification(rule, event_key, body)
                         sent += 1
 
-        self._resolve_cleared(rule, current_keys)
+        sent += self._resolve_cleared_with_recovery(rule, current_keys, "device")
         return sent
 
     def send_test(self, message: str = "This is a test notification from eeroVista") -> bool:
