@@ -2,11 +2,13 @@
 
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
+import sqlalchemy
+from sqlalchemy import Integer, extract, func
 from sqlalchemy.orm import Session
 
 from src.eero_client import EeroClientWrapper
@@ -516,12 +518,10 @@ async def get_device_bandwidth_total(
         if not network_name:
             raise HTTPException(status_code=404, detail="No network available")
 
-        from datetime import timedelta, date
         from src.config import get_settings
-        from zoneinfo import ZoneInfo
 
         with get_db_context() as db:
-            from src.models.database import Device, DailyBandwidth
+            from src.models.database import DailyBandwidth, Device
 
             # Find device in this network
             device = db.query(Device).filter(
@@ -637,9 +637,7 @@ async def get_network_bandwidth_total(
                 "daily_breakdown": []
             }
 
-        from datetime import timedelta, date
         from src.config import get_settings
-        from zoneinfo import ZoneInfo
 
         with get_db_context() as db:
             from src.models.database import DailyBandwidth
@@ -657,12 +655,11 @@ async def get_network_bandwidth_total(
 
             # Fetch and aggregate records from database for this network
             # Sum up all device bandwidth by date (includes both per-device and network-wide totals)
-            from sqlalchemy import func as sql_func
             daily_aggregates = (
                 db.query(
                     DailyBandwidth.date,
-                    sql_func.sum(DailyBandwidth.download_mb).label('download_mb'),
-                    sql_func.sum(DailyBandwidth.upload_mb).label('upload_mb')
+                    func.sum(DailyBandwidth.download_mb).label('download_mb'),
+                    func.sum(DailyBandwidth.upload_mb).label('upload_mb')
                 )
                 .filter(
                     DailyBandwidth.network_name == network_name,
@@ -783,10 +780,7 @@ async def get_network_bandwidth_top_devices(
                 "other": {"name": "Other Devices", "device_count": 0, "total_mb": 0, "daily_download": [], "daily_upload": []}
             }
 
-        from datetime import timedelta
-        from sqlalchemy import func
         from src.config import get_settings
-        from zoneinfo import ZoneInfo
 
         with get_db_context() as db:
             from src.models.database import DailyBandwidth, Device, DeviceGroup, DeviceGroupMember
@@ -920,7 +914,7 @@ async def get_network_bandwidth_top_devices(
                     func.sum(DailyBandwidth.upload_mb).label('upload')
                 )
                 .filter(
-                    DailyBandwidth.device_id.notin_(top_device_ids) if top_device_ids else True,
+                    DailyBandwidth.device_id.notin_(top_device_ids) if top_device_ids else sqlalchemy.true(),
                     DailyBandwidth.device_id.isnot(None),  # Exclude network-wide totals
                     DailyBandwidth.date >= since_date
                 )
@@ -988,10 +982,7 @@ async def get_network_bandwidth_hourly(
                 "hourly_breakdown": []
             }
 
-        from datetime import timedelta
-        from sqlalchemy import func, extract, Integer
         from src.config import get_settings
-        from zoneinfo import ZoneInfo
 
         settings = get_settings()
         tz = settings.get_timezone()

@@ -55,43 +55,6 @@ def db_session():
 # ---------------------------------------------------------------------------
 
 
-def _make_test_client(db_session, networks=None, raise_exc=False):
-    """Build a fully-patched TestClient.
-
-    Patches:
-    - ``src.main.init_database`` / ``ensure_data_directory`` / ``get_scheduler``
-      so the lifespan does not touch the filesystem or start background jobs.
-    - ``src.api.health.analytics.get_db_context`` to use the in-memory session.
-    - The ``get_eero_client`` FastAPI dependency to return a mock that reports
-      *networks*.  Pass an empty list to simulate "no networks".
-    """
-    from src.main import app
-    from src.api.health.models import get_eero_client
-
-    # Build mock eero client
-    mock_eero = MagicMock()
-    if networks is None:
-        net = MagicMock()
-        net.name = "test-net"
-        mock_eero.get_networks.return_value = [net]
-    else:
-        mock_eero.get_networks.return_value = networks
-
-    @contextmanager
-    def _db_ctx():
-        yield db_session
-
-    app.dependency_overrides[get_eero_client] = lambda: mock_eero
-
-    stack = (
-        patch("src.api.health.analytics.get_db_context", side_effect=_db_ctx),
-        patch("src.main.init_database"),
-        patch("src.main.ensure_data_directory"),
-        patch("src.main.get_scheduler"),
-    )
-    return stack, app
-
-
 class _PatchedClient:
     """Context manager wrapping a TestClient with all required patches active."""
 

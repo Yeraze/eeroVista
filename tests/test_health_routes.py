@@ -242,31 +242,6 @@ def sample_data(db_session):
 
 
 # ---------------------------------------------------------------------------
-# Helper to build a TestClient with dependencies overridden
-# ---------------------------------------------------------------------------
-
-
-def make_client(mock_eero_client, db_session_override):
-    """
-    Return a FastAPI TestClient with get_eero_client and get_db overridden.
-
-    The routes use two injection strategies:
-    - FastAPI Depends(get_eero_client) / Depends(get_db)  -> override via app.dependency_overrides
-    - get_db_context() context manager called directly inside route bodies -> patch via unittest.mock
-    """
-    from src.main import app
-    from src.api.health.models import get_eero_client
-    from src.utils.database import get_db
-
-    app.dependency_overrides[get_eero_client] = lambda: mock_eero_client
-    app.dependency_overrides[get_db] = lambda: db_session_override
-
-    client = TestClient(app, raise_server_exceptions=False)
-    yield client
-
-    app.dependency_overrides.clear()
-
-
 # ---------------------------------------------------------------------------
 # Tests: /api/health
 # ---------------------------------------------------------------------------
