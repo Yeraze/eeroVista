@@ -46,6 +46,7 @@ A read-only web-based monitoring tool for Eero mesh networks.
 - [Getting Started Guide](getting-started.md)
 - [Configuration Reference](configuration.md)
 - [API Documentation](api-reference.md)
+- [Reverse Proxy & HTTPS](reverse-proxy.md)
 - [Prometheus Integration](prometheus.md)
 - [Zabbix Integration](zabbix.md)
 - [Development Guide](development.md)

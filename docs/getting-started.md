@@ -230,6 +230,7 @@ Notification rules are evaluated every 60 seconds (configurable via `NOTIFICATIO
 ## Next Steps
 
 - [Configure notifications](api-reference.md#notification-endpoints) for network alerts
+- [Set up HTTPS with a reverse proxy](reverse-proxy.md) for secure access
 - [Configure Prometheus](prometheus.md) to scrape metrics
 - [Set up Zabbix](zabbix.md) monitoring
 - [Explore the API](api-reference.md) for custom integrations
