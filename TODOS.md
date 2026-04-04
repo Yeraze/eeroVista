@@ -2,17 +2,37 @@
 
 ## Pending Features
 
-(No pending features at this time)
+- [ ] MQTT / Home Assistant Integration (GitHub #78)
+  - Publish device status, network metrics, speedtest results via MQTT
+  - Home Assistant auto-discovery protocol support
+  - Configurable via environment variables (broker, port, topic prefix, credentials)
+  - Disabled by default
+
+- [ ] CSV Export Functionality
+  - Export device lists, bandwidth data, speedtest history to CSV
+  - Downloadable from web UI
+
+- [ ] Advanced Device Filtering
+  - Filter by connection type, signal strength, manufacturer
+  - Saved filter presets
+
+- [ ] HTTPS / Reverse Proxy Documentation
+  - Nginx and Traefik example configurations
+  - docker-compose.yml with TLS termination
 
 ## In Progress
 
-- [ ] Collector Timeout Protection (2026-01-17)
+(No items currently in progress)
+
+## Completed
+- [x] Collector Timeout Protection (2026-01-17)
   - Added 60-second timeout to all collector jobs to prevent indefinite hangs
   - Collectors now track running state to prevent job pileup
   - Timeout errors are logged and reported in health status
   - Health status now shows "currently_running" flag for debugging
-
-## Completed
+- [x] Offline Notification Debounce & Recovery Alerts - PR #106 (2026-03-29)
+  - Debounce offline notifications to reduce noise from transient disconnects
+  - Added recovery alerts when devices come back online
 - [x] Update Notification Feature (2025-11-14)
   - Added GitHub release checking API endpoint at `/api/check-update`
   - Hourly rate limiting to prevent spamming GitHub API (1-hour cache)
@@ -64,7 +84,7 @@
     - Corrects legacy data by matching devices/nodes between database and current API state
     - Preserves historical data: updates device_id references via MAC matching before cleanup
     - **Preserves aliases**: copies DNS aliases from old devices to new devices before deletion
-    - Tested with production database: 682,850 connections + 392 bandwidth records + 4 devices with aliases preserved ✓
+    - Tested with production database: 682,850 connections + 392 bandwidth records + 4 devices with aliases preserved
     - Prevents duplicate devices by skipping 'default' updates, deleting them after reference updates
   - Collectors: Updated device, network, speedtest, and routing collectors for multi-network support
   - API endpoints: Added optional ?network= query parameter to 20+ endpoints with backward compatibility
@@ -160,4 +180,4 @@
 
 ---
 
-*Last updated: 2025-11-01*
+*Last updated: 2026-04-04*
