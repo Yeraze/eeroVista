@@ -12,6 +12,7 @@ from src.models.database import (
 from src.services.health_score_service import (
     _signal_to_score,
     compute_health_score,
+    compute_health_history,
 )
 
 
@@ -153,3 +154,65 @@ class TestHealthScore:
         for comp in result["components"].values():
             assert "score" in comp
             assert "weight" in comp
+
+
+class TestHealthHistory:
+    @pytest.fixture
+    def db_session(self):
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+        )
+        Base.metadata.create_all(engine)
+        SessionLocal = sessionmaker(bind=engine)
+        session = SessionLocal()
+        yield session
+        session.close()
+
+    def test_empty_db_returns_empty_history(self, db_session):
+        result = compute_health_history(db_session, "net", hours=2)
+        assert result == []
+
+    def test_history_with_data(self, db_session):
+        now = datetime.now(timezone.utc)
+        # Add WAN metrics for the last hour
+        for i in range(6):
+            db_session.add(NetworkMetric(
+                network_name="net",
+                timestamp=now - timedelta(minutes=i * 10),
+                wan_status="connected",
+                total_devices=5,
+                total_devices_online=5,
+            ))
+        db_session.commit()
+
+        result = compute_health_history(db_session, "net", hours=2)
+        assert len(result) >= 1
+        for entry in result:
+            assert "timestamp" in entry
+            assert "score" in entry
+            assert entry["score"] == 100.0
+
+    def test_history_mixed_wan_status(self, db_session):
+        now = datetime.now(timezone.utc)
+        # Add 2 connected + 2 disconnected in the last hour
+        for i in range(4):
+            db_session.add(NetworkMetric(
+                network_name="net",
+                timestamp=now - timedelta(minutes=i * 10),
+                wan_status="connected" if i < 2 else "disconnected",
+                total_devices=5,
+                total_devices_online=5,
+            ))
+        db_session.commit()
+
+        result = compute_health_history(db_session, "net", hours=2)
+        assert len(result) >= 1
+        # Should have a score around 50
+        scores = [e["score"] for e in result]
+        assert any(s == 50.0 for s in scores)
+
+    def test_history_respects_hours_param(self, db_session):
+        """With small hours param, should only look back that far."""
+        result = compute_health_history(db_session, "net", hours=1)
+        assert isinstance(result, list)
