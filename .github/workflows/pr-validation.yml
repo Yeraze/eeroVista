@@ -36,7 +36,7 @@ jobs:
 
       - name: Run mypy type check
         run: |
-          mypy src/ --ignore-missing-imports --no-error-summary || echo "::warning::Type checking issues found, but not blocking PR"
+          mypy src/ --ignore-missing-imports || echo "::warning::Type checking issues found, but not blocking PR"
 
   test:
     name: Unit Tests
