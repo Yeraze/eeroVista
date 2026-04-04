@@ -38,6 +38,16 @@ services:
 
       # Encryption key for secure token storage (persists across restarts)
       - ENCRYPTION_KEY=wOEc1gXtSGN9IcwaOduptVKt9HRnJRz6Ab1QNWOhRdQ=
+
+      # MQTT / Home Assistant integration (disabled by default)
+      # - MQTT_ENABLED=true
+      # - MQTT_BROKER=192.168.1.100
+      # - MQTT_PORT=1883
+      # - MQTT_USERNAME=
+      # - MQTT_PASSWORD=
+      # - MQTT_TOPIC_PREFIX=eerovista
+      # - MQTT_DISCOVERY_PREFIX=homeassistant
+      # - MQTT_PUBLISH_INTERVAL=60
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 30s

@@ -28,6 +28,7 @@ class CollectorScheduler:
         self.scheduler: Optional[AsyncIOScheduler] = None
         self.settings = get_settings()
         self._migrations_retried = False  # Track if we've retried auth-dependent migrations
+        self._mqtt_publisher = None  # Initialized on start if MQTT enabled
         self._consecutive_failures = {
             "device_collector": 0,
             "network_collector": 0,
@@ -119,6 +120,21 @@ class CollectorScheduler:
             replace_existing=True,
         )
 
+        # MQTT publisher (if enabled)
+        if self.settings.mqtt_enabled:
+            self._init_mqtt()
+            mqtt_interval = self.settings.mqtt_publish_interval
+            self.scheduler.add_job(
+                func=self._run_mqtt_publisher,
+                trigger=IntervalTrigger(seconds=mqtt_interval),
+                id="mqtt_publisher",
+                name="MQTT Publisher",
+                replace_existing=True,
+            )
+            self._consecutive_failures["mqtt_publisher"] = 0
+            self._running_collectors["mqtt_publisher"] = False
+            logger.info(f"MQTT publisher registered: {mqtt_interval}s interval")
+
         # Start the scheduler
         self.scheduler.start()
         logger.info(
@@ -204,6 +220,11 @@ class CollectorScheduler:
             logger.info("Stopping collector scheduler")
             self.scheduler.shutdown()
             self.scheduler = None
+
+        # Disconnect MQTT client
+        if self._mqtt_publisher and self._mqtt_publisher._client:
+            logger.info("Disconnecting MQTT client")
+            self._mqtt_publisher._client.disconnect()
 
         # Shutdown the thread pool executor, waiting for in-flight operations
         # to complete to avoid data corruption from interrupted transactions
@@ -401,6 +422,48 @@ class CollectorScheduler:
 
         except Exception as e:
             logger.error(f"Notification checker error: {e}", exc_info=True)
+            self._record_failure(collector_id, str(e))
+
+    def _init_mqtt(self) -> None:
+        """Initialize MQTT client and publisher."""
+        from src.mqtt.client import MQTTClient
+        from src.mqtt.publisher import MQTTPublisher
+
+        mqtt_client = MQTTClient(self.settings)
+        self._mqtt_publisher = MQTTPublisher(mqtt_client, self.settings)
+        logger.info(
+            f"MQTT initialized: broker={self.settings.mqtt_broker}:{self.settings.mqtt_port}"
+        )
+
+    def _run_mqtt_publisher(self) -> None:
+        """Run the MQTT publisher with timeout protection."""
+        if not self._mqtt_publisher:
+            return
+
+        collector_id = "mqtt_publisher"
+
+        def _do_publish():
+            with get_db_context() as db:
+                return self._mqtt_publisher.publish(db)
+
+        try:
+            result = self._run_with_timeout(collector_id, _do_publish, timeout=30)
+
+            if result.get("skipped"):
+                return
+
+            if result.get("success"):
+                items = result.get("items_published", 0)
+                if items > 0:
+                    logger.debug(f"MQTT publish complete: {items} messages")
+                self._record_success(collector_id)
+            else:
+                error = result.get("error", "Unknown error")
+                logger.error(f"MQTT publish failed: {error}")
+                self._record_failure(collector_id, error)
+
+        except Exception as e:
+            logger.error(f"MQTT publisher error: {e}", exc_info=True)
             self._record_failure(collector_id, str(e))
 
     def _run_database_cleanup(self) -> None:
