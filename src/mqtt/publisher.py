@@ -37,6 +37,10 @@ class MQTTPublisher:
         self._prefix = settings.mqtt_topic_prefix
         self._discovery_prefix = settings.mqtt_discovery_prefix
 
+    def stop(self) -> None:
+        """Stop the MQTT publisher and disconnect the client."""
+        self._client.stop()
+
     def publish(self, db: Session) -> dict:
         """Publish all current data to MQTT.
 

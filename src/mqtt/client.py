@@ -3,6 +3,7 @@
 import json
 import logging
 import threading
+import time
 from typing import Any, Optional
 
 import paho.mqtt.client as mqtt
@@ -23,65 +24,78 @@ class MQTTClient:
 
     def connect(self) -> bool:
         """Connect to the MQTT broker. Returns True if successful."""
-        if self._connected and self._client and self._client.is_connected():
-            return True
+        with self._lock:
+            if self._connected and self._client and self._client.is_connected():
+                return True
 
-        try:
-            self._client = mqtt.Client(
-                callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-                client_id=self._settings.mqtt_client_id,
-            )
+            # Clean up stale client from unexpected disconnect
+            if self._client and not self._connected:
+                try:
+                    self._client.loop_stop()
+                except Exception:
+                    pass
+                self._client = None
 
-            if self._settings.mqtt_username:
-                self._client.username_pw_set(
-                    self._settings.mqtt_username,
-                    self._settings.mqtt_password,
+            try:
+                self._client = mqtt.Client(
+                    callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+                    client_id=self._settings.mqtt_client_id,
                 )
 
-            self._client.on_connect = self._on_connect
-            self._client.on_disconnect = self._on_disconnect
+                if self._settings.mqtt_username:
+                    self._client.username_pw_set(
+                        self._settings.mqtt_username,
+                        self._settings.mqtt_password,
+                    )
 
-            # Set last will to mark availability as offline
-            self._client.will_set(
-                f"{self._settings.mqtt_topic_prefix}/status",
-                payload="offline",
-                qos=self._settings.mqtt_qos,
-                retain=True,
-            )
+                self._client.on_connect = self._on_connect
+                self._client.on_disconnect = self._on_disconnect
 
-            self._client.connect(
-                self._settings.mqtt_broker,
-                self._settings.mqtt_port,
-                keepalive=60,
-            )
-            self._client.loop_start()
+                # Set last will to mark availability as offline
+                self._client.will_set(
+                    f"{self._settings.mqtt_topic_prefix}/status",
+                    payload="offline",
+                    qos=self._settings.mqtt_qos,
+                    retain=True,
+                )
 
-            # Wait briefly for connection
-            for _ in range(50):
-                if self._connected:
-                    return True
-                import time
-                time.sleep(0.1)
+                self._client.connect(
+                    self._settings.mqtt_broker,
+                    self._settings.mqtt_port,
+                    keepalive=60,
+                )
+                self._client.loop_start()
 
-            logger.warning("MQTT connection timed out after 5s")
-            return False
+            except Exception as e:
+                logger.error(f"Failed to connect to MQTT broker: {e}")
+                return False
 
-        except Exception as e:
-            logger.error(f"Failed to connect to MQTT broker: {e}")
-            return False
+        # Wait briefly for connection (outside lock so callbacks can fire)
+        for _ in range(50):
+            if self._connected:
+                return True
+            time.sleep(0.1)
+
+        logger.warning("MQTT connection timed out after 5s")
+        return False
 
     def disconnect(self) -> None:
         """Disconnect from the MQTT broker."""
-        if self._client:
-            # Publish offline status before disconnecting
-            self.publish(
-                f"{self._settings.mqtt_topic_prefix}/status",
-                "offline",
-            )
-            self._client.loop_stop()
-            self._client.disconnect()
-            self._connected = False
-            self._client = None
+        with self._lock:
+            if self._client:
+                # Publish offline status before disconnecting
+                self._publish_internal(
+                    f"{self._settings.mqtt_topic_prefix}/status",
+                    "offline",
+                )
+                self._client.loop_stop()
+                self._client.disconnect()
+                self._connected = False
+                self._client = None
+
+    def stop(self) -> None:
+        """Stop the MQTT client (public API for clean shutdown)."""
+        self.disconnect()
 
     def publish(self, topic: str, payload: Any, retain: Optional[bool] = None) -> bool:
         """Publish a message to an MQTT topic.
@@ -94,6 +108,10 @@ class MQTTClient:
         Returns:
             True if published successfully
         """
+        return self._publish_internal(topic, payload, retain)
+
+    def _publish_internal(self, topic: str, payload: Any, retain: Optional[bool] = None) -> bool:
+        """Internal publish that doesn't acquire the lock."""
         if not self._client or not self._connected:
             return False
 
@@ -127,7 +145,7 @@ class MQTTClient:
                 f"{self._settings.mqtt_broker}:{self._settings.mqtt_port}"
             )
             # Publish online status
-            self.publish(
+            self._publish_internal(
                 f"{self._settings.mqtt_topic_prefix}/status",
                 "online",
             )

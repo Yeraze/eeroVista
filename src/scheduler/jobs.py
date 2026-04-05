@@ -222,9 +222,9 @@ class CollectorScheduler:
             self.scheduler = None
 
         # Disconnect MQTT client
-        if self._mqtt_publisher and self._mqtt_publisher._client:
+        if self._mqtt_publisher:
             logger.info("Disconnecting MQTT client")
-            self._mqtt_publisher._client.disconnect()
+            self._mqtt_publisher.stop()
 
         # Shutdown the thread pool executor, waiting for in-flight operations
         # to complete to avoid data corruption from interrupted transactions
