@@ -51,6 +51,19 @@ class Settings(BaseSettings):
     # Notifications
     notification_check_interval: int = 60  # seconds between notification checks
 
+    # MQTT (Home Assistant integration) - disabled by default
+    mqtt_enabled: bool = False
+    mqtt_broker: str = "localhost"
+    mqtt_port: int = 1883
+    mqtt_username: Optional[str] = None
+    mqtt_password: Optional[str] = None
+    mqtt_topic_prefix: str = "eerovista"
+    mqtt_discovery_prefix: str = "homeassistant"
+    mqtt_client_id: str = "eerovista"
+    mqtt_publish_interval: int = 60  # seconds between MQTT publishes
+    mqtt_qos: int = 1  # 0=at most once, 1=at least once, 2=exactly once
+    mqtt_retain: bool = True  # retain messages for HA discovery
+
     def get_timezone(self) -> ZoneInfo:
         """Get the configured timezone as a ZoneInfo object."""
         try:

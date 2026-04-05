@@ -17,6 +17,9 @@ apscheduler>=3.10.0
 # Monitoring Exports
 prometheus-client>=0.19.0
 
+# MQTT (Home Assistant integration)
+paho-mqtt>=2.0.0
+
 # HTTP Client (for testing)
 httpx>=0.25.0
 
