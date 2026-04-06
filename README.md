@@ -13,6 +13,9 @@
 
 ---
 
+
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FYeraze%2FeeroVista.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2FYeraze%2FeeroVista?ref=badge_large)
+
 ## Overview
 
 eeroVista is a **read-only** web-based monitoring tool for Eero mesh networks. It provides:
@@ -122,6 +125,7 @@ Full documentation is available at [https://yeraze.github.io/eeroVista/](https:/
 
 ### Dashboard
 ![Dashboard](docs/images/mainpage.png)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FYeraze%2FeeroVista.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2FYeraze%2FeeroVista?ref=badge_shield)
 *Real-time network overview with bandwidth usage, top consumers, and network statistics*
 
 ### Device List
