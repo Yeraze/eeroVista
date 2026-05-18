@@ -36,7 +36,7 @@ def patch_pydantic_models():
     """
     try:
         print(f"[PATCH v{__version__}] Importing eero-client Pydantic models...")
-        from eero.client.models import NetworkInfo
+        from eero.client.models import Account, NetworkInfo
         from eero.client.models.account import PremiumDetails
         from pydantic.fields import FieldInfo
 
@@ -73,9 +73,12 @@ def patch_pydantic_models():
                     )
                 logger.debug("Patched PremiumDetails.interval to Optional[str]")
 
-        # Rebuild the models with updated annotations - force full rebuild
+        # Rebuild the models with updated annotations - force full rebuild.
+        # Account must also be rebuilt because it embeds NetworkInfo/PremiumDetails;
+        # its compiled validator still references the original str-only schemas otherwise.
         NetworkInfo.model_rebuild(force=True)
         PremiumDetails.model_rebuild(force=True)
+        Account.model_rebuild(force=True)
 
         print(f"[PATCH v{__version__}] ✓ Pydantic model patches applied successfully")
         logger.info("Pydantic model patches applied successfully")
@@ -141,8 +144,16 @@ def patch_eero_client():
 
             return lambda self, **caller_kwargs: func(self, **kwargs, **caller_kwargs)
 
-        # Apply the patch
+        # Apply the patch. Must patch both the source module AND every importer
+        # that did `from ..routes.method_factory import make_method`, because
+        # those have their own local name binding to the original function.
         method_factory.make_method = patched_make_method
+
+        try:
+            import eero.client.clients.eero as eero_module
+            eero_module.make_method = patched_make_method
+        except ImportError as e:
+            logger.warning(f"Could not patch eero.client.clients.eero.make_method: {e}")
 
         print(f"[PATCH v{__version__}] ✓ eero-client patch applied successfully")
         logger.info("eero-client patch applied successfully")

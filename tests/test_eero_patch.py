@@ -125,6 +125,26 @@ class TestPatchedMakeMethod:
         assert "net_123" in call_args[0][1]
 
 
+class TestPatchCoversAccountAndEeroModule:
+    """Regression tests for issue #114."""
+
+    def test_account_model_is_rebuilt(self):
+        """Account must be rebuilt so its compiled validator picks up
+        the Optional[str] patches on nested NetworkInfo / PremiumDetails."""
+        from eero.client.models import Account
+
+        assert getattr(Account, "__pydantic_complete__", False) is True
+
+    def test_eero_clients_module_make_method_is_patched(self):
+        """`from ..routes.method_factory import make_method` in
+        eero.client.clients.eero creates a local binding that must also
+        be replaced; otherwise Eero.account keeps using the unpatched function."""
+        from eero.client.routes import method_factory
+        import eero.client.clients.eero as eero_module
+
+        assert eero_module.make_method is method_factory.make_method
+
+
 class TestModuleLevelPatches:
     """Tests that the module-level patches ran correctly at import time."""
 
