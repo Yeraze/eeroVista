@@ -17,6 +17,12 @@ from src.models.notifications import NotificationHistory, NotificationRule
 
 logger = logging.getLogger(__name__)
 
+# Multiplier applied to collection_interval to determine the max allowed gap
+# between consecutive offline records. Gaps larger than this indicate a
+# collection failure (API timeout, auth issue, etc.) rather than a truly
+# consecutive offline state.
+_GAP_MULTIPLIER = 5
+
 
 class NotificationService:
     """Evaluates notification rules and dispatches alerts via Apprise."""
@@ -73,6 +79,35 @@ class NotificationService:
         if dt is not None and dt.tzinfo is None:
             return dt.replace(tzinfo=timezone.utc)
         return dt
+
+    def _get_consecutive_valid_records(self, records, max_gap_seconds):
+        """Given records sorted newest-first, return the prefix where consecutive
+        gaps are within max_gap_seconds. This filters out records that are not
+        temporally consecutive, suppressing notifications after collection failures.
+        """
+        if not records:
+            return []
+        valid = [records[0]]
+        for i in range(len(records) - 1):
+            gap = (
+                self._ensure_utc(records[i].timestamp)
+                - self._ensure_utc(records[i + 1].timestamp)
+            ).total_seconds()
+            if gap <= max_gap_seconds:
+                valid.append(records[i + 1])
+            else:
+                break
+        return valid
+
+    @staticmethod
+    def _get_offline_span_seconds(records):
+        """Return time span between newest and oldest record, or 0 if < 2 records."""
+        if len(records) < 2:
+            return 0.0
+        return (
+            NotificationService._ensure_utc(records[0].timestamp)
+            - NotificationService._ensure_utc(records[-1].timestamp)
+        ).total_seconds()
 
     def _should_notify(self, rule: NotificationRule, event_key: str) -> bool:
         """Check if we should send a notification (cooldown/dedup check).
@@ -197,7 +232,10 @@ class NotificationService:
     def _check_node_offline(self, rule: NotificationRule) -> int:
         """Check for offline eero nodes using the latest metric status.
 
-        Requires 2+ consecutive offline readings to suppress transient blips.
+        Requires N+ consecutive offline readings (configurable via
+        offline_consecutive_threshold, default 3) and a minimum time
+        span across those records to suppress transient blips from
+        brief API glitches or collection failures.
         Sends a recovery notification when a node comes back online.
         """
         config = json.loads(rule.config_json)
@@ -211,21 +249,33 @@ class NotificationService:
             EeroNode.network_name == rule.network_name,
         ).all()
 
+        threshold = self.config.offline_consecutive_threshold
+        min_duration = self.config.offline_min_duration_seconds
+        collection_interval = self.config.collection_interval_network
+        max_gap_seconds = collection_interval * _GAP_MULTIPLIER
         sent = 0
         current_keys = set()
 
         for node in nodes:
-            # Get the two most recent metric records for this node
+            # Get N most recent metric records for this node
             recent_metrics = self.db.query(EeroNodeMetric).filter(
                 EeroNodeMetric.eero_node_id == node.id,
-            ).order_by(EeroNodeMetric.timestamp.desc()).limit(2).all()
+            ).order_by(EeroNodeMetric.timestamp.desc()).limit(threshold).all()
 
-            # Require 2 consecutive offline readings to debounce
-            is_offline = (
-                len(recent_metrics) >= 2
-                and recent_metrics[0].status != "online"
-                and recent_metrics[1].status != "online"
+            # Filter to temporally consecutive records (no collection gaps)
+            valid_records = self._get_consecutive_valid_records(recent_metrics, max_gap_seconds)
+
+            has_enough_valid = len(valid_records) >= threshold
+            all_not_online = has_enough_valid and all(
+                m.status != "online" for m in valid_records
             )
+
+            # Duration check — span is 0 unless we have 2+ valid records
+            span = self._get_offline_span_seconds(valid_records)
+            time_covers_duration = span >= min_duration
+
+            is_offline = all_not_online and time_covers_duration
+
             event_key = f"node_offline:{node.id}"
 
             if is_offline:
@@ -236,6 +286,27 @@ class NotificationService:
                     if self._send("eeroVista: Node Offline", body):
                         self._record_notification(rule, event_key, body)
                         sent += 1
+                        logger.info(
+                            f"Offline notification sent for node {node.location or node.eero_id}: "
+                            f"{len(valid_records)}/{threshold} consecutive offline readings "
+                            f"spanning {span:.0f}s (minimum: {min_duration}s)"
+                        )
+            elif len(recent_metrics) >= threshold and all(
+                m.status != "online" for m in recent_metrics
+            ):
+                if len(valid_records) < threshold:
+                    logger.debug(
+                        f"Node {node.location or node.eero_id} has "
+                        f"{len(recent_metrics)} offline readings but only {len(valid_records)} "
+                        f"are temporally consecutive (collection gap detected) — "
+                        f"skipping notification"
+                    )
+                elif not time_covers_duration:
+                    logger.debug(
+                        f"Node {node.location or node.eero_id} has {len(valid_records)} "
+                        f"consecutive offline readings but time span ({span:.0f}s) is below "
+                        f"minimum duration ({min_duration}s) — skipping notification"
+                    )
 
         sent += self._resolve_cleared_with_recovery(rule, current_keys, "node")
         return sent
@@ -360,7 +431,10 @@ class NotificationService:
     def _check_device_offline(self, rule: NotificationRule) -> int:
         """Check for offline devices based on latest collection status.
 
-        Requires 2+ consecutive offline readings to suppress transient blips.
+        Requires N+ consecutive offline readings (configurable via
+        offline_consecutive_threshold, default 3) and a minimum time
+        span across those records to suppress transient blips from
+        brief API glitches or collection failures.
         Sends a recovery notification when a device comes back online.
         """
         config = json.loads(rule.config_json)
@@ -374,22 +448,34 @@ class NotificationService:
             Device.network_name == rule.network_name,
         ).all()
 
+        threshold = self.config.offline_consecutive_threshold
+        min_duration = self.config.offline_min_duration_seconds
+        collection_interval = self.config.collection_interval_devices
+        max_gap_seconds = collection_interval * _GAP_MULTIPLIER
         sent = 0
         current_keys = set()
 
         for device in devices:
-            # Get the two most recent connection records for this device
+            # Get N most recent connection records for this device
             recent_conns = self.db.query(DeviceConnection).filter(
                 DeviceConnection.device_id == device.id,
                 DeviceConnection.network_name == rule.network_name,
-            ).order_by(DeviceConnection.timestamp.desc()).limit(2).all()
+            ).order_by(DeviceConnection.timestamp.desc()).limit(threshold).all()
 
-            # Require 2 consecutive offline readings to debounce
-            is_offline = (
-                len(recent_conns) >= 2
-                and not recent_conns[0].is_connected
-                and not recent_conns[1].is_connected
+            # Filter to temporally consecutive records (no collection gaps)
+            valid_records = self._get_consecutive_valid_records(recent_conns, max_gap_seconds)
+
+            has_enough_valid = len(valid_records) >= threshold
+            all_disconnected = has_enough_valid and all(
+                not c.is_connected for c in valid_records
             )
+
+            # Duration check — span is 0 unless we have 2+ valid records
+            span = self._get_offline_span_seconds(valid_records)
+            time_covers_duration = span >= min_duration
+
+            is_offline = all_disconnected and time_covers_duration
+
             event_key = f"device_offline:{device.id}"
 
             if is_offline:
@@ -401,6 +487,28 @@ class NotificationService:
                     if self._send("eeroVista: Device Offline", body):
                         self._record_notification(rule, event_key, body)
                         sent += 1
+                        logger.info(
+                            f"Offline notification sent for device {device_name}: "
+                            f"{len(valid_records)}/{threshold} consecutive disconnected readings "
+                            f"spanning {span:.0f}s (minimum: {min_duration}s)"
+                        )
+            elif len(recent_conns) >= threshold and all(
+                not c.is_connected for c in recent_conns
+            ):
+                if len(valid_records) < threshold:
+                    logger.debug(
+                        f"Device {device.nickname or device.hostname or device.mac_address} has "
+                        f"{len(recent_conns)} disconnected readings but only {len(valid_records)} "
+                        f"are temporally consecutive (collection gap detected) — "
+                        f"skipping notification"
+                    )
+                elif not time_covers_duration:
+                    logger.debug(
+                        f"Device {device.nickname or device.hostname or device.mac_address} has "
+                        f"{len(valid_records)} consecutive disconnected readings but time span "
+                        f"({span:.0f}s) is below minimum duration ({min_duration}s) — "
+                        f"skipping notification"
+                    )
 
         sent += self._resolve_cleared_with_recovery(rule, current_keys, "device")
         return sent

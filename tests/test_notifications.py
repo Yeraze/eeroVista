@@ -31,7 +31,10 @@ def config():
     """Create a mock config."""
     cfg = MagicMock()
     cfg.collection_interval_devices = 30
+    cfg.collection_interval_network = 60
     cfg.notification_check_interval = 60
+    cfg.offline_consecutive_threshold = 3
+    cfg.offline_min_duration_seconds = 90
     return cfg
 
 
@@ -134,18 +137,23 @@ class TestNotificationService:
         db_session.add(node)
         db_session.commit()
 
-        # Add two consecutive offline metric records (debounce requires 2+)
+        # Add three consecutive offline metric records (debounce requires 3+ with default config)
         metric1 = EeroNodeMetric(
             eero_node_id=node.id,
-            timestamp=datetime.now(timezone.utc) - timedelta(minutes=1),
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=3),
             status="offline",
         )
         metric2 = EeroNodeMetric(
             eero_node_id=node.id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=2),
             status="offline",
         )
-        db_session.add_all([metric1, metric2])
+        metric3 = EeroNodeMetric(
+            eero_node_id=node.id,
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=1),
+            status="offline",
+        )
+        db_session.add_all([metric1, metric2, metric3])
         db_session.commit()
 
         # Create an offline rule
@@ -174,17 +182,23 @@ class TestNotificationService:
         db_session.add(node)
         db_session.commit()
 
+        # Three consecutive offline records (debounce requires 3+ with default config)
         metric1 = EeroNodeMetric(
             eero_node_id=node.id,
-            timestamp=datetime.now(timezone.utc) - timedelta(minutes=1),
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=3),
             status="offline",
         )
         metric2 = EeroNodeMetric(
             eero_node_id=node.id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=2),
             status="offline",
         )
-        db_session.add_all([metric1, metric2])
+        metric3 = EeroNodeMetric(
+            eero_node_id=node.id,
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=1),
+            status="offline",
+        )
+        db_session.add_all([metric1, metric2, metric3])
         db_session.commit()
 
         rule = NotificationRule(
@@ -216,18 +230,23 @@ class TestNotificationService:
         db_session.add(node)
         db_session.commit()
 
-        # Two consecutive offline readings (debounce requires 2+)
+        # Three consecutive offline readings (debounce requires 3+ with default config)
         metric1 = EeroNodeMetric(
             eero_node_id=node.id,
-            timestamp=datetime.now(timezone.utc) - timedelta(minutes=6),
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=8),
             status="offline",
         )
         metric2 = EeroNodeMetric(
             eero_node_id=node.id,
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=7),
+            status="offline",
+        )
+        metric3 = EeroNodeMetric(
+            eero_node_id=node.id,
             timestamp=datetime.now(timezone.utc) - timedelta(minutes=5),
             status="offline",
         )
-        db_session.add_all([metric1, metric2])
+        db_session.add_all([metric1, metric2, metric3])
         db_session.commit()
 
         rule = NotificationRule(
@@ -456,7 +475,7 @@ class TestNotificationService:
         service._apprise.notify.assert_called_once()
 
     def test_device_offline_detection(self, db_session, config):
-        """Device with 2+ consecutive is_connected=False should trigger offline notification."""
+        """Device with 3+ consecutive is_connected=False should trigger offline notification."""
         device = Device(
             network_name="home",
             mac_address="aa:bb:cc:dd:ee:ff",
@@ -466,20 +485,26 @@ class TestNotificationService:
         db_session.add(device)
         db_session.commit()
 
-        # Two consecutive disconnected readings (debounce requires 2+)
+        # Three consecutive disconnected readings (debounce requires 3+ with default config)
         conn1 = DeviceConnection(
             device_id=device.id,
             network_name="home",
             is_connected=False,
-            timestamp=datetime.now(timezone.utc) - timedelta(minutes=1),
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=3),
         )
         conn2 = DeviceConnection(
             device_id=device.id,
             network_name="home",
             is_connected=False,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=2),
         )
-        db_session.add_all([conn1, conn2])
+        conn3 = DeviceConnection(
+            device_id=device.id,
+            network_name="home",
+            is_connected=False,
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=1),
+        )
+        db_session.add_all([conn1, conn2, conn3])
         db_session.commit()
 
         rule = NotificationRule(
@@ -495,6 +520,103 @@ class TestNotificationService:
         result = service.check_all_rules()
         assert result["notifications_sent"] == 1
         service._apprise.notify.assert_called_once()
+
+    def test_node_offline_two_readings_not_enough(self, db_session, config):
+        """2 consecutive offline readings should NOT trigger with threshold=3.
+
+        This is the flapping scenario: a brief API glitch + one collection
+        failure produces 2 offline records. With the increased threshold,
+        this should be suppressed.
+        """
+        node = EeroNode(
+            network_name="home",
+            eero_id="node1",
+            location="Living Room",
+            last_seen=datetime.now(timezone.utc) - timedelta(minutes=5),
+        )
+        db_session.add(node)
+        db_session.commit()
+
+        # Only two consecutive offline readings (below default threshold of 3)
+        metric1 = EeroNodeMetric(
+            eero_node_id=node.id,
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=1),
+            status="offline",
+        )
+        metric2 = EeroNodeMetric(
+            eero_node_id=node.id,
+            timestamp=datetime.now(timezone.utc),
+            status="offline",
+        )
+        db_session.add_all([metric1, metric2])
+        db_session.commit()
+
+        rule = NotificationRule(
+            network_name="home",
+            rule_type="node_offline",
+            config_json=json.dumps({"node_ids": [node.id]}),
+            cooldown_minutes=60,
+        )
+        db_session.add(rule)
+        db_session.commit()
+
+        service = self._make_service(db_session, config)
+        result = service.check_all_rules()
+        # No notification expected — only 2 records, threshold is 3
+        assert result["notifications_sent"] == 0
+        service._apprise.notify.assert_not_called()
+
+    def test_node_offline_collection_gap_suppresses(self, db_session, config):
+        """Collection gap between records should suppress notification.
+
+        2 recent offline records with small gaps, plus 1 older record
+        separated by a gap > 5x collection_interval. The gap means only 2
+        are temporally consecutive, which is below the threshold of 3.
+        """
+        node = EeroNode(
+            network_name="home",
+            eero_id="node1",
+            location="Living Room",
+            last_seen=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+        db_session.add(node)
+        db_session.commit()
+
+        now = datetime.now(timezone.utc)
+        # 2 recent records with small gaps
+        metric1 = EeroNodeMetric(
+            eero_node_id=node.id,
+            timestamp=now - timedelta(seconds=60),
+            status="offline",
+        )
+        metric2 = EeroNodeMetric(
+            eero_node_id=node.id,
+            timestamp=now,
+            status="offline",
+        )
+        # 1 older record with a gap > 5x collection_interval (300s)
+        metric3 = EeroNodeMetric(
+            eero_node_id=node.id,
+            timestamp=now - timedelta(seconds=600),
+            status="offline",
+        )
+        db_session.add_all([metric1, metric2, metric3])
+        db_session.commit()
+
+        rule = NotificationRule(
+            network_name="home",
+            rule_type="node_offline",
+            config_json=json.dumps({"node_ids": [node.id]}),
+            cooldown_minutes=60,
+        )
+        db_session.add(rule)
+        db_session.commit()
+
+        service = self._make_service(db_session, config)
+        result = service.check_all_rules()
+        # Only 2 temporally-consecutive records, below threshold of 3
+        assert result["notifications_sent"] == 0
+        service._apprise.notify.assert_not_called()
 
     def test_device_offline_no_connection_record(self, db_session, config):
         """Device with no connection records should NOT trigger (need 2+ readings to confirm)."""
@@ -518,6 +640,106 @@ class TestNotificationService:
         service = self._make_service(db_session, config)
         result = service.check_all_rules()
         assert result["notifications_sent"] == 0
+
+    def test_device_offline_two_readings_short_span_not_enough(self, db_session, config):
+        """2 consecutive disconnected readings with short time span should NOT trigger.
+
+        This simulates the flapping scenario: a brief API glitch produces
+        2 disconnected records in rapid succession (< 90s span). Both the
+        threshold count (3) and duration check (90s) should suppress it.
+        """
+        device = Device(
+            network_name="home",
+            mac_address="aa:bb:cc:dd:ee:ff",
+            nickname="Smart TV",
+        )
+        db_session.add(device)
+        db_session.commit()
+
+        now = datetime.now(timezone.utc)
+        # Only 2 disconnected records with a very short span (under 90s)
+        conn1 = DeviceConnection(
+            device_id=device.id,
+            network_name="home",
+            is_connected=False,
+            timestamp=now - timedelta(seconds=10),
+        )
+        conn2 = DeviceConnection(
+            device_id=device.id,
+            network_name="home",
+            is_connected=False,
+            timestamp=now,
+        )
+        db_session.add_all([conn1, conn2])
+        db_session.commit()
+
+        rule = NotificationRule(
+            network_name="home",
+            rule_type="device_offline",
+            config_json=json.dumps({"device_ids": [device.id]}),
+            cooldown_minutes=60,
+        )
+        db_session.add(rule)
+        db_session.commit()
+
+        service = self._make_service(db_session, config)
+        result = service.check_all_rules()
+        # No notification — only 2 records (below 3) and span is only 10s (below 90)
+        assert result["notifications_sent"] == 0
+        service._apprise.notify.assert_not_called()
+
+    def test_device_offline_three_readings_short_span_not_enough(self, db_session, config):
+        """3 disconnected readings spanning only 10s should be suppressed.
+
+        The threshold of 3 is met, but the span (10s) is well below the
+        90s minimum duration. The suppression is due to the duration check,
+        not the count threshold.
+        """
+        device = Device(
+            network_name="home",
+            mac_address="aa:bb:cc:dd:ee:ff",
+            nickname="Smart TV",
+        )
+        db_session.add(device)
+        db_session.commit()
+
+        now = datetime.now(timezone.utc)
+        # 3 disconnected readings with very short total span (10s)
+        conn1 = DeviceConnection(
+            device_id=device.id,
+            network_name="home",
+            is_connected=False,
+            timestamp=now - timedelta(seconds=10),
+        )
+        conn2 = DeviceConnection(
+            device_id=device.id,
+            network_name="home",
+            is_connected=False,
+            timestamp=now - timedelta(seconds=5),
+        )
+        conn3 = DeviceConnection(
+            device_id=device.id,
+            network_name="home",
+            is_connected=False,
+            timestamp=now,
+        )
+        db_session.add_all([conn1, conn2, conn3])
+        db_session.commit()
+
+        rule = NotificationRule(
+            network_name="home",
+            rule_type="device_offline",
+            config_json=json.dumps({"device_ids": [device.id]}),
+            cooldown_minutes=60,
+        )
+        db_session.add(rule)
+        db_session.commit()
+
+        service = self._make_service(db_session, config)
+        result = service.check_all_rules()
+        # 3 consecutive records meets threshold but span (10s) is below minimum (90s)
+        assert result["notifications_sent"] == 0
+        service._apprise.notify.assert_not_called()
 
     def test_device_offline_online_device_no_alert(self, db_session, config):
         """Device with is_connected=True should not trigger notification."""
@@ -563,20 +785,26 @@ class TestNotificationService:
         db_session.add(device)
         db_session.commit()
 
-        # Two consecutive disconnected readings (debounce requires 2+)
+        # Three consecutive disconnected readings (debounce requires 3+ with default config)
         conn1 = DeviceConnection(
             device_id=device.id,
             network_name="home",
             is_connected=False,
-            timestamp=datetime.now(timezone.utc) - timedelta(minutes=3),
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=5),
         )
         conn2 = DeviceConnection(
             device_id=device.id,
             network_name="home",
             is_connected=False,
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=3),
+        )
+        conn3 = DeviceConnection(
+            device_id=device.id,
+            network_name="home",
+            is_connected=False,
             timestamp=datetime.now(timezone.utc) - timedelta(minutes=2),
         )
-        db_session.add_all([conn1, conn2])
+        db_session.add_all([conn1, conn2, conn3])
         db_session.commit()
 
         rule = NotificationRule(
@@ -592,13 +820,13 @@ class TestNotificationService:
         service.check_all_rules()
 
         # Device comes back online - new connection record
-        conn3 = DeviceConnection(
+        conn4 = DeviceConnection(
             device_id=device.id,
             network_name="home",
             is_connected=True,
             timestamp=datetime.now(timezone.utc),
         )
-        db_session.add(conn3)
+        db_session.add(conn4)
         db_session.commit()
 
         service._apprise.notify.reset_mock()

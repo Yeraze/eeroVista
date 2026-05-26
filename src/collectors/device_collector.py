@@ -585,8 +585,8 @@ class DeviceCollector(BaseCollector):
                     f"This usually indicates data collection was interrupted."
                 )
             elif time_delta > EXPECTED_INTERVAL * 2:
-                # Log warning but still accumulate if within max threshold
-                logger.warning(
+                # Log debug but still accumulate if within max threshold
+                logger.debug(
                     f"Large time delta detected for device {device_id}: "
                     f"{time_delta:.1f}s (expected ~{EXPECTED_INTERVAL}s). "
                     f"Bandwidth calculations may be less accurate."
