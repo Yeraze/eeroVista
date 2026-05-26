@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 from src import __version__
@@ -48,6 +49,17 @@ class Settings(BaseSettings):
     # Encryption key for storing sensitive data (auto-generated if not provided)
     encryption_key: Optional[str] = None
 
+    # Offline detection
+    # Number of consecutive offline readings required before triggering an offline notification.
+    # Higher values reduce false positives from brief API glitches or collection failures.
+    # With a 30s collection interval: 3 = ~90s before declaring offline, 5 = ~150s.
+    offline_consecutive_threshold: int = 3
+
+    # Minimum duration in seconds the device/node must have consecutive offline readings
+    # before triggering a notification. Prevents flapping when glitchy records accumulate
+    # quickly but over a short time window.
+    offline_min_duration_seconds: int = 90
+
     # Notifications
     notification_check_interval: int = 60  # seconds between notification checks
 
@@ -63,6 +75,22 @@ class Settings(BaseSettings):
     mqtt_publish_interval: int = 60  # seconds between MQTT publishes
     mqtt_qos: int = 1  # 0=at most once, 1=at least once, 2=exactly once
     mqtt_retain: bool = True  # retain messages for HA discovery
+
+    @field_validator("offline_consecutive_threshold")
+    @classmethod
+    def validate_offline_threshold(cls, v: int) -> int:
+        """Ensure consecutive threshold is at least 1."""
+        if v < 1:
+            raise ValueError("offline_consecutive_threshold must be >= 1")
+        return v
+
+    @field_validator("offline_min_duration_seconds")
+    @classmethod
+    def validate_offline_min_duration(cls, v: int) -> int:
+        """Ensure minimum duration is non-negative."""
+        if v < 0:
+            raise ValueError("offline_min_duration_seconds must be >= 0")
+        return v
 
     def get_timezone(self) -> ZoneInfo:
         """Get the configured timezone as a ZoneInfo object."""
