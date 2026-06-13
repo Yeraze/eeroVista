@@ -82,6 +82,11 @@ class Settings(BaseSettings):
     # behind a trusted reverse proxy or on a network you control. Disabled by default.
     mcp_enabled: bool = False
     mcp_path: str = "/mcp"
+    # Comma-separated Host header values to accept (DNS-rebinding protection).
+    # Required when running behind a reverse proxy: set this to the public
+    # hostname(s) clients use, e.g. "eero.example.com". localhost is always
+    # allowed. Use "*" to trust the proxy entirely (disables host checking).
+    mcp_allowed_hosts: str = ""
 
     @field_validator("offline_consecutive_threshold")
     @classmethod
@@ -109,6 +114,10 @@ class Settings(BaseSettings):
         if not v:
             raise ValueError("mcp_path must not be the root path '/'")
         return v
+
+    def get_mcp_allowed_hosts(self) -> list[str]:
+        """Parse the comma-separated MCP allowed-hosts setting into a list."""
+        return [h.strip() for h in self.mcp_allowed_hosts.split(",") if h.strip()]
 
     def get_timezone(self) -> ZoneInfo:
         """Get the configured timezone as a ZoneInfo object."""

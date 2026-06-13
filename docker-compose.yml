@@ -54,6 +54,10 @@ services:
       # trusted reverse proxy or on a network you control. See docs/mcp.md.
       # - MCP_ENABLED=true
       # - MCP_PATH=/mcp
+      # Behind a reverse proxy, set the public hostname(s) or DNS-rebinding
+      # protection rejects requests with "421 Invalid Host header". Use "*" to
+      # trust the proxy entirely. The proxy must also forward X-Forwarded-Proto.
+      # - MCP_ALLOWED_HOSTS=eero.example.com
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 30s

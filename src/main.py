@@ -35,7 +35,11 @@ logger = logging.getLogger(__name__)
 
 # Build the MCP server (when enabled) so it can be mounted on the app below.
 # Its Streamable HTTP session manager must run within the app lifespan.
-mcp_server = build_mcp_server(settings.mcp_path) if settings.mcp_enabled else None
+mcp_server = (
+    build_mcp_server(settings.mcp_path, allowed_hosts=settings.get_mcp_allowed_hosts())
+    if settings.mcp_enabled
+    else None
+)
 
 
 @asynccontextmanager
@@ -112,4 +116,8 @@ if __name__ == "__main__":
         port=8080,
         reload=settings.debug,
         log_level=log_level,
+        # Honor X-Forwarded-Proto/Host from a reverse proxy so generated URLs and
+        # redirects (e.g. the MCP /mcp -> /mcp/ redirect) use the correct scheme.
+        proxy_headers=True,
+        forwarded_allow_ips="*",
     )
