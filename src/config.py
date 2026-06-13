@@ -76,6 +76,13 @@ class Settings(BaseSettings):
     mqtt_qos: int = 1  # 0=at most once, 1=at least once, 2=exactly once
     mqtt_retain: bool = True  # retain messages for HA discovery
 
+    # MCP server (Model Context Protocol) - read-only query API for AI agents
+    # Exposes a curated set of network-status tools over Streamable HTTP at `mcp_path`.
+    # SECURITY: the endpoint has NO authentication. Only enable it when eeroVista is
+    # behind a trusted reverse proxy or on a network you control. Disabled by default.
+    mcp_enabled: bool = False
+    mcp_path: str = "/mcp"
+
     @field_validator("offline_consecutive_threshold")
     @classmethod
     def validate_offline_threshold(cls, v: int) -> int:
@@ -90,6 +97,17 @@ class Settings(BaseSettings):
         """Ensure minimum duration is non-negative."""
         if v < 0:
             raise ValueError("offline_min_duration_seconds must be >= 0")
+        return v
+
+    @field_validator("mcp_path")
+    @classmethod
+    def validate_mcp_path(cls, v: str) -> str:
+        """Ensure the MCP mount path is a non-root absolute path without a trailing slash."""
+        if not v.startswith("/"):
+            raise ValueError("mcp_path must start with '/'")
+        v = v.rstrip("/")
+        if not v:
+            raise ValueError("mcp_path must not be the root path '/'")
         return v
 
     def get_timezone(self) -> ZoneInfo:

@@ -47,6 +47,7 @@ A read-only web-based monitoring tool for Eero mesh networks.
 - [Configuration Reference](configuration.md)
 - [API Documentation](api-reference.md)
 - [Reverse Proxy & HTTPS](reverse-proxy.md)
+- [MCP Server (AI Agents)](mcp.md)
 - [Prometheus Integration](prometheus.md)
 - [Zabbix Integration](zabbix.md)
 - [Development Guide](development.md)
