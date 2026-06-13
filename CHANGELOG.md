@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.8.1] — 2026-06-13
+
+### Fixed
+
+- **MCP server behind a reverse proxy**: The MCP endpoint rejected proxied requests with `421 Invalid Host header` because the transport's DNS-rebinding protection only trusted `localhost`. Added `MCP_ALLOWED_HOSTS` (comma-separated public hostnames, or `*` to trust the proxy) so the configured host is accepted. Also enabled uvicorn proxy-header handling (`--proxy-headers`/`forwarded_allow_ips`) so the `/mcp` → `/mcp/` redirect respects `X-Forwarded-Proto` instead of downgrading to `http://`. Documented the trailing-slash endpoint (`/mcp/`) and proxy requirements.
+
 ## [2.8.0] — 2026-06-13
 
 ### Added

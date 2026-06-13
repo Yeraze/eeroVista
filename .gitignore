@@ -26,6 +26,9 @@ ENV/
 env/
 .venv
 
+# uv (used ad hoc for tooling; project deps are pinned in requirements*.txt)
+uv.lock
+
 # IDEs
 .vscode/
 .idea/

@@ -11,12 +11,44 @@ import logging
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from src.api.health import analytics, routes
 from src.eero_client.client import EeroClientWrapper
 from src.utils.database import get_db_context
 
 logger = logging.getLogger(__name__)
+
+# Loopback hosts/origins are always trusted (local access and health checks).
+_LOCAL_HOSTS = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+_LOCAL_ORIGINS = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
+
+
+def _build_transport_security(allowed_hosts: list[str]) -> TransportSecuritySettings:
+    """Build DNS-rebinding-protection settings for the given extra allowed hosts.
+
+    The MCP SDK enables host/origin checking by default and only trusts
+    localhost, which breaks reverse-proxy deployments (the proxy forwards the
+    public Host header). We extend the allow-list with the configured hostnames,
+    or disable protection entirely when ``*`` is supplied (trust the proxy).
+    """
+    if "*" in allowed_hosts:
+        return TransportSecuritySettings(enable_dns_rebinding_protection=False)
+
+    hosts = list(_LOCAL_HOSTS)
+    origins = list(_LOCAL_ORIGINS)
+    for host in allowed_hosts:
+        # Allow both the bare host (default 443/80, no port in the Host header)
+        # and any explicit port via the SDK's ":*" wildcard.
+        hosts.extend([host, f"{host}:*"])
+        for scheme in ("https", "http"):
+            origins.extend([f"{scheme}://{host}", f"{scheme}://{host}:*"])
+
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=hosts,
+        allowed_origins=origins,
+    )
 
 
 async def _query(
@@ -32,13 +64,16 @@ async def _query(
         return await handler(client=client, **kwargs)
 
 
-def build_mcp_server(path: str = "/mcp") -> FastMCP:
+def build_mcp_server(path: str = "/mcp", allowed_hosts: Optional[list[str]] = None) -> FastMCP:
     """Create the eeroVista MCP server with its curated read-only tools.
 
     Args:
         path: Absolute path the Streamable HTTP endpoint is served at. The server
             is mounted at this path by the main app, so the internal route is the
             sub-app root ("/").
+        allowed_hosts: Extra Host header values to accept in addition to
+            localhost (needed behind a reverse proxy). Pass ``["*"]`` to trust the
+            proxy entirely and disable host/origin checking.
     """
     mcp = FastMCP(
         name="eeroVista",
@@ -54,6 +89,7 @@ def build_mcp_server(path: str = "/mcp") -> FastMCP:
         stateless_http=True,
         json_response=True,
         streamable_http_path="/",
+        transport_security=_build_transport_security(allowed_hosts or []),
     )
 
     @mcp.tool()
@@ -155,5 +191,9 @@ def build_mcp_server(path: str = "/mcp") -> FastMCP:
             analytics.get_network_bandwidth_top_devices, days=days, limit=limit, network=network
         )
 
-    logger.info("MCP server initialized with read-only eero network tools (mounted at %s)", path)
+    logger.info(
+        "MCP server initialized with read-only eero network tools (mounted at %s, allowed_hosts=%s)",
+        path,
+        allowed_hosts or "localhost-only",
+    )
     return mcp
