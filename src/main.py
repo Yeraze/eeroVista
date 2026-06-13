@@ -2,7 +2,7 @@
 
 import logging
 import sys
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -17,6 +17,7 @@ from src.utils.eero_patch import patch_eero_client  # noqa: F401
 
 from src.api import device_groups, health, notifications, prometheus, setup, web, zabbix
 from src.config import ensure_data_directory, get_settings
+from src.mcp_server import build_mcp_server
 from src.scheduler.jobs import get_scheduler
 from src.utils.database import init_database
 
@@ -31,6 +32,10 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+# Build the MCP server (when enabled) so it can be mounted on the app below.
+# Its Streamable HTTP session manager must run within the app lifespan.
+mcp_server = build_mcp_server(settings.mcp_path) if settings.mcp_enabled else None
 
 
 @asynccontextmanager
@@ -51,7 +56,13 @@ async def lifespan(app: FastAPI):
     scheduler = get_scheduler()
     scheduler.start()
 
-    yield
+    async with AsyncExitStack() as stack:
+        # Run the MCP Streamable HTTP session manager for the app's lifetime.
+        if mcp_server is not None:
+            await stack.enter_async_context(mcp_server.session_manager.run())
+            logger.info("MCP server enabled at %s (no authentication)", settings.mcp_path)
+
+        yield
 
     # Shutdown
     logger.info("Shutting down eeroVista")
@@ -77,6 +88,10 @@ app.include_router(prometheus.router)
 app.include_router(zabbix.router)
 app.include_router(device_groups.router)
 app.include_router(notifications.router)
+
+# Mount the MCP server (read-only network-status tools for AI agents) when enabled.
+if mcp_server is not None:
+    app.mount(settings.mcp_path, mcp_server.streamable_http_app())
 
 
 @app.get("/favicon.ico")

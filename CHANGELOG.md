@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **MCP server for AI agents**: New optional [Model Context Protocol](docs/mcp.md) server exposing a curated set of 12 read-only tools (network summary, device/node lists, health score, WAN uptime, outages, speedtests, signal quality, top bandwidth users, and more) over Streamable HTTP. Mounted on the existing web server at a configurable path (`MCP_PATH`, default `/mcp`) and disabled by default (`MCP_ENABLED`). The tools reuse the existing REST query logic, so output matches the API. The endpoint has no authentication — expose only behind a trusted reverse proxy.
+
 ## [2.7.2] — 2026-05-26
 
 ### Fixed

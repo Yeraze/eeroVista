@@ -48,6 +48,12 @@ services:
       # - MQTT_TOPIC_PREFIX=eerovista
       # - MQTT_DISCOVERY_PREFIX=homeassistant
       # - MQTT_PUBLISH_INTERVAL=60
+
+      # MCP server for AI agents (disabled by default)
+      # NOTE: the /mcp endpoint has NO authentication - only enable behind a
+      # trusted reverse proxy or on a network you control. See docs/mcp.md.
+      # - MCP_ENABLED=true
+      # - MCP_PATH=/mcp
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 30s
