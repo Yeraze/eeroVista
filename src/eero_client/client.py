@@ -295,6 +295,66 @@ class EeroClientWrapper:
             logger.error(f"Error getting profiles: {e}", exc_info=True)
             return None
 
+    def _request_data_usage(
+        self,
+        path_suffix: str,
+        start: str,
+        end: str,
+        cadence: str = "hourly",
+        timezone_str: str = "America/New_York",
+        network_name: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Shared helper for data_usage API requests."""
+        try:
+            if not self.is_authenticated():
+                return None
+
+            network_client = self.get_network_client(network_name)
+            if not network_client:
+                return None
+
+            network_id = network_client.network_info.url.split('/')[-1]
+            eero = self._get_client()
+
+            from eero.client.api_client import APIClient
+            api = APIClient(eero.session.cookie)
+            return api.request(
+                "GET",
+                f"networks/{network_id}/{path_suffix}",
+                json={
+                    "start": start,
+                    "end": end,
+                    "cadence": cadence,
+                    "timezone": timezone_str,
+                },
+            )
+
+        except Exception as e:
+            logger.error(f"Error getting {path_suffix}: {e}", exc_info=True)
+            return None
+
+    def get_data_usage(
+        self,
+        start: str,
+        end: str,
+        cadence: str = "hourly",
+        timezone_str: str = "America/New_York",
+        network_name: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Get network-level aggregated data usage from eero's server-side endpoint."""
+        return self._request_data_usage("data_usage", start, end, cadence, timezone_str, network_name)
+
+    def get_data_usage_devices(
+        self,
+        start: str,
+        end: str,
+        cadence: str = "hourly",
+        timezone_str: str = "America/New_York",
+        network_name: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Get per-device aggregated data usage."""
+        return self._request_data_usage("data_usage/devices", start, end, cadence, timezone_str, network_name)
+
     def refresh_session(self) -> bool:
         """Attempt to refresh the session."""
         try:

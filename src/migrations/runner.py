@@ -74,6 +74,7 @@ def run_migrations(session: Session, eero_client, retry_skipped: bool = False) -
         ('007_add_connection_mode', 'src.migrations.007_add_connection_mode', False),
         ('008_add_device_groups', 'src.migrations.008_add_device_groups', False),
         ('009_add_notifications', 'src.migrations.009_add_notifications', False),
+        ('010_add_data_usage_tables', 'src.migrations.010_add_data_usage_tables', False),
     ]
 
     for migration_name, module_path, requires_auth in migrations:

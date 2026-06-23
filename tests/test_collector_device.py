@@ -10,7 +10,6 @@ from src.models.database import (
     Base,
     Device,
     DeviceConnection,
-    DailyBandwidth,
     EeroNode,
     EeroNodeMetric,
 )
@@ -261,22 +260,6 @@ class TestCollectForNetwork:
         conn = db_session.query(DeviceConnection).first()
         assert conn.bandwidth_down_mbps == 10.5
         assert conn.bandwidth_up_mbps == 2.0
-
-    def test_network_wide_bandwidth_accumulation(self, db_session, mock_client):
-        """Network-wide DailyBandwidth row (device_id=None) should be created."""
-        device = _make_device(usage={"down_mbps": 5.0, "up_mbps": 1.0})
-        mock_client.get_eeros.return_value = [_make_eero()]
-        mock_client.get_devices.return_value = [device]
-        mock_client.get_profiles.return_value = []
-        collector = DeviceCollector(db_session, mock_client)
-        collector._collect_for_network("HomeNet")
-
-        bw = (
-            db_session.query(DailyBandwidth)
-            .filter(DailyBandwidth.device_id == None)
-            .first()
-        )
-        assert bw is not None
 
     def test_creates_eero_node_records(self, db_session, mock_client):
         mock_client.get_eeros.return_value = [_make_eero()]
@@ -584,17 +567,6 @@ class TestProcessDevice:
         conn = db_session.query(DeviceConnection).first()
         assert conn.signal_strength is None
 
-    def test_creates_daily_bandwidth_record(self, db_session, mock_client):
-        device = _make_device(usage={"down_mbps": 5.0, "up_mbps": 1.0})
-        collector = DeviceCollector(db_session, mock_client)
-        collector._process_device(device, {}, "HomeNet")
-        db_session.flush()
-
-        bw = db_session.query(DailyBandwidth).filter(
-            DailyBandwidth.device_id != None
-        ).first()
-        assert bw is not None
-
 
 # ---------------------------------------------------------------------------
 # _guess_device_type()
@@ -644,104 +616,3 @@ class TestGuessDeviceType:
         assert collector._guess_device_type({}) == "unknown"
 
 
-# ---------------------------------------------------------------------------
-# _update_bandwidth_accumulation()
-# ---------------------------------------------------------------------------
-
-class TestUpdateBandwidthAccumulation:
-    def test_skips_when_bandwidth_is_none(self, db_session, mock_client):
-        collector = DeviceCollector(db_session, mock_client)
-        collector._update_bandwidth_accumulation(
-            network_name="HomeNet",
-            device_id=None,
-            bandwidth_down_mbps=None,
-            bandwidth_up_mbps=None,
-            timestamp=datetime.now(timezone.utc),
-        )
-        assert db_session.query(DailyBandwidth).count() == 0
-
-    def test_creates_new_daily_bandwidth_record(self, db_session, mock_client):
-        collector = DeviceCollector(db_session, mock_client)
-        ts = datetime.now(timezone.utc)
-        collector._update_bandwidth_accumulation(
-            network_name="HomeNet",
-            device_id=None,
-            bandwidth_down_mbps=10.0,
-            bandwidth_up_mbps=2.0,
-            timestamp=ts,
-        )
-        db_session.flush()
-        bw = db_session.query(DailyBandwidth).first()
-        assert bw is not None
-        assert bw.last_collection_time is not None
-
-    def test_accumulates_bandwidth_on_second_call(self, db_session, mock_client):
-        collector = DeviceCollector(db_session, mock_client)
-        t1 = datetime.now(timezone.utc) - timedelta(seconds=60)
-        t2 = datetime.now(timezone.utc)
-
-        # First call – establishes baseline
-        collector._update_bandwidth_accumulation("HomeNet", None, 10.0, 2.0, t1)
-        db_session.flush()
-
-        # Second call – should accumulate
-        collector._update_bandwidth_accumulation("HomeNet", None, 10.0, 2.0, t2)
-        db_session.flush()
-
-        bw = db_session.query(DailyBandwidth).first()
-        # Should have accumulated some MB (10 Mbps * 60s / 8 = 75 MB)
-        assert bw.download_mb > 0
-
-    def test_skips_accumulation_when_delta_exceeds_max(self, db_session, mock_client):
-        """Time delta >600s should skip accumulation but still update last_collection_time."""
-        collector = DeviceCollector(db_session, mock_client)
-        t1 = datetime.now(timezone.utc) - timedelta(seconds=700)
-        t2 = datetime.now(timezone.utc)
-
-        collector._update_bandwidth_accumulation("HomeNet", None, 10.0, 2.0, t1)
-        db_session.flush()
-        bw_before = db_session.query(DailyBandwidth).first()
-        download_before = bw_before.download_mb
-
-        collector._update_bandwidth_accumulation("HomeNet", None, 10.0, 2.0, t2)
-        db_session.flush()
-
-        bw = db_session.query(DailyBandwidth).first()
-        # Should NOT have accumulated
-        assert bw.download_mb == download_before
-
-    def test_logs_warning_for_large_but_acceptable_delta(self, db_session, mock_client):
-        """130-600s delta: logs warning but still accumulates."""
-        collector = DeviceCollector(db_session, mock_client)
-        t1 = datetime.now(timezone.utc) - timedelta(seconds=130)
-        t2 = datetime.now(timezone.utc)
-
-        collector._update_bandwidth_accumulation("HomeNet", None, 5.0, 1.0, t1)
-        db_session.flush()
-        bw_before = db_session.query(DailyBandwidth).first()
-        download_before = bw_before.download_mb
-
-        collector._update_bandwidth_accumulation("HomeNet", None, 5.0, 1.0, t2)
-        db_session.flush()
-
-        bw = db_session.query(DailyBandwidth).first()
-        # Should have accumulated (even though delta is large)
-        assert bw.download_mb > download_before
-
-    def test_handles_naive_last_collection_time(self, db_session, mock_client):
-        """SQLite strips tzinfo; collector should handle naive timestamps."""
-        collector = DeviceCollector(db_session, mock_client)
-        t1 = datetime.now(timezone.utc) - timedelta(seconds=60)
-        t2 = datetime.now(timezone.utc)
-
-        collector._update_bandwidth_accumulation("HomeNet", None, 5.0, 1.0, t1)
-        db_session.flush()
-
-        # Manually strip tzinfo to simulate SQLite behaviour
-        bw = db_session.query(DailyBandwidth).first()
-        bw.last_collection_time = bw.last_collection_time.replace(tzinfo=None)
-        db_session.flush()
-
-        # Second call should not raise
-        collector._update_bandwidth_accumulation("HomeNet", None, 5.0, 1.0, t2)
-        db_session.flush()

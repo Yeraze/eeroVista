@@ -200,8 +200,35 @@ class DailyBandwidth(Base):
     download_mb: Mapped[float] = mapped_column(Float, default=0.0)
     upload_mb: Mapped[float] = mapped_column(Float, default=0.0)
 
-    # Track last collection time to calculate deltas
-    last_collection_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # Metadata
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+    # Relationships
+    device: Mapped[Optional["Device"]] = relationship()
+
+
+class HourlyBandwidth(Base):
+    """Hourly bandwidth snapshots from eero's server-computed data_usage endpoint."""
+
+    __tablename__ = "hourly_bandwidth"
+    __table_args__ = (
+        UniqueConstraint('network_name', 'device_id', 'hour_start', name='uix_network_device_hour'),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    network_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    device_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("devices.id")
+    )  # NULL = network-wide totals
+    hour_start: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+
+    # Server-computed byte totals for this hour
+    download_bytes: Mapped[float] = mapped_column(Float, default=0.0)
+    upload_bytes: Mapped[float] = mapped_column(Float, default=0.0)
 
     # Metadata
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

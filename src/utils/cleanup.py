@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from src.models.database import DeviceConnection, EeroNodeMetric, NetworkMetric
+from src.models.database import DeviceConnection, EeroNodeMetric, HourlyBandwidth, NetworkMetric
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +167,55 @@ def cleanup_old_network_metrics(
         }
 
 
+def cleanup_old_hourly_bandwidth(
+    session: Session,
+    retention_days: int = 30
+) -> dict:
+    """Remove HourlyBandwidth records older than the retention period.
+
+    Args:
+        session: Database session
+        retention_days: Number of days to retain records (default: 30)
+
+    Returns:
+        dict with cleanup statistics
+    """
+    try:
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        cutoff_date_naive = cutoff_date.replace(tzinfo=None)
+
+        delete_query = session.query(HourlyBandwidth).filter(
+            HourlyBandwidth.hour_start < cutoff_date_naive
+        )
+        records_deleted = delete_query.delete(synchronize_session=False)
+        session.commit()
+
+        if records_deleted == 0:
+            logger.info(f"No hourly bandwidth records older than {retention_days} days found")
+        else:
+            logger.info(
+                f"Cleaned up {records_deleted} hourly bandwidth records older than "
+                f"{retention_days} days (before {cutoff_date_naive.date()})"
+            )
+
+        return {
+            "success": True,
+            "records_deleted": records_deleted,
+            "retention_days": retention_days,
+            "cutoff_date": cutoff_date.isoformat(),
+        }
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to cleanup old hourly bandwidth records: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "records_deleted": 0,
+            "retention_days": retention_days,
+        }
+
+
 def vacuum_database(session: Session) -> dict:
     """Run VACUUM on the SQLite database to reclaim disk space and optimize performance.
 
@@ -280,11 +329,13 @@ def run_all_cleanup_tasks(
     connection_result = cleanup_old_connection_records(session, retention_days)
     node_metric_result = cleanup_old_node_metrics(session, retention_days)
     network_metric_result = cleanup_old_network_metrics(session, retention_days)
+    hourly_bandwidth_result = cleanup_old_hourly_bandwidth(session, retention_days)
 
     total_deleted = (
         connection_result.get("records_deleted", 0) +
         node_metric_result.get("records_deleted", 0) +
-        network_metric_result.get("records_deleted", 0)
+        network_metric_result.get("records_deleted", 0) +
+        hourly_bandwidth_result.get("records_deleted", 0)
     )
 
     logger.info(f"Database cleanup completed: {total_deleted} total records deleted")
@@ -297,7 +348,8 @@ def run_all_cleanup_tasks(
     cleanup_success = (
         connection_result["success"] and
         node_metric_result["success"] and
-        network_metric_result["success"]
+        network_metric_result["success"] and
+        hourly_bandwidth_result["success"]
     )
 
     result = {
@@ -306,6 +358,7 @@ def run_all_cleanup_tasks(
         "connection_records_deleted": connection_result.get("records_deleted", 0),
         "node_metric_records_deleted": node_metric_result.get("records_deleted", 0),
         "network_metric_records_deleted": network_metric_result.get("records_deleted", 0),
+        "hourly_bandwidth_records_deleted": hourly_bandwidth_result.get("records_deleted", 0),
         "retention_days": retention_days,
     }
 

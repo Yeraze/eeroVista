@@ -921,11 +921,11 @@ class TestNetworkBandwidthTotal:
         resp = app_client.get("/api/network/bandwidth-total?days=91")
         assert resp.status_code == 400
 
-    def test_with_daily_records(self, app_client, db_session, seed_device):
+    def test_with_daily_records(self, app_client, db_session):
         today = date.today()
         db_session.add(DailyBandwidth(
             network_name="test-net",
-            device_id=seed_device.id,
+            device_id=None,
             date=today,
             download_mb=2000.0,
             upload_mb=500.0,
