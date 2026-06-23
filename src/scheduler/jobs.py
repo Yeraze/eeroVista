@@ -50,6 +50,7 @@ class CollectorScheduler:
             "notification_checker": False,
         }
         self._lock = threading.Lock()
+        self._data_usage_collector: Optional[DataUsageCollector] = None
 
     def start(self) -> None:
         """Start the scheduler and add collection jobs."""
@@ -74,9 +75,10 @@ class CollectorScheduler:
         )
 
         # Data usage collector (server-computed bandwidth totals)
+        # Hourly buckets update at most once per hour — no need to poll faster
         self.scheduler.add_job(
             func=self._run_data_usage_collector,
-            trigger=IntervalTrigger(seconds=device_interval),
+            trigger=IntervalTrigger(seconds=3600),
             id="data_usage_collector",
             name="Data Usage Collector",
             replace_existing=True,
@@ -308,8 +310,12 @@ class CollectorScheduler:
         def _do_collect():
             with get_db_context() as db:
                 client = EeroClientWrapper(db)
-                collector = DataUsageCollector(db, client)
-                return collector.run()
+                if self._data_usage_collector is None:
+                    self._data_usage_collector = DataUsageCollector(db, client)
+                else:
+                    self._data_usage_collector.db = db
+                    self._data_usage_collector.eero_client = client
+                return self._data_usage_collector.run()
 
         try:
             result = self._run_with_timeout(collector_id, _do_collect)

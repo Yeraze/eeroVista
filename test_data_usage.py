@@ -122,7 +122,7 @@ def compare_with_accumulated(db, network_name: str, today, dl_bytes: float, ul_b
         if record.upload_mb > 0:
             ratio = ul_mb / record.upload_mb
             print(f"  Upload ratio (endpoint/accumulated):   {ratio:.2f}x")
-        print(f"\n  Last collection: {record.last_collection_time}")
+        print(f"\n  Last collection: {record.updated_at}")
     else:
         print("  No accumulated DailyBandwidth record found for today.")
         print(f"  data_usage endpoint: DL={fmt_bytes(dl_bytes)}  UL={fmt_bytes(ul_bytes)}")

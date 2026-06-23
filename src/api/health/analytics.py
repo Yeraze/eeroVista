@@ -653,8 +653,7 @@ async def get_network_bandwidth_total(
             # Generate complete date range
             all_dates = [since_date + timedelta(days=i) for i in range(days)]
 
-            # Fetch and aggregate records from database for this network
-            # Sum up all device bandwidth by date (includes both per-device and network-wide totals)
+            # Fetch network-wide totals only (device_id = NULL) to avoid double-counting
             daily_aggregates = (
                 db.query(
                     DailyBandwidth.date,
@@ -663,6 +662,7 @@ async def get_network_bandwidth_total(
                 )
                 .filter(
                     DailyBandwidth.network_name == network_name,
+                    DailyBandwidth.device_id.is_(None),
                     DailyBandwidth.date >= since_date
                 )
                 .group_by(DailyBandwidth.date)
@@ -1036,12 +1036,9 @@ async def get_network_bandwidth_hourly(
             hourly_data = {}
 
             if hourly_records:
-                # Calculate timezone offset for converting UTC hour_start to local hour
-                offset_seconds = today_start_local.utcoffset().total_seconds()
-                offset_hours = int(offset_seconds / 3600)
-
                 for rec in hourly_records:
-                    local_hour = (rec.hour_start.hour + offset_hours) % 24
+                    hour_start_utc = rec.hour_start.replace(tzinfo=ZoneInfo("UTC"))
+                    local_hour = hour_start_utc.astimezone(tz).hour
                     hourly_data[local_hour] = {
                         "download_mb": rec.download_bytes / BYTES_PER_MB,
                         "upload_mb": rec.upload_bytes / BYTES_PER_MB,

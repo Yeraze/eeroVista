@@ -295,28 +295,16 @@ class EeroClientWrapper:
             logger.error(f"Error getting profiles: {e}", exc_info=True)
             return None
 
-    def get_data_usage(
+    def _request_data_usage(
         self,
+        path_suffix: str,
         start: str,
         end: str,
         cadence: str = "hourly",
         timezone_str: str = "America/New_York",
         network_name: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        """
-        Get network-level aggregated data usage from eero's server-side endpoint.
-
-        Args:
-            start: ISO 8601 timestamp for period start (e.g. "2026-06-23T04:00:00Z")
-            end: ISO 8601 timestamp for period end
-            cadence: "hourly", "daily", or "weekly"
-            timezone_str: IANA timezone name
-            network_name: Optional network name. If None, uses first network.
-
-        Returns:
-            Dict with 'series' containing download/upload sums and values,
-            or None on error.
-        """
+        """Shared helper for data_usage API requests."""
         try:
             if not self.is_authenticated():
                 return None
@@ -330,10 +318,9 @@ class EeroClientWrapper:
 
             from eero.client.api_client import APIClient
             api = APIClient(eero.session.cookie)
-            # GET with JSON body — eero's API requires this pattern
-            result = api.request(
+            return api.request(
                 "GET",
-                f"networks/{network_id}/data_usage",
+                f"networks/{network_id}/{path_suffix}",
                 json={
                     "start": start,
                     "end": end,
@@ -341,11 +328,21 @@ class EeroClientWrapper:
                     "timezone": timezone_str,
                 },
             )
-            return result
 
         except Exception as e:
-            logger.error(f"Error getting data usage: {e}", exc_info=True)
+            logger.error(f"Error getting {path_suffix}: {e}", exc_info=True)
             return None
+
+    def get_data_usage(
+        self,
+        start: str,
+        end: str,
+        cadence: str = "hourly",
+        timezone_str: str = "America/New_York",
+        network_name: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Get network-level aggregated data usage from eero's server-side endpoint."""
+        return self._request_data_usage("data_usage", start, end, cadence, timezone_str, network_name)
 
     def get_data_usage_devices(
         self,
@@ -355,81 +352,8 @@ class EeroClientWrapper:
         timezone_str: str = "America/New_York",
         network_name: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        """
-        Get per-device aggregated data usage.
-
-        Same parameters as get_data_usage.
-        """
-        try:
-            if not self.is_authenticated():
-                return None
-
-            network_client = self.get_network_client(network_name)
-            if not network_client:
-                return None
-
-            network_id = network_client.network_info.url.split('/')[-1]
-            eero = self._get_client()
-
-            from eero.client.api_client import APIClient
-            api = APIClient(eero.session.cookie)
-            result = api.request(
-                "GET",
-                f"networks/{network_id}/data_usage/devices",
-                json={
-                    "start": start,
-                    "end": end,
-                    "cadence": cadence,
-                    "timezone": timezone_str,
-                },
-            )
-            return result
-
-        except Exception as e:
-            logger.error(f"Error getting device data usage: {e}", exc_info=True)
-            return None
-
-    def get_data_usage_eeros(
-        self,
-        start: str,
-        end: str,
-        cadence: str = "hourly",
-        timezone_str: str = "America/New_York",
-        network_name: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Get per-eero-node aggregated data usage.
-
-        Same parameters as get_data_usage.
-        """
-        try:
-            if not self.is_authenticated():
-                return None
-
-            network_client = self.get_network_client(network_name)
-            if not network_client:
-                return None
-
-            network_id = network_client.network_info.url.split('/')[-1]
-            eero = self._get_client()
-
-            from eero.client.api_client import APIClient
-            api = APIClient(eero.session.cookie)
-            result = api.request(
-                "GET",
-                f"networks/{network_id}/data_usage/eeros",
-                json={
-                    "start": start,
-                    "end": end,
-                    "cadence": cadence,
-                    "timezone": timezone_str,
-                },
-            )
-            return result
-
-        except Exception as e:
-            logger.error(f"Error getting eero node data usage: {e}", exc_info=True)
-            return None
+        """Get per-device aggregated data usage."""
+        return self._request_data_usage("data_usage/devices", start, end, cadence, timezone_str, network_name)
 
     def refresh_session(self) -> bool:
         """Attempt to refresh the session."""

@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -59,6 +59,8 @@ class DataUsageCollector(BaseCollector):
                 logger.warning("No networks found for data usage collection")
                 return {"items_collected": 0, "errors": 0}
 
+            today_window = self._get_today_window()
+
             for network in networks:
                 if isinstance(network, dict):
                     network_name = network.get('name')
@@ -69,12 +71,13 @@ class DataUsageCollector(BaseCollector):
                     continue
 
                 try:
-                    self._collect_network_usage(network_name)
-                    self._collect_device_usage(network_name)
+                    self._collect_network_usage(network_name, today_window)
+                    self._collect_device_usage(network_name, today_window)
                     networks_processed += 1
                 except Exception as e:
                     logger.error(f"Error collecting data usage for '{network_name}': {e}", exc_info=True)
                     errors += 1
+                    self.db.rollback()
 
             self.db.commit()
             return {"items_collected": networks_processed, "errors": errors}
@@ -91,15 +94,15 @@ class DataUsageCollector(BaseCollector):
         tz = settings.get_timezone()
         now_local = datetime.now(tz)
         today_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_end = today_start + timedelta(days=1) - timedelta(seconds=1)
+        today_end = today_start + timedelta(days=1)
 
         start_iso = today_start.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%SZ")
         end_iso = today_end.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%SZ")
         return start_iso, end_iso, str(tz), now_local
 
-    def _collect_network_usage(self, network_name: str) -> None:
+    def _collect_network_usage(self, network_name: str, today_window: tuple[str, str, str, datetime]) -> None:
         """Fetch and store network-level data_usage."""
-        start, end, tz_name, now_local = self._get_today_window()
+        start, end, tz_name, now_local = today_window
 
         result = self.eero_client.get_data_usage(
             start=start, end=end, cadence="hourly",
@@ -131,9 +134,9 @@ class DataUsageCollector(BaseCollector):
 
         self._update_delta_state(download_sum, upload_sum)
 
-    def _collect_device_usage(self, network_name: str) -> None:
+    def _collect_device_usage(self, network_name: str, today_window: tuple[str, str, str, datetime]) -> None:
         """Fetch and store per-device data_usage."""
-        start, end, tz_name, now_local = self._get_today_window()
+        start, end, tz_name, now_local = today_window
 
         result = self.eero_client.get_data_usage_devices(
             start=start, end=end, cadence="hourly",
@@ -152,6 +155,14 @@ class DataUsageCollector(BaseCollector):
         else:
             devices_list = []
 
+        # Pre-fetch all devices for this network to avoid N+1 queries
+        all_devices = (
+            self.db.query(Device)
+            .filter(Device.network_name == network_name)
+            .all()
+        )
+        device_by_mac = {d.mac_address: d for d in all_devices}
+
         devices_updated = 0
         for device_entry in devices_list:
             if not isinstance(device_entry, dict):
@@ -161,11 +172,7 @@ class DataUsageCollector(BaseCollector):
             if not mac:
                 continue
 
-            device = (
-                self.db.query(Device)
-                .filter(Device.network_name == network_name, Device.mac_address == mac)
-                .first()
-            )
+            device = device_by_mac.get(mac)
             if not device:
                 logger.debug(f"Unknown device MAC {mac} in data_usage response, skipping")
                 continue
@@ -257,7 +264,7 @@ class DataUsageCollector(BaseCollector):
         self,
         network_name: str,
         device_id: Optional[int],
-        today: object,
+        today: "date",
         download_bytes: int,
         upload_bytes: int,
     ) -> None:
@@ -320,8 +327,7 @@ class DataUsageCollector(BaseCollector):
 
         if elapsed > GAP_WARNING_SECONDS:
             logger.warning(f"Large gap between polls: {elapsed:.0f}s ({elapsed / 60:.1f} min)")
-
-        if elapsed > GAP_RECOVERY_SECONDS:
+        elif elapsed > GAP_RECOVERY_SECONDS:
             logger.info(f"Recovered from gap of {elapsed:.0f}s")
 
         download_rate = (delta_download * BITS_PER_BYTE) / (elapsed * BITS_PER_MEGABIT)
