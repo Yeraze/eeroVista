@@ -250,7 +250,6 @@ class DataUsageCollector(BaseCollector):
         if record:
             record.download_mb = download_mb
             record.upload_mb = upload_mb
-            record.source = "data_usage"
             record.updated_at = datetime.now(timezone.utc)
         else:
             self.db.add(DailyBandwidth(
@@ -259,5 +258,4 @@ class DataUsageCollector(BaseCollector):
                 date=today,
                 download_mb=download_mb,
                 upload_mb=upload_mb,
-                source="data_usage",
             ))

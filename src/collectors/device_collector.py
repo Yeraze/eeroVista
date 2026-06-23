@@ -1,12 +1,11 @@
 """Device collector for tracking connected devices."""
 
 import logging
-from datetime import datetime, date, timezone
-from typing import Dict, Optional
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone
+from typing import Dict
 
 from src.collectors.base import BaseCollector
-from src.models.database import Device, DeviceConnection, DailyBandwidth, EeroNode, EeroNodeMetric
+from src.models.database import Device, DeviceConnection, EeroNode, EeroNodeMetric
 
 logger = logging.getLogger(__name__)
 
@@ -113,11 +112,6 @@ class DeviceCollector(BaseCollector):
                 type_counts[t] = type_counts.get(t, 0) + 1
             logger.info(f"Device entry types: {type_counts}")
 
-            # Track network-wide bandwidth totals
-            network_bandwidth_down = 0.0
-            network_bandwidth_up = 0.0
-            timestamp = datetime.now(timezone.utc)
-
             # Process each device
             for device_data in devices_data:
                 try:
@@ -129,27 +123,10 @@ class DeviceCollector(BaseCollector):
                     self._process_device(device_data, eero_node_map, network_name)
                     devices_processed += 1
 
-                    # Accumulate network-wide bandwidth
-                    usage = device_data.get("usage")
-                    if isinstance(usage, dict):
-                        down = usage.get("down_mbps", 0.0) or 0.0
-                        up = usage.get("up_mbps", 0.0) or 0.0
-                        network_bandwidth_down += down
-                        network_bandwidth_up += up
-
                 except Exception as e:
                     device_name = device_data.get("nickname") or device_data.get("hostname") or device_data.get("mac", "unknown")
                     logger.error(f"Error processing device '{device_name}': {e}", exc_info=True)
                     errors += 1
-
-            # Update network-wide bandwidth accumulation
-            self._update_bandwidth_accumulation(
-                network_name=network_name,
-                device_id=None,  # None = network-wide
-                bandwidth_down_mbps=network_bandwidth_down,
-                bandwidth_up_mbps=network_bandwidth_up,
-                timestamp=timestamp
-            )
 
             self.db.commit()
 
@@ -472,15 +449,6 @@ class DeviceCollector(BaseCollector):
         )
         self.db.add(connection)
 
-        # Update accumulated bandwidth statistics for this device
-        self._update_bandwidth_accumulation(
-            network_name=network_name,
-            device_id=device.id,
-            bandwidth_down_mbps=bandwidth_down,
-            bandwidth_up_mbps=bandwidth_up,
-            timestamp=timestamp
-        )
-
     def _guess_device_type(self, device_data: dict) -> str:
         """Guess device type based on available data."""
         # Check device_type field first
@@ -503,130 +471,3 @@ class DeviceCollector(BaseCollector):
         else:
             return "unknown"
 
-    def _update_bandwidth_accumulation(
-        self,
-        network_name: str,
-        device_id: Optional[int],
-        bandwidth_down_mbps: Optional[float],
-        bandwidth_up_mbps: Optional[float],
-        timestamp: datetime
-    ) -> None:
-        """
-        Update accumulated bandwidth statistics for a device or network-wide.
-
-        Args:
-            network_name: Network name
-            device_id: Device ID (None for network-wide totals)
-            bandwidth_down_mbps: Current download rate in Mbps
-            bandwidth_up_mbps: Current upload rate in Mbps
-            timestamp: Current collection timestamp
-        """
-        if bandwidth_down_mbps is None or bandwidth_up_mbps is None:
-            return
-
-        # Get configured timezone for proper date grouping
-        from src.config import get_settings
-        settings = get_settings()
-        tz = settings.get_timezone()
-
-        # Convert UTC timestamp to local timezone to determine which "day" this data belongs to
-        # This ensures data collected at 11 PM local time goes to today's date, not tomorrow's
-        # Ensure timestamp is timezone-aware (UTC)
-        if timestamp.tzinfo is None:
-            timestamp_utc = timestamp.replace(tzinfo=ZoneInfo("UTC"))
-        else:
-            timestamp_utc = timestamp.astimezone(ZoneInfo("UTC"))
-        timestamp_local = timestamp_utc.astimezone(tz)
-        today = timestamp_local.date()
-
-        # Get or create daily bandwidth record
-        bandwidth_record = (
-            self.db.query(DailyBandwidth)
-            .filter(
-                DailyBandwidth.network_name == network_name,
-                DailyBandwidth.device_id == device_id,
-                DailyBandwidth.date == today
-            )
-            .first()
-        )
-
-        if not bandwidth_record:
-            bandwidth_record = DailyBandwidth(
-                network_name=network_name,
-                device_id=device_id,
-                date=today,
-                download_mb=0.0,
-                upload_mb=0.0,
-                last_collection_time=None,
-            )
-            self.db.add(bandwidth_record)
-
-        # Skip rate-based accumulation if data_usage endpoint is populating this record
-        if bandwidth_record.source == "data_usage":
-            bandwidth_record.last_collection_time = timestamp
-            return
-
-        # Calculate accumulated bandwidth since last collection
-        if bandwidth_record.last_collection_time:
-            # Ensure both timestamps have matching timezone awareness (SQLite strips tzinfo)
-            last_time = bandwidth_record.last_collection_time
-            if last_time.tzinfo is None and timestamp.tzinfo is not None:
-                last_time = last_time.replace(tzinfo=timezone.utc)
-            elif last_time.tzinfo is not None and timestamp.tzinfo is None:
-                timestamp = timestamp.replace(tzinfo=timezone.utc)
-            # Calculate time delta in seconds
-            time_delta = (timestamp - last_time).total_seconds()
-
-            # Validate time delta is reasonable
-            # Skip accumulation if time_delta is too large (>10 minutes) to prevent
-            # inaccurate data from stale bandwidth rates
-            MAX_TIME_DELTA = 600  # 10 minutes in seconds
-            EXPECTED_INTERVAL = 60  # Expected collection interval in seconds
-
-            if time_delta > MAX_TIME_DELTA:
-                logger.warning(
-                    f"Skipping bandwidth accumulation for device {device_id}: "
-                    f"time delta ({time_delta:.1f}s) exceeds maximum ({MAX_TIME_DELTA}s). "
-                    f"This usually indicates data collection was interrupted."
-                )
-            elif time_delta > EXPECTED_INTERVAL * 2:
-                # Log debug but still accumulate if within max threshold
-                logger.debug(
-                    f"Large time delta detected for device {device_id}: "
-                    f"{time_delta:.1f}s (expected ~{EXPECTED_INTERVAL}s). "
-                    f"Bandwidth calculations may be less accurate."
-                )
-
-                # Convert Mbps to MB: (Mbps * seconds) / 8 bits per byte
-                # Mbps = megabits per second, so Mbps * seconds = megabits
-                # megabits / 8 = megabytes
-                download_mb = (bandwidth_down_mbps * time_delta) / 8.0
-                upload_mb = (bandwidth_up_mbps * time_delta) / 8.0
-
-                # Add to accumulated totals
-                bandwidth_record.download_mb += download_mb
-                bandwidth_record.upload_mb += upload_mb
-
-                logger.debug(
-                    f"Accumulated bandwidth for device {device_id}: "
-                    f"+{download_mb:.4f} MB down, +{upload_mb:.4f} MB up "
-                    f"(delta: {time_delta:.1f}s)"
-                )
-            else:
-                # Normal case: time delta is within expected range
-                download_mb = (bandwidth_down_mbps * time_delta) / 8.0
-                upload_mb = (bandwidth_up_mbps * time_delta) / 8.0
-
-                # Add to accumulated totals
-                bandwidth_record.download_mb += download_mb
-                bandwidth_record.upload_mb += upload_mb
-
-                logger.debug(
-                    f"Accumulated bandwidth for device {device_id}: "
-                    f"+{download_mb:.4f} MB down, +{upload_mb:.4f} MB up "
-                    f"(delta: {time_delta:.1f}s)"
-                )
-
-        # Update last collection time for next calculation
-        bandwidth_record.last_collection_time = timestamp
-        bandwidth_record.updated_at = timestamp

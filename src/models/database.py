@@ -200,12 +200,6 @@ class DailyBandwidth(Base):
     download_mb: Mapped[float] = mapped_column(Float, default=0.0)
     upload_mb: Mapped[float] = mapped_column(Float, default=0.0)
 
-    # Track last collection time to calculate deltas
-    last_collection_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
-
-    # Source of bandwidth data: 'rate' (rate-based accumulation) or 'data_usage' (server-computed)
-    source: Mapped[Optional[str]] = mapped_column(String, default='rate')
-
     # Metadata
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
