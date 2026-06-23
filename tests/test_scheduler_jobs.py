@@ -38,6 +38,7 @@ class TestCollectorSchedulerInit:
             "speedtest_collector",
             "routing_collector",
             "notification_checker",
+            "data_usage_collector",
         }
         assert set(scheduler._running_collectors.keys()) == expected_keys
         assert all(v is False for v in scheduler._running_collectors.values())
