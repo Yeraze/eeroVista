@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.9.0] — 2026-06-23
+
+### Added
+
+- **Server-side bandwidth tracking via `data_usage` endpoint**: New `DataUsageCollector` fetches hourly bandwidth totals from eero's server-computed `data_usage` API. Runs at :05 past each hour to collect the previous hour's finalized totals into `HourlyBandwidth` and `DailyBandwidth` tables. Far more accurate than rate-based accumulation from instantaneous Mbps snapshots. ([#123], [#124])
+
+### Changed
+
+- **Dual bandwidth architecture**: Existing device/network collectors continue polling every 30-60s for real-time instantaneous rates. The new `DataUsageCollector` provides accurate hourly/daily totals independently — the two approaches complement each other.
+
 ## [2.8.1] — 2026-06-13
 
 ### Fixed
