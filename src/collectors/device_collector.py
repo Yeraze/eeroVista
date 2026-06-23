@@ -561,6 +561,11 @@ class DeviceCollector(BaseCollector):
             )
             self.db.add(bandwidth_record)
 
+        # Skip rate-based accumulation if data_usage endpoint is populating this record
+        if bandwidth_record.source == "data_usage":
+            bandwidth_record.last_collection_time = timestamp
+            return
+
         # Calculate accumulated bandwidth since last collection
         if bandwidth_record.last_collection_time:
             # Ensure both timestamps have matching timezone awareness (SQLite strips tzinfo)

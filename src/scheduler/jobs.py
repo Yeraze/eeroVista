@@ -9,7 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from src.collectors import DeviceCollector, NetworkCollector, RoutingCollector, SpeedtestCollector
+from src.collectors import DataUsageCollector, DeviceCollector, NetworkCollector, RoutingCollector, SpeedtestCollector
 from src.config import get_settings
 from src.eero_client import EeroClientWrapper
 from src.utils.database import get_db_context
@@ -32,6 +32,7 @@ class CollectorScheduler:
         self._consecutive_failures = {
             "device_collector": 0,
             "network_collector": 0,
+            "data_usage_collector": 0,
             "speedtest_collector": 0,
             "routing_collector": 0,
             "notification_checker": 0,
@@ -43,6 +44,7 @@ class CollectorScheduler:
         self._running_collectors: dict[str, bool] = {
             "device_collector": False,
             "network_collector": False,
+            "data_usage_collector": False,
             "speedtest_collector": False,
             "routing_collector": False,
             "notification_checker": False,
@@ -68,6 +70,15 @@ class CollectorScheduler:
             trigger=IntervalTrigger(seconds=device_interval),
             id="device_collector",
             name="Device Collector",
+            replace_existing=True,
+        )
+
+        # Data usage collector (server-computed bandwidth totals)
+        self.scheduler.add_job(
+            func=self._run_data_usage_collector,
+            trigger=IntervalTrigger(seconds=device_interval),
+            id="data_usage_collector",
+            name="Data Usage Collector",
             replace_existing=True,
         )
 
@@ -147,6 +158,7 @@ class CollectorScheduler:
         # Run collectors immediately on startup
         logger.info("Running initial data collection...")
         self._run_device_collector()
+        self._run_data_usage_collector()
         self._run_network_collector()
         self._run_speedtest_collector()
         self._run_routing_collector()
@@ -236,6 +248,7 @@ class CollectorScheduler:
         """Trigger immediate collection run for all collectors."""
         logger.info("Running all collectors immediately")
         self._run_device_collector()
+        self._run_data_usage_collector()
         self._run_network_collector()
         self._run_speedtest_collector()
         self._run_routing_collector()
@@ -286,6 +299,39 @@ class CollectorScheduler:
 
         except Exception as e:
             logger.error(f"Device collector error: {e}", exc_info=True)
+            self._record_failure(collector_id, str(e))
+
+    def _run_data_usage_collector(self) -> None:
+        """Run the data usage collector with timeout protection."""
+        collector_id = "data_usage_collector"
+
+        def _do_collect():
+            with get_db_context() as db:
+                client = EeroClientWrapper(db)
+                collector = DataUsageCollector(db, client)
+                return collector.run()
+
+        try:
+            result = self._run_with_timeout(collector_id, _do_collect)
+
+            if result.get("skipped"):
+                return
+
+            if result.get("success"):
+                logger.info(
+                    f"Data usage collection complete: {result.get('items_collected', 0)} networks"
+                )
+                self._record_success(collector_id)
+            else:
+                error = result.get('error', 'Unknown error')
+                if result.get("timeout"):
+                    logger.error(f"Data usage collection timed out: {error}")
+                else:
+                    logger.error(f"Data usage collection failed: {error}")
+                self._record_failure(collector_id, error)
+
+        except Exception as e:
+            logger.error(f"Data usage collector error: {e}", exc_info=True)
             self._record_failure(collector_id, str(e))
 
     def _run_network_collector(self) -> None:

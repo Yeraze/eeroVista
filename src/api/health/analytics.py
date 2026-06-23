@@ -1010,7 +1010,9 @@ async def get_network_bandwidth_hourly(
         logger.debug(f"Cache miss for {cache_key}, querying database...")
 
         with get_db_context() as db:
-            from src.models.database import Device, DeviceConnection
+            from src.models.database import Device, DeviceConnection, HourlyBandwidth
+
+            BYTES_PER_MB = 1_000_000
 
             # Get start of today in local timezone, convert to UTC for database query
             today_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -1020,55 +1022,74 @@ async def get_network_bandwidth_hourly(
             today_end_local = today_start_local + timedelta(days=1)
             today_end_utc = today_end_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
 
-            # Calculate conversion factor for rate to bytes
-            # Mbps * seconds / 8 bits per byte = MB
-            interval_seconds = settings.collection_interval_devices
-            rate_to_mb = interval_seconds / 8.0
-
-            # Calculate timezone offset in hours for SQL
-            # We need to adjust the hour extraction by the timezone offset
-            offset_seconds = today_start_local.utcoffset().total_seconds()
-            offset_hours = int(offset_seconds / 3600)
-
-            # Query and aggregate in SQL using timezone-adjusted hour extraction
-            # This is MUCH faster than fetching all rows and aggregating in Python
-            # Filter by network
-            hourly_query = (
-                db.query(
-                    # Extract hour with timezone offset adjustment
-                    # Cast strftime result to integer BEFORE doing math
-                    # Use ((x % 24) + 24) % 24 to handle negative results correctly in SQLite
-                    func.cast(
-                        ((func.cast(func.strftime('%H', DeviceConnection.timestamp), Integer) + offset_hours) % 24 + 24) % 24,
-                        Integer
-                    ).label('hour'),
-                    func.sum(
-                        func.coalesce(DeviceConnection.bandwidth_down_mbps, 0.0) * rate_to_mb
-                    ).label('download_mb'),
-                    func.sum(
-                        func.coalesce(DeviceConnection.bandwidth_up_mbps, 0.0) * rate_to_mb
-                    ).label('upload_mb'),
-                    func.count(DeviceConnection.id).label('count')
-                )
-                .join(Device, DeviceConnection.device_id == Device.id)
+            # Prefer server-computed data from HourlyBandwidth (data_usage endpoint)
+            hourly_records = (
+                db.query(HourlyBandwidth)
                 .filter(
-                    Device.network_name == network_name,
-                    DeviceConnection.timestamp >= today_start_utc,
-                    DeviceConnection.timestamp < today_end_utc
+                    HourlyBandwidth.network_name == network_name,
+                    HourlyBandwidth.device_id.is_(None),
+                    HourlyBandwidth.hour_start >= today_start_utc,
+                    HourlyBandwidth.hour_start < today_end_utc,
                 )
-                .group_by('hour')
                 .all()
             )
 
-            # Convert query results to dictionary for easy lookup
-            hourly_data = {
-                row.hour: {
-                    "download_mb": row.download_mb,
-                    "upload_mb": row.upload_mb,
-                    "count": row.count
+            hourly_data = {}
+            source = "data_usage"
+
+            if hourly_records:
+                # Calculate timezone offset for converting UTC hour_start to local hour
+                offset_seconds = today_start_local.utcoffset().total_seconds()
+                offset_hours = int(offset_seconds / 3600)
+
+                for rec in hourly_records:
+                    local_hour = (rec.hour_start.hour + offset_hours) % 24
+                    hourly_data[local_hour] = {
+                        "download_mb": rec.download_bytes / BYTES_PER_MB,
+                        "upload_mb": rec.upload_bytes / BYTES_PER_MB,
+                        "count": 1,
+                    }
+            else:
+                # Fallback: aggregate from DeviceConnection rate snapshots
+                source = "rate_accumulation"
+                interval_seconds = settings.collection_interval_devices
+                rate_to_mb = interval_seconds / 8.0
+
+                offset_seconds = today_start_local.utcoffset().total_seconds()
+                offset_hours = int(offset_seconds / 3600)
+
+                hourly_query = (
+                    db.query(
+                        func.cast(
+                            ((func.cast(func.strftime('%H', DeviceConnection.timestamp), Integer) + offset_hours) % 24 + 24) % 24,
+                            Integer
+                        ).label('hour'),
+                        func.sum(
+                            func.coalesce(DeviceConnection.bandwidth_down_mbps, 0.0) * rate_to_mb
+                        ).label('download_mb'),
+                        func.sum(
+                            func.coalesce(DeviceConnection.bandwidth_up_mbps, 0.0) * rate_to_mb
+                        ).label('upload_mb'),
+                        func.count(DeviceConnection.id).label('count')
+                    )
+                    .join(Device, DeviceConnection.device_id == Device.id)
+                    .filter(
+                        Device.network_name == network_name,
+                        DeviceConnection.timestamp >= today_start_utc,
+                        DeviceConnection.timestamp < today_end_utc
+                    )
+                    .group_by('hour')
+                    .all()
+                )
+
+                hourly_data = {
+                    row.hour: {
+                        "download_mb": row.download_mb,
+                        "upload_mb": row.upload_mb,
+                        "count": row.count,
+                    }
+                    for row in hourly_query
                 }
-                for row in hourly_query
-            }
 
             # Format hourly breakdown (0-23 hours)
             hourly_breakdown = []
@@ -1082,7 +1103,6 @@ async def get_network_bandwidth_hourly(
                         "data_points": hourly_data[hour]["count"]
                     })
                 else:
-                    # No data for this hour
                     hourly_breakdown.append({
                         "hour": hour,
                         "hour_label": f"{hour:02d}:00",
@@ -1108,6 +1128,7 @@ async def get_network_bandwidth_hourly(
                     "total_mb": round(total_download + total_upload, 2),
                 },
                 "hourly_breakdown": hourly_breakdown,
+                "source": source,
             }
 
             # Cache the result with TTL
