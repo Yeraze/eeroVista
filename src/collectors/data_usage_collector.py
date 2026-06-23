@@ -1,6 +1,7 @@
 """Data usage collector — polls eero's server-computed bandwidth totals."""
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -13,6 +14,21 @@ from src.models.database import DailyBandwidth, Device, HourlyBandwidth
 logger = logging.getLogger(__name__)
 
 BYTES_PER_MB = 1_000_000
+BITS_PER_BYTE = 8
+BITS_PER_MEGABIT = 1_000_000
+GAP_WARNING_SECONDS = 600
+GAP_RECOVERY_SECONDS = 120
+
+
+@dataclass
+class ThroughputSnapshot:
+    """Latest computed throughput rates."""
+    download_rate_mbps: float
+    upload_rate_mbps: float
+    delta_download_bytes: int
+    delta_upload_bytes: int
+    elapsed_seconds: float
+    timestamp: datetime
 
 
 class DataUsageCollector(BaseCollector):
@@ -22,6 +38,16 @@ class DataUsageCollector(BaseCollector):
     which are far more accurate than rate-based accumulation from instantaneous
     Mbps snapshots.
     """
+
+    def __init__(self, db, eero_client):
+        super().__init__(db, eero_client)
+        self._last_fetch_time: Optional[datetime] = None
+        self._last_fetch_values: Optional[dict] = None
+        self._current_throughput: Optional[ThroughputSnapshot] = None
+
+    def get_current_throughput(self) -> Optional[ThroughputSnapshot]:
+        """Return the latest computed throughput rates, or None if no delta yet."""
+        return self._current_throughput
 
     def collect(self) -> dict:
         networks_processed = 0
@@ -102,6 +128,8 @@ class DataUsageCollector(BaseCollector):
             f"Network data_usage for '{network_name}': "
             f"{download_sum / BYTES_PER_MB:.1f} MB down, {upload_sum / BYTES_PER_MB:.1f} MB up"
         )
+
+        self._update_delta_state(download_sum, upload_sum)
 
     def _collect_device_usage(self, network_name: str) -> None:
         """Fetch and store per-device data_usage."""
@@ -259,3 +287,59 @@ class DataUsageCollector(BaseCollector):
                 download_mb=download_mb,
                 upload_mb=upload_mb,
             ))
+
+    def _update_delta_state(self, download_sum: int, upload_sum: int) -> None:
+        """Compute throughput deltas from the network-level daily sums."""
+        now = datetime.now(timezone.utc)
+        current_values = {"download": download_sum, "upload": upload_sum}
+
+        if self._last_fetch_time is None or self._last_fetch_values is None:
+            logger.debug("First poll — storing baseline, no delta yet")
+            self._last_fetch_time = now
+            self._last_fetch_values = current_values
+            return
+
+        elapsed = (now - self._last_fetch_time).total_seconds()
+        if elapsed <= 0:
+            self._last_fetch_time = now
+            self._last_fetch_values = current_values
+            return
+
+        delta_download = download_sum - self._last_fetch_values["download"]
+        delta_upload = upload_sum - self._last_fetch_values["upload"]
+
+        # Negative delta means a rollover (day boundary or API glitch) — reset baseline
+        if delta_download < 0 or delta_upload < 0:
+            logger.info(
+                "Negative delta detected (likely day rollover) — resetting baseline "
+                f"(dl: {delta_download}, ul: {delta_upload})"
+            )
+            self._last_fetch_time = now
+            self._last_fetch_values = current_values
+            return
+
+        if elapsed > GAP_WARNING_SECONDS:
+            logger.warning(f"Large gap between polls: {elapsed:.0f}s ({elapsed / 60:.1f} min)")
+
+        if elapsed > GAP_RECOVERY_SECONDS:
+            logger.info(f"Recovered from gap of {elapsed:.0f}s")
+
+        download_rate = (delta_download * BITS_PER_BYTE) / (elapsed * BITS_PER_MEGABIT)
+        upload_rate = (delta_upload * BITS_PER_BYTE) / (elapsed * BITS_PER_MEGABIT)
+
+        self._current_throughput = ThroughputSnapshot(
+            download_rate_mbps=download_rate,
+            upload_rate_mbps=upload_rate,
+            delta_download_bytes=delta_download,
+            delta_upload_bytes=delta_upload,
+            elapsed_seconds=elapsed,
+            timestamp=now,
+        )
+
+        logger.debug(
+            f"Throughput: {download_rate:.2f} Mbps down, {upload_rate:.2f} Mbps up "
+            f"(over {elapsed:.0f}s)"
+        )
+
+        self._last_fetch_time = now
+        self._last_fetch_values = current_values
