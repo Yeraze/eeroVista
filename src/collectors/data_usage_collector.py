@@ -117,12 +117,12 @@ class DataUsageCollector(BaseCollector):
             logger.debug(f"No device data_usage response for network '{network_name}'")
             return
 
-        # The device endpoint returns per-device entries
-        data = result.get("data") if isinstance(result, dict) else result
-        if isinstance(data, dict):
-            devices_list = data.get("devices", [])
-        elif isinstance(data, list):
-            devices_list = data
+        # The API client already unwraps the outer {"data": ...} envelope,
+        # so result is the inner payload directly.
+        if isinstance(result, dict):
+            devices_list = result.get("devices", [])
+        elif isinstance(result, list):
+            devices_list = result
         else:
             devices_list = []
 
