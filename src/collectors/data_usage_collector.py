@@ -119,12 +119,18 @@ class DataUsageCollector(BaseCollector):
 
         # The API client already unwraps the outer {"data": ...} envelope,
         # so result is the inner payload directly.
+        logger.info(
+            f"Device data_usage response: type={type(result).__name__}, "
+            f"keys={list(result.keys()) if isinstance(result, dict) else 'N/A'}, "
+            f"len={len(result) if isinstance(result, (list, dict)) else 'N/A'}"
+        )
         if isinstance(result, dict):
             devices_list = result.get("devices", [])
         elif isinstance(result, list):
             devices_list = result
         else:
             devices_list = []
+        logger.info(f"Extracted devices_list: len={len(devices_list)}")
 
         # Pre-fetch all devices for this network to avoid N+1 queries
         all_devices = (
