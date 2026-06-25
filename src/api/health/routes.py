@@ -843,7 +843,7 @@ async def get_device_bandwidth_history(
             raise HTTPException(status_code=404, detail="No network available")
 
         with get_db_context() as db:
-            from src.models.database import Device, DeviceConnection
+            from src.models.database import Device, HourlyBandwidth
 
             # Find device in this network
             device = db.query(Device).filter(
@@ -866,29 +866,27 @@ async def get_device_bandwidth_history(
             cutoff_local = now_local - timedelta(hours=hours)
             cutoff_time = cutoff_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
 
-            # Get bandwidth history
-            connections = (
-                db.query(DeviceConnection)
+            # Get bandwidth history from HourlyBandwidth
+            records = (
+                db.query(HourlyBandwidth)
                 .filter(
-                    DeviceConnection.device_id == device.id,
-                    DeviceConnection.timestamp >= cutoff_time,
+                    HourlyBandwidth.device_id == device.id,
+                    HourlyBandwidth.hour_start >= cutoff_time,
                 )
-                .order_by(DeviceConnection.timestamp.asc())
+                .order_by(HourlyBandwidth.hour_start.asc())
                 .all()
             )
 
             # Format data for graphing (convert timestamps to local timezone)
             history = []
-            for conn in connections:
-                # Database stores UTC naive datetime, convert to local timezone
-                timestamp_utc = conn.timestamp.replace(tzinfo=ZoneInfo("UTC"))
+            for rec in records:
+                timestamp_utc = rec.hour_start.replace(tzinfo=ZoneInfo("UTC"))
                 timestamp_local = timestamp_utc.astimezone(tz)
 
                 history.append({
                     "timestamp": timestamp_local.isoformat(),
-                    "download_mbps": conn.bandwidth_down_mbps,
-                    "upload_mbps": conn.bandwidth_up_mbps,
-                    "is_connected": conn.is_connected,
+                    "download_bytes": rec.download_bytes,
+                    "upload_bytes": rec.upload_bytes,
                 })
 
             return {
@@ -934,39 +932,42 @@ async def get_network_bandwidth_history(
             return {"hours": hours, "data_points": 0, "history": []}
 
         from datetime import timedelta
-        from sqlalchemy import func
+        from src.config import get_settings
+        from zoneinfo import ZoneInfo
+
+        settings = get_settings()
+        tz = settings.get_timezone()
 
         with get_db_context() as db:
-            from src.models.database import Device, DeviceConnection
+            from src.models.database import HourlyBandwidth
 
             # Calculate time range
-            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+            now_local = datetime.now(tz)
+            cutoff_local = now_local - timedelta(hours=hours)
+            cutoff_time = cutoff_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
 
-            # Get all connections in time range for devices in this network
-            # Group by timestamp and sum bandwidth across all devices
-            connections = (
-                db.query(
-                    DeviceConnection.timestamp,
-                    func.sum(DeviceConnection.bandwidth_down_mbps).label('total_download'),
-                    func.sum(DeviceConnection.bandwidth_up_mbps).label('total_upload'),
-                )
-                .join(Device, DeviceConnection.device_id == Device.id)
+            # Get network-wide bandwidth (device_id IS NULL)
+            records = (
+                db.query(HourlyBandwidth)
                 .filter(
-                    Device.network_name == network_name,
-                    DeviceConnection.timestamp >= cutoff_time
+                    HourlyBandwidth.network_name == network_name,
+                    HourlyBandwidth.device_id.is_(None),
+                    HourlyBandwidth.hour_start >= cutoff_time,
                 )
-                .group_by(DeviceConnection.timestamp)
-                .order_by(DeviceConnection.timestamp.asc())
+                .order_by(HourlyBandwidth.hour_start.asc())
                 .all()
             )
 
-            # Format data for graphing
+            # Format data for graphing (convert timestamps to local timezone)
             history = []
-            for conn in connections:
+            for rec in records:
+                timestamp_utc = rec.hour_start.replace(tzinfo=ZoneInfo("UTC"))
+                timestamp_local = timestamp_utc.astimezone(tz)
+
                 history.append({
-                    "timestamp": conn.timestamp.isoformat(),
-                    "download_mbps": float(conn.total_download) if conn.total_download else 0,
-                    "upload_mbps": float(conn.total_upload) if conn.total_upload else 0,
+                    "timestamp": timestamp_local.isoformat(),
+                    "download_bytes": rec.download_bytes,
+                    "upload_bytes": rec.upload_bytes,
                 })
 
             return {

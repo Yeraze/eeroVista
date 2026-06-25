@@ -3,6 +3,7 @@
 import logging
 import math
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, func, text
@@ -162,8 +163,14 @@ def get_signal_history(
         ORDER BY timestamp
     """), {"device_id": device.id, "cutoff": cutoff, "step": step}).fetchall()
 
+    from src.config import get_settings
+    tz = get_settings().get_timezone()
+
     history = [
-        {"timestamp": str(r[0]), "signal_strength": r[1]}
+        {
+            "timestamp": datetime.fromisoformat(str(r[0])).replace(tzinfo=ZoneInfo("UTC")).astimezone(tz).isoformat(),
+            "signal_strength": r[1],
+        }
         for r in history_rows
     ]
 
