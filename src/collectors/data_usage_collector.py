@@ -106,7 +106,12 @@ class DataUsageCollector(BaseCollector):
         )
 
     def _collect_device_usage(self, network_name: str, today_window: tuple[str, str, str, datetime]) -> None:
-        """Fetch and store per-device data_usage."""
+        """Fetch and store per-device data_usage.
+
+        The eero per-device endpoint returns flat daily totals per device
+        (upload/download in bytes) under a "values" key — it does NOT provide
+        hourly series breakdowns like the network-level endpoint does.
+        """
         start, end, tz_name, now_local = today_window
 
         result = self.eero_client.get_data_usage_devices(
@@ -117,20 +122,14 @@ class DataUsageCollector(BaseCollector):
             logger.debug(f"No device data_usage response for network '{network_name}'")
             return
 
-        # The API client already unwraps the outer {"data": ...} envelope,
-        # so result is the inner payload directly.
-        logger.info(
-            f"Device data_usage response: type={type(result).__name__}, "
-            f"keys={list(result.keys()) if isinstance(result, dict) else 'N/A'}, "
-            f"len={len(result) if isinstance(result, (list, dict)) else 'N/A'}"
-        )
+        # The API client already unwraps the outer {"data": ...} envelope.
+        # The per-device response uses "values" (not "devices") as the key.
         if isinstance(result, dict):
-            devices_list = result.get("devices", [])
+            devices_list = result.get("values", result.get("devices", []))
         elif isinstance(result, list):
             devices_list = result
         else:
             devices_list = []
-        logger.info(f"Extracted devices_list: len={len(devices_list)}")
 
         # Pre-fetch all devices for this network to avoid N+1 queries
         all_devices = (
@@ -154,21 +153,24 @@ class DataUsageCollector(BaseCollector):
                 logger.debug(f"Unknown device MAC {mac} in data_usage response, skipping")
                 continue
 
+            # Per-device entries have flat upload/download totals (no hourly series).
+            # Try series extraction first (in case the API adds it later), fall back
+            # to flat fields.
             series = self._extract_series(device_entry)
-            if not series:
-                continue
+            if series:
+                upload_series = series.get("upload", {})
+                download_series = series.get("download", {})
+                self._store_hourly_values(
+                    network_name, device.id,
+                    download_series.get("values", []),
+                    upload_series.get("values", []),
+                )
+                download_sum = download_series.get("sum", 0) or 0
+                upload_sum = upload_series.get("sum", 0) or 0
+            else:
+                download_sum = device_entry.get("download", 0) or 0
+                upload_sum = device_entry.get("upload", 0) or 0
 
-            upload_series = series.get("upload", {})
-            download_series = series.get("download", {})
-
-            self._store_hourly_values(
-                network_name, device.id,
-                download_series.get("values", []),
-                upload_series.get("values", []),
-            )
-
-            download_sum = download_series.get("sum", 0) or 0
-            upload_sum = upload_series.get("sum", 0) or 0
             self._update_daily_from_server(network_name, device.id, now_local.date(), download_sum, upload_sum)
             devices_updated += 1
 

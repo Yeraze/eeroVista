@@ -1559,21 +1559,26 @@
             const now = new Date();
             const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-            // Initialize 24 hourly buckets
+            // Aggregate data by hour
             const hourlyData = Array(24).fill(null).map((_, hour) => ({
                 hour: hour,
                 hour_label: `${hour.toString().padStart(2, '0')}:00`,
                 download_mb: 0,
                 upload_mb: 0,
+                count: 0
             }));
 
-            // Map each hourly record into its bucket (API returns accumulated bytes per hour)
+            // Sum bandwidth rates for each hour (convert Mbps to MB by dividing by 8 and multiplying by collection interval)
+            const secondsPerDataPoint = 30; // 30-second collection intervals
             data.history.forEach(point => {
                 const timestamp = new Date(point.timestamp);
                 if (timestamp >= todayMidnight) {
                     const hour = timestamp.getHours();
-                    hourlyData[hour].download_mb += point.download_bytes / 1000000;
-                    hourlyData[hour].upload_mb += point.upload_bytes / 1000000;
+                    if (point.download_mbps !== null && point.upload_mbps !== null) {
+                        hourlyData[hour].download_mb += (point.download_mbps * secondsPerDataPoint) / 8;
+                        hourlyData[hour].upload_mb += (point.upload_mbps * secondsPerDataPoint) / 8;
+                        hourlyData[hour].count++;
+                    }
                 }
             });
 
@@ -1777,6 +1782,7 @@
 
             // Build per-member hourly buckets
             let totalDownload = 0, totalUpload = 0;
+            const secondsPerDataPoint = 30;
             const datasets = [];
             responses.forEach((data, i) => {
                 const color = getGroupMemberColor(i, responses.length);
@@ -1787,10 +1793,10 @@
                 if (data.history) {
                     data.history.forEach(point => {
                         const timestamp = new Date(point.timestamp);
-                        if (timestamp >= todayMidnight && point.download_bytes !== null && point.upload_bytes !== null) {
+                        if (timestamp >= todayMidnight && point.download_mbps !== null && point.upload_mbps !== null) {
                             const hour = timestamp.getHours();
-                            dlBuckets[hour] += point.download_bytes / 1000000;
-                            ulBuckets[hour] += point.upload_bytes / 1000000;
+                            dlBuckets[hour] += (point.download_mbps * secondsPerDataPoint) / 8;
+                            ulBuckets[hour] += (point.upload_mbps * secondsPerDataPoint) / 8;
                         }
                     });
                 }
