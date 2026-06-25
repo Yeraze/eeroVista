@@ -843,7 +843,7 @@ async def get_device_bandwidth_history(
             raise HTTPException(status_code=404, detail="No network available")
 
         with get_db_context() as db:
-            from src.models.database import Device, HourlyBandwidth
+            from src.models.database import Device, DeviceConnection
 
             # Find device in this network
             device = db.query(Device).filter(
@@ -866,27 +866,29 @@ async def get_device_bandwidth_history(
             cutoff_local = now_local - timedelta(hours=hours)
             cutoff_time = cutoff_local.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
 
-            # Get bandwidth history from HourlyBandwidth
-            records = (
-                db.query(HourlyBandwidth)
+            # Per-device hourly data uses DeviceConnection rate snapshots
+            # (eero API doesn't provide per-device hourly accumulated data)
+            connections = (
+                db.query(DeviceConnection)
                 .filter(
-                    HourlyBandwidth.device_id == device.id,
-                    HourlyBandwidth.hour_start >= cutoff_time,
+                    DeviceConnection.device_id == device.id,
+                    DeviceConnection.timestamp >= cutoff_time,
                 )
-                .order_by(HourlyBandwidth.hour_start.asc())
+                .order_by(DeviceConnection.timestamp.asc())
                 .all()
             )
 
             # Format data for graphing (convert timestamps to local timezone)
             history = []
-            for rec in records:
-                timestamp_utc = rec.hour_start.replace(tzinfo=ZoneInfo("UTC"))
+            for conn in connections:
+                timestamp_utc = conn.timestamp.replace(tzinfo=ZoneInfo("UTC"))
                 timestamp_local = timestamp_utc.astimezone(tz)
 
                 history.append({
                     "timestamp": timestamp_local.isoformat(),
-                    "download_bytes": rec.download_bytes,
-                    "upload_bytes": rec.upload_bytes,
+                    "download_mbps": conn.bandwidth_down_mbps,
+                    "upload_mbps": conn.bandwidth_up_mbps,
+                    "is_connected": conn.is_connected,
                 })
 
             return {
