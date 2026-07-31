@@ -30,7 +30,7 @@ def _make_eero(
     model: str = "eero Pro 6E",
     mac: str = "aa:bb:cc:dd:ee:ff",
     gateway: bool = True,
-    state: str = "online",
+    status: str = "online",
     connection_type: str = "WIRED",
     os_version: str = "3.7.0",
     update_available: bool = False,
@@ -46,7 +46,7 @@ def _make_eero(
         "model": model,
         "mac_address": mac,
         "gateway": gateway,
-        "state": state,
+        "status": status,
         "connection_type": connection_type,
         "os_version": os_version,
         "update_available": update_available,
@@ -417,7 +417,7 @@ class TestProcessEeroNodes:
         eero.gateway = True
         eero.os_version = "3.7.0"
         eero.update_available = False
-        eero.state = "online"
+        eero.status = "online"
         eero.connected_clients_count = 3
         eero.connected_wired_clients_count = 1
         eero.connected_wireless_clients_count = 2
@@ -454,6 +454,25 @@ class TestMapEeroState:
 
     def test_offline_case_insensitive(self, collector):
         assert collector._map_eero_state_to_status("Offline") == "offline"
+
+    def test_green_maps_to_online(self, collector):
+        assert collector._map_eero_state_to_status("green") == "online"
+
+    def test_yellow_maps_to_online(self, collector):
+        assert collector._map_eero_state_to_status("yellow") == "online"
+
+    def test_red_maps_to_offline(self, collector):
+        assert collector._map_eero_state_to_status("red") == "offline"
+
+    def test_gray_maps_to_offline(self, collector):
+        assert collector._map_eero_state_to_status("gray") == "offline"
+
+    def test_grey_maps_to_offline(self, collector):
+        assert collector._map_eero_state_to_status("grey") == "offline"
+
+    def test_color_case_insensitive(self, collector):
+        assert collector._map_eero_state_to_status("GREEN") == "online"
+        assert collector._map_eero_state_to_status("Red") == "offline"
 
     def test_unknown_state_maps_to_unknown(self, collector):
         assert collector._map_eero_state_to_status("degraded") == "unknown"
