@@ -170,7 +170,7 @@ class DeviceCollector(BaseCollector):
                     is_gateway = eero_data.get("gateway", False)
                     os_version = eero_data.get("os_version")
                     update_available = eero_data.get("update_available", False)
-                    state = eero_data.get("state", "UNKNOWN")
+                    state = eero_data.get("status", "UNKNOWN")
                     connected_clients_count = eero_data.get("connected_clients_count", 0)
                     connected_wired_count = eero_data.get("connected_wired_clients_count", 0)
                     connected_wireless_count = eero_data.get("connected_wireless_clients_count", 0)
@@ -205,7 +205,7 @@ class DeviceCollector(BaseCollector):
                     is_gateway = eero_data.gateway if hasattr(eero_data, 'gateway') else False
                     os_version = eero_data.os_version if hasattr(eero_data, 'os_version') else None
                     update_available = eero_data.update_available if hasattr(eero_data, 'update_available') else False
-                    state = eero_data.state if hasattr(eero_data, 'state') else "UNKNOWN"
+                    state = eero_data.status if hasattr(eero_data, 'status') else "UNKNOWN"
                     connected_clients_count = eero_data.connected_clients_count if hasattr(eero_data, 'connected_clients_count') else 0
                     connected_wired_count = eero_data.connected_wired_clients_count if hasattr(eero_data, 'connected_wired_clients_count') else 0
                     connected_wireless_count = eero_data.connected_wireless_clients_count if hasattr(eero_data, 'connected_wireless_clients_count') else 0
@@ -251,21 +251,20 @@ class DeviceCollector(BaseCollector):
                 uptime_seconds = None
                 if last_reboot:
                     try:
-                        # Parse ISO format timestamp
-                        if isinstance(last_reboot, str):
-                            # Handle both with and without timezone (Z suffix)
+                        if isinstance(last_reboot, datetime):
+                            reboot_time = last_reboot
+                        elif isinstance(last_reboot, str):
                             reboot_str = last_reboot.replace('Z', '+00:00')
-                            # Use Python 3.7+ built-in fromisoformat
                             reboot_time = datetime.fromisoformat(reboot_str)
-                            # Always use UTC for consistency with database timestamps
+                        else:
+                            reboot_time = None
+
+                        if reboot_time is not None:
+                            current_time = datetime.now(timezone.utc)
                             if reboot_time.tzinfo:
-                                # Convert to UTC if timezone-aware
-                                current_time = datetime.now(timezone.utc)
                                 reboot_time_utc = reboot_time.astimezone(timezone.utc)
                                 uptime_seconds = int((current_time - reboot_time_utc).total_seconds())
                             else:
-                                # If no timezone, assume UTC
-                                current_time = datetime.now(timezone.utc)
                                 uptime_seconds = int((current_time - reboot_time).total_seconds())
                     except Exception as e:
                         logger.debug(f"Could not parse last_reboot time: {e}")
