@@ -30,7 +30,7 @@ def _make_eero(
     model: str = "eero Pro 6E",
     mac: str = "aa:bb:cc:dd:ee:ff",
     gateway: bool = True,
-    state: str = "online",
+    status: str = "online",
     connection_type: str = "WIRED",
     os_version: str = "3.7.0",
     update_available: bool = False,
@@ -46,7 +46,7 @@ def _make_eero(
         "model": model,
         "mac_address": mac,
         "gateway": gateway,
-        "state": state,
+        "status": status,
         "connection_type": connection_type,
         "os_version": os_version,
         "update_available": update_available,
@@ -417,7 +417,7 @@ class TestProcessEeroNodes:
         eero.gateway = True
         eero.os_version = "3.7.0"
         eero.update_available = False
-        eero.state = "online"
+        eero.status = "online"
         eero.connected_clients_count = 3
         eero.connected_wired_clients_count = 1
         eero.connected_wireless_clients_count = 2
