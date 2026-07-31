@@ -455,6 +455,25 @@ class TestMapEeroState:
     def test_offline_case_insensitive(self, collector):
         assert collector._map_eero_state_to_status("Offline") == "offline"
 
+    def test_green_maps_to_online(self, collector):
+        assert collector._map_eero_state_to_status("green") == "online"
+
+    def test_yellow_maps_to_online(self, collector):
+        assert collector._map_eero_state_to_status("yellow") == "online"
+
+    def test_red_maps_to_offline(self, collector):
+        assert collector._map_eero_state_to_status("red") == "offline"
+
+    def test_gray_maps_to_offline(self, collector):
+        assert collector._map_eero_state_to_status("gray") == "offline"
+
+    def test_grey_maps_to_offline(self, collector):
+        assert collector._map_eero_state_to_status("grey") == "offline"
+
+    def test_color_case_insensitive(self, collector):
+        assert collector._map_eero_state_to_status("GREEN") == "online"
+        assert collector._map_eero_state_to_status("Red") == "offline"
+
     def test_unknown_state_maps_to_unknown(self, collector):
         assert collector._map_eero_state_to_status("degraded") == "unknown"
 

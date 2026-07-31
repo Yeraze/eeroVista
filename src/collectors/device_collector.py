@@ -346,9 +346,9 @@ class DeviceCollector(BaseCollector):
     def _map_eero_state_to_status(self, state: str) -> str:
         """Map eero API state to our status format."""
         state_upper = state.upper()
-        if state_upper == "ONLINE":
+        if state_upper in ("ONLINE", "GREEN", "YELLOW"):
             return "online"
-        elif state_upper == "OFFLINE":
+        elif state_upper in ("OFFLINE", "RED", "GRAY", "GREY"):
             return "offline"
         else:
             return "unknown"
