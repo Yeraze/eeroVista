@@ -112,8 +112,11 @@ class TestBandwidthSummary:
 
         for i in range(min(3, (end - start).days + 1)):
             day = start + timedelta(days=i)
+            # Per-device rows
             self._add_daily(db_session, d1.id, day, 10240, 2048)  # 10GB down, 2GB up
             self._add_daily(db_session, d2.id, day, 5120, 1024)   # 5GB down, 1GB up
+            # Network-wide row (sum of devices)
+            self._add_daily(db_session, None, day, 15360, 3072)
 
         db_session.commit()
 
@@ -142,9 +145,11 @@ class TestBandwidthSummary:
         current_start, _, _ = _get_period_range("week", 0)
         prev_start, _, _ = _get_period_range("week", 1)
 
-        # Previous week: 5GB
+        # Previous week: 5GB (network-wide)
+        self._add_daily(db_session, None, prev_start, 5120, 0)
         self._add_daily(db_session, d1.id, prev_start, 5120, 0)
-        # Current week: 10GB (100% increase)
+        # Current week: 10GB (100% increase, network-wide)
+        self._add_daily(db_session, None, current_start, 10240, 0)
         self._add_daily(db_session, d1.id, current_start, 10240, 0)
         db_session.commit()
 
@@ -155,12 +160,30 @@ class TestBandwidthSummary:
         d1, _ = devices
         start, _, _ = _get_period_range("week", 0)
 
-        # Add in reverse order
         for i in range(min(3, 7)):
-            day = start + timedelta(days=2 - i if i < 3 else i)
-            self._add_daily(db_session, d1.id, start + timedelta(days=i), 1024, 512)
+            day = start + timedelta(days=i)
+            self._add_daily(db_session, d1.id, day, 1024, 512)
+            self._add_daily(db_session, None, day, 1024, 512)
         db_session.commit()
 
         result = get_bandwidth_summary(db_session, "net", "week", 0)
         dates = [d["date"] for d in result["daily_breakdown"]]
         assert dates == sorted(dates)
+
+    def test_per_device_rows_not_double_counted(self, db_session, devices):
+        """Regression test for #130: totals must use network-wide rows only."""
+        d1, d2 = devices
+        start, _, _ = _get_period_range("week", 0)
+
+        # Network-wide row: 10 GB down, 2 GB up
+        self._add_daily(db_session, None, start, 10240, 2048)
+        # Per-device rows that sum to the same totals
+        self._add_daily(db_session, d1.id, start, 7680, 1024)
+        self._add_daily(db_session, d2.id, start, 2560, 1024)
+        db_session.commit()
+
+        result = get_bandwidth_summary(db_session, "net", "week", 0)
+        assert result["total_download_gb"] == _mb_to_gb(10240)
+        assert result["total_upload_gb"] == _mb_to_gb(2048)
+        assert len(result["daily_breakdown"]) == 1
+        assert result["daily_breakdown"][0]["download_gb"] == _mb_to_gb(10240)

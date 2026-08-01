@@ -120,6 +120,7 @@ def _get_period_totals(
         )
         .filter(
             DailyBandwidth.network_name == network_name,
+            DailyBandwidth.device_id.is_(None),
             DailyBandwidth.date >= start,
             DailyBandwidth.date <= end,
         )
@@ -214,6 +215,7 @@ def _get_daily_breakdown(
         )
         .filter(
             DailyBandwidth.network_name == network_name,
+            DailyBandwidth.device_id.is_(None),
             DailyBandwidth.date >= start,
             DailyBandwidth.date <= end,
         )
