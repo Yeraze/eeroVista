@@ -29,6 +29,9 @@ services:
       # Logging
       - LOG_LEVEL=INFO
 
+      # Uvicorn worker count (default 1 causes timeouts on large networks)
+      - WEB_CONCURRENCY=4
+
       # DNS Server Configuration (change domain to customize)
       - DNS_DOMAIN=eero.local
       - DNSMASQ_HOSTS_PATH=/etc/dnsmasq.d/eerovista.hosts
