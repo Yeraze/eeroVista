@@ -3,7 +3,7 @@
 from contextlib import contextmanager
 from typing import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool
 
@@ -78,6 +78,12 @@ def init_database() -> None:
     from src.models.database import Base
 
     engine = get_engine()
+
+    # Enable WAL mode for safe concurrent access from multiple processes
+    with engine.connect() as conn:
+        conn.execute(text("PRAGMA journal_mode=WAL"))
+        conn.commit()
+
     Base.metadata.create_all(bind=engine)
 
     # Run old ad-hoc migrations

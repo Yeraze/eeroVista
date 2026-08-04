@@ -53,13 +53,12 @@ async def verify_code(
     logger.info("Verifying SMS code")
     result = client.login_verify(code)
 
-    # If authentication succeeded, trigger immediate data collection
+    # If authentication succeeded, signal the collector process to run immediately
     if result.get("success"):
         logger.info("Authentication successful, triggering initial data collection")
         try:
-            from src.scheduler.jobs import get_scheduler
-            scheduler = get_scheduler()
-            scheduler.run_all_collectors_now()
+            from src.scheduler.jobs import trigger_collector_run
+            trigger_collector_run()
         except Exception as e:
             logger.error(f"Failed to trigger initial data collection: {e}")
 

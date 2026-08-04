@@ -256,8 +256,7 @@ class TestHealthEndpoint:
         from src.api.health.models import get_eero_client
         from src.utils.database import get_db
 
-        mock_scheduler = MagicMock()
-        mock_scheduler.get_health_status.return_value = {
+        mock_collector_health = {
             "device_collector": {"healthy": True},
         }
 
@@ -266,11 +265,11 @@ class TestHealthEndpoint:
         try:
             with (
                 patch("src.api.health.routes.get_db_context") as mock_db_ctx,
-                patch("src.scheduler.jobs.get_scheduler") as mock_get_sched,
+                patch("src.scheduler.jobs.read_collector_health") as mock_read_health,
             ):
                 mock_db_ctx.return_value.__enter__.return_value = db_session
                 mock_db_ctx.return_value.__exit__.return_value = None
-                mock_get_sched.return_value = mock_scheduler
+                mock_read_health.return_value = mock_collector_health
 
                 client = TestClient(app)
                 response = client.get("/api/health")
@@ -292,19 +291,18 @@ class TestHealthEndpoint:
         from src.utils.database import get_db
 
         mock_client.is_authenticated.return_value = True
-        mock_scheduler = MagicMock()
-        mock_scheduler.get_health_status.return_value = {}
+        mock_collector_health = {}
 
         app.dependency_overrides[get_eero_client] = lambda: mock_client
         app.dependency_overrides[get_db] = lambda: db_session
         try:
             with (
                 patch("src.api.health.routes.get_db_context") as mock_db_ctx,
-                patch("src.scheduler.jobs.get_scheduler") as mock_get_sched,
+                patch("src.scheduler.jobs.read_collector_health") as mock_read_health,
             ):
                 mock_db_ctx.return_value.__enter__.return_value = db_session
                 mock_db_ctx.return_value.__exit__.return_value = None
-                mock_get_sched.return_value = mock_scheduler
+                mock_read_health.return_value = mock_collector_health
 
                 client = TestClient(app)
                 response = client.get("/api/health")
@@ -319,8 +317,7 @@ class TestHealthEndpoint:
         from src.api.health.models import get_eero_client
         from src.utils.database import get_db
 
-        mock_scheduler = MagicMock()
-        mock_scheduler.get_health_status.return_value = {
+        mock_collector_health = {
             "device_collector": {"healthy": False},
         }
 
@@ -329,11 +326,11 @@ class TestHealthEndpoint:
         try:
             with (
                 patch("src.api.health.routes.get_db_context") as mock_db_ctx,
-                patch("src.scheduler.jobs.get_scheduler") as mock_get_sched,
+                patch("src.scheduler.jobs.read_collector_health") as mock_read_health,
             ):
                 mock_db_ctx.return_value.__enter__.return_value = db_session
                 mock_db_ctx.return_value.__exit__.return_value = None
-                mock_get_sched.return_value = mock_scheduler
+                mock_read_health.return_value = mock_collector_health
 
                 client = TestClient(app)
                 response = client.get("/api/health")
@@ -348,18 +345,17 @@ class TestHealthEndpoint:
         from src.api.health.models import get_eero_client
         from src.utils.database import get_db
 
-        mock_scheduler = MagicMock()
-        mock_scheduler.get_health_status.return_value = {}
+        mock_collector_health = {}
 
         app.dependency_overrides[get_eero_client] = lambda: mock_client
         app.dependency_overrides[get_db] = lambda: db_session
         try:
             with (
                 patch("src.api.health.routes.get_db_context") as mock_db_ctx,
-                patch("src.scheduler.jobs.get_scheduler") as mock_get_sched,
+                patch("src.scheduler.jobs.read_collector_health") as mock_read_health,
             ):
                 mock_db_ctx.return_value.__enter__.side_effect = Exception("DB down")
-                mock_get_sched.return_value = mock_scheduler
+                mock_read_health.return_value = mock_collector_health
 
                 client = TestClient(app)
                 response = client.get("/api/health")

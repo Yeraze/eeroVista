@@ -45,13 +45,16 @@ async def health_check(client: EeroClientWrapper = Depends(get_eero_client)) -> 
     # Check Eero API auth
     eero_status = "authenticated" if client.is_authenticated() else "not_authenticated"
 
-    # Get collector health status
-    from src.scheduler.jobs import get_scheduler
-    scheduler = get_scheduler()
-    collector_health = scheduler.get_health_status()
+    # Get collector health status from the dedicated collector process
+    from src.scheduler.jobs import read_collector_health
+    collector_health = read_collector_health()
 
     # Determine if any collectors are unhealthy
-    all_collectors_healthy = all(c["healthy"] for c in collector_health.values())
+    if not collector_health:
+        all_collectors_healthy = False
+        collector_health = {"collector_process": {"healthy": False, "status": "unknown"}}
+    else:
+        all_collectors_healthy = all(c["healthy"] for c in collector_health.values())
 
     # Overall status considers database, and collector health
     if db_status != "connected":

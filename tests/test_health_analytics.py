@@ -90,14 +90,9 @@ class _PatchedClient:
             patch("src.api.health.analytics.get_db_context", side_effect=_db_ctx),
             patch("src.main.init_database"),
             patch("src.main.ensure_data_directory"),
-            patch("src.main.get_scheduler"),
         ]
         for p in self._patches:
-            mock = p.start()
-            # give scheduler mock reasonable start/stop methods
-            if hasattr(mock, "return_value"):
-                mock.return_value.start = MagicMock()
-                mock.return_value.stop = MagicMock()
+            p.start()
 
         self._tc = TestClient(app, raise_server_exceptions=self._raise_exc)
         self._tc.__enter__()

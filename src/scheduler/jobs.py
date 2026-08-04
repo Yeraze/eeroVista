@@ -1,8 +1,10 @@
 """Background job scheduler using APScheduler."""
 
+import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from pathlib import Path
 from typing import Callable, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -147,6 +149,15 @@ class CollectorScheduler:
             self._consecutive_failures["mqtt_publisher"] = 0
             self._running_collectors["mqtt_publisher"] = False
             logger.info(f"MQTT publisher registered: {mqtt_interval}s interval")
+
+        # Poll for trigger file (lets web workers request immediate collection)
+        self.scheduler.add_job(
+            func=self._check_trigger_file,
+            trigger=IntervalTrigger(seconds=10),
+            id="trigger_check",
+            name="Trigger File Check",
+            replace_existing=True,
+        )
 
         # Start the scheduler
         self.scheduler.start()
@@ -556,6 +567,36 @@ class CollectorScheduler:
             retry_auth_migrations(eero_client)
             self._migrations_retried = True
 
+    def _write_health_file(self) -> None:
+        """Write collector health status to a file for cross-process visibility."""
+        import os
+        import tempfile
+        try:
+            health_path = _get_health_file_path()
+            data = self.get_health_status()
+            data["_last_updated"] = int(__import__("time").time())
+            fd, tmp = tempfile.mkstemp(dir=health_path.parent, suffix=".tmp")
+            try:
+                os.write(fd, json.dumps(data).encode())
+                os.close(fd)
+                os.replace(tmp, health_path)
+            except Exception:
+                os.close(fd)
+                os.unlink(tmp)
+        except Exception:
+            pass
+
+    def _check_trigger_file(self) -> None:
+        """Check for a trigger file requesting immediate collection."""
+        trigger_path = _get_trigger_file_path()
+        if trigger_path.exists():
+            try:
+                trigger_path.unlink()
+                logger.info("Trigger file detected — running all collectors now")
+                self.run_all_collectors_now()
+            except Exception as e:
+                logger.error(f"Failed to process collector trigger: {e}")
+
     def _record_success(self, collector_id: str) -> None:
         """Record successful collector run and reset failure counter.
 
@@ -572,6 +613,7 @@ class CollectorScheduler:
                 logger.info(
                     f"{collector_id} recovered after {previous_failures} consecutive failure(s)"
                 )
+        self._write_health_file()
 
     def _record_failure(self, collector_id: str, error_msg: str) -> None:
         """Record collector failure and check health status.
@@ -602,6 +644,7 @@ class CollectorScheduler:
                 logger.error(
                     f"HEALTH ALERT: {collector_id} still failing after {failure_count} attempts"
                 )
+        self._write_health_file()
 
     def get_health_status(self) -> dict:
         """Get current health status of all collectors.
@@ -646,3 +689,48 @@ def get_scheduler() -> CollectorScheduler:
     if _scheduler is None:
         _scheduler = CollectorScheduler()
     return _scheduler
+
+
+def _get_data_dir() -> Path:
+    settings = get_settings()
+    return Path(settings.database_path).parent
+
+
+def _get_health_file_path() -> Path:
+    return _get_data_dir() / ".collector_health.json"
+
+
+def _get_trigger_file_path() -> Path:
+    return _get_data_dir() / ".collector_trigger"
+
+
+def read_collector_health() -> dict:
+    """Read collector health status from the shared file.
+
+    Used by web workers to get health from the dedicated collector process.
+    Returns empty dict if file is missing/corrupt, or marks all collectors
+    as unhealthy if the file is stale (>5 min old).
+    """
+    import time
+    health_path = _get_health_file_path()
+    try:
+        data = json.loads(health_path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+    last_updated = data.pop("_last_updated", None)
+    if last_updated and (time.time() - last_updated) > 300:
+        for v in data.values():
+            if isinstance(v, dict):
+                v["healthy"] = False
+                v["status"] = "stale"
+    return data
+
+
+def trigger_collector_run() -> None:
+    """Signal the collector process to run all collectors immediately."""
+    trigger_path = _get_trigger_file_path()
+    try:
+        trigger_path.touch()
+    except OSError:
+        logger.error("Failed to write collector trigger file")
