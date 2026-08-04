@@ -18,7 +18,6 @@ from src.utils.eero_patch import patch_eero_client  # noqa: F401
 from src.api import device_groups, health, notifications, prometheus, setup, web, zabbix
 from src.config import ensure_data_directory, get_settings
 from src.mcp_server import build_mcp_server
-from src.scheduler.jobs import get_scheduler
 from src.utils.database import init_database
 
 # Get settings to configure logging level
@@ -55,10 +54,8 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing database...")
     init_database()
 
-    # Start background collectors
-    logger.info("Starting background data collectors...")
-    scheduler = get_scheduler()
-    scheduler.start()
+    # Collectors run in a dedicated supervisord process (src/collector_runner.py)
+    # to avoid duplication when uvicorn runs multiple workers.
 
     async with AsyncExitStack() as stack:
         # Run the MCP Streamable HTTP session manager for the app's lifetime.
@@ -70,7 +67,6 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down eeroVista")
-    scheduler.stop()
 
 
 # Create FastAPI app
