@@ -58,6 +58,7 @@ EXPOSE 53/tcp
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV DATABASE_PATH=/data/eerovista.db
+ENV WEB_CONCURRENCY=4
 
 # Run application via entrypoint script
 CMD ["/docker-entrypoint.sh"]

@@ -178,6 +178,9 @@ environment:
 
   # Logging
   - LOG_LEVEL=INFO                      # DEBUG, INFO, WARNING, ERROR
+
+  # Performance
+  - WEB_CONCURRENCY=4                   # Uvicorn worker count
 ```
 
 See [Configuration Reference](docs/configuration.md) for all options.

@@ -59,6 +59,12 @@ Multiple URLs can be configured (space-separated) to deliver to multiple service
 |----------|---------|-------------|
 | `LOG_LEVEL` | `INFO` | Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL |
 
+### Performance
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WEB_CONCURRENCY` | `4` | Number of uvicorn worker processes. Increase for networks with 100+ devices. |
+
 ### Authentication
 
 | Variable | Default | Description |

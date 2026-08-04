@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.9.6] — 2026-08-04
+
+### Fixed
+
+- **API timeouts on large deployments**: uvicorn defaulted to 1 worker, causing healthcheck failures and API timeouts on networks with 100+ devices. Added `WEB_CONCURRENCY` environment variable (default 4) to control worker count. Benchmarks show healthcheck latency drops from ~36s (1 worker) to <1s (4 workers). ([#133])
+
 ## [2.9.0] — 2026-06-23
 
 ### Added
