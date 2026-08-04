@@ -50,7 +50,11 @@ async def health_check(client: EeroClientWrapper = Depends(get_eero_client)) -> 
     collector_health = read_collector_health()
 
     # Determine if any collectors are unhealthy
-    all_collectors_healthy = all(c["healthy"] for c in collector_health.values()) if collector_health else True
+    if not collector_health:
+        all_collectors_healthy = False
+        collector_health = {"collector_process": {"healthy": False, "status": "unknown"}}
+    else:
+        all_collectors_healthy = all(c["healthy"] for c in collector_health.values())
 
     # Overall status considers database, and collector health
     if db_status != "connected":

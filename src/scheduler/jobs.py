@@ -569,9 +569,20 @@ class CollectorScheduler:
 
     def _write_health_file(self) -> None:
         """Write collector health status to a file for cross-process visibility."""
+        import os
+        import tempfile
         try:
             health_path = _get_health_file_path()
-            health_path.write_text(json.dumps(self.get_health_status()))
+            data = self.get_health_status()
+            data["_last_updated"] = int(__import__("time").time())
+            fd, tmp = tempfile.mkstemp(dir=health_path.parent, suffix=".tmp")
+            try:
+                os.write(fd, json.dumps(data).encode())
+                os.close(fd)
+                os.replace(tmp, health_path)
+            except Exception:
+                os.close(fd)
+                os.unlink(tmp)
         except Exception:
             pass
 
@@ -697,12 +708,23 @@ def read_collector_health() -> dict:
     """Read collector health status from the shared file.
 
     Used by web workers to get health from the dedicated collector process.
+    Returns empty dict if file is missing/corrupt, or marks all collectors
+    as unhealthy if the file is stale (>5 min old).
     """
+    import time
     health_path = _get_health_file_path()
     try:
-        return json.loads(health_path.read_text())
+        data = json.loads(health_path.read_text())
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
+
+    last_updated = data.pop("_last_updated", None)
+    if last_updated and (time.time() - last_updated) > 300:
+        for v in data.values():
+            if isinstance(v, dict):
+                v["healthy"] = False
+                v["status"] = "stale"
+    return data
 
 
 def trigger_collector_run() -> None:
