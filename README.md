@@ -327,7 +327,13 @@ MIT License - See [LICENSE](LICENSE) file for details
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=yeraze/eeroVista&type=date&legend=top-left)](https://www.star-history.com/#yeraze/eeroVista&type=date&legend=top-left)
+<a href="https://www.star-history.com/?type=date&legend=top-left&repos=yeraze%2FeeroVista">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=yeraze/eeroVista&type=date&theme=dark&legend=top-left&sealed_token=akWSK3A9CZIFAOmCyrZBlNwYHlznYywzj65UMf-s_RPVt9O1BFpE7zZH45N93_iQnJ5x-5C3_i4JHtnXL4AMF-Bh6IEnX6sVHw8tAv2pBY2d2diuSrvDcBEl92wp3MhePweOcdAdUXVgPxu4eFaiD47D4T7fc18Z6Ee_kzqhB23g1FdPBmjBioFrNcUn" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=yeraze/eeroVista&type=date&legend=top-left&sealed_token=akWSK3A9CZIFAOmCyrZBlNwYHlznYywzj65UMf-s_RPVt9O1BFpE7zZH45N93_iQnJ5x-5C3_i4JHtnXL4AMF-Bh6IEnX6sVHw8tAv2pBY2d2diuSrvDcBEl92wp3MhePweOcdAdUXVgPxu4eFaiD47D4T7fc18Z6Ee_kzqhB23g1FdPBmjBioFrNcUn" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=yeraze/eeroVista&type=date&legend=top-left&sealed_token=akWSK3A9CZIFAOmCyrZBlNwYHlznYywzj65UMf-s_RPVt9O1BFpE7zZH45N93_iQnJ5x-5C3_i4JHtnXL4AMF-Bh6IEnX6sVHw8tAv2pBY2d2diuSrvDcBEl92wp3MhePweOcdAdUXVgPxu4eFaiD47D4T7fc18Z6Ee_kzqhB23g1FdPBmjBioFrNcUn" />
+ </picture>
+</a>
 ---
 
 <div align="center">
