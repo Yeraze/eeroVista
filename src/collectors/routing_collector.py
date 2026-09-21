@@ -83,8 +83,20 @@ class RoutingCollector(BaseCollector):
             # marshalling. Using network_client.routing here caused the eero
             # library's strict pydantic validation to fail for some accounts,
             # silently yielding zero reservations/forwards (issue #137).
-            reservations = self.eero_client.get_reservations(network_name) or []
-            forwards = self.eero_client.get_forwards(network_name) or []
+            #
+            # A None return means the fetch itself failed (network error, auth
+            # expiry, unexpected response). Treat that as an error rather than
+            # collapsing it into "no data" — otherwise a transient failure
+            # masquerades as an empty network, the same failure class as #137.
+            # An empty list is a legitimate "network has none" and is fine.
+            reservations = self.eero_client.get_reservations(network_name)
+            forwards = self.eero_client.get_forwards(network_name)
+            if reservations is None or forwards is None:
+                raise RuntimeError(
+                    f"Failed to fetch routing data for network '{network_name}' "
+                    f"(reservations={'ok' if reservations is not None else 'FAILED'}, "
+                    f"forwards={'ok' if forwards is not None else 'FAILED'})"
+                )
 
             # Track stats
             reservations_added = 0
@@ -97,6 +109,15 @@ class RoutingCollector(BaseCollector):
             for res in reservations:
                 mac = res.get('mac')
                 ip = res.get('ip')
+                # mac_address and ip_address are NOT NULL. Skip loudly on a
+                # missing/renamed key instead of letting it surface as an
+                # opaque IntegrityError far from the cause.
+                if not mac or not ip:
+                    logger.warning(
+                        f"Skipping reservation with missing mac/ip on network "
+                        f"'{network_name}': {res}"
+                    )
+                    continue
                 # Check if exists (for statistics tracking)
                 exists = self.db.query(IpReservation).filter(
                     IpReservation.network_name == network_name,
@@ -136,6 +157,15 @@ class RoutingCollector(BaseCollector):
                 ip = fwd.get('ip')
                 gateway_port = fwd.get('gateway_port')
                 protocol = fwd.get('protocol')
+                # ip_address, gateway_port and protocol are NOT NULL. Skip
+                # loudly on a missing/renamed key rather than emitting an
+                # opaque IntegrityError at insert time.
+                if not ip or gateway_port is None or not protocol:
+                    logger.warning(
+                        f"Skipping forward with missing ip/gateway_port/protocol "
+                        f"on network '{network_name}': {fwd}"
+                    )
+                    continue
                 # Check if exists (for statistics tracking)
                 exists = self.db.query(PortForward).filter(
                     PortForward.network_name == network_name,

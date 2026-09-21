@@ -363,6 +363,58 @@ class TestRoutingCollector:
         assert updated.ip_address == "192.168.1.100"  # Updated
         assert updated.description == "Device 1"  # Updated
 
+    def test_fetch_failure_counts_as_error_not_empty(self, db_session, mock_eero_client):
+        """A None return (fetch failed) must be an error, not silent 'no data' (#137)."""
+        from src.collectors.routing_collector import RoutingCollector
+
+        mock_eero_client.get_network_client.return_value = Mock()
+        # get_reservations failed (None); get_forwards succeeded (empty)
+        mock_eero_client.get_reservations.return_value = None
+        mock_eero_client.get_forwards.return_value = []
+
+        collector = RoutingCollector(db_session, mock_eero_client)
+        result = collector.run()
+
+        assert result["errors"] == 1
+        # Nothing should be written when the fetch failed
+        assert db_session.query(IpReservation).count() == 0
+        assert db_session.query(PortForward).count() == 0
+
+    def test_empty_lists_are_not_an_error(self, db_session, mock_eero_client):
+        """Legitimately empty routing data is success, not an error."""
+        from src.collectors.routing_collector import RoutingCollector
+
+        mock_eero_client.get_network_client.return_value = Mock()
+        mock_eero_client.get_reservations.return_value = []
+        mock_eero_client.get_forwards.return_value = []
+
+        collector = RoutingCollector(db_session, mock_eero_client)
+        result = collector.run()
+
+        assert result["errors"] == 0
+        assert result["items_collected"] == 0
+
+    def test_rows_missing_required_keys_are_skipped(self, db_session, mock_eero_client):
+        """A missing NOT NULL key is skipped with a warning, not an IntegrityError."""
+        from src.collectors.routing_collector import RoutingCollector
+
+        mock_eero_client.get_network_client.return_value = Mock()
+        mock_eero_client.get_reservations.return_value = [
+            {"ip": "192.168.1.50", "description": "no mac"},  # missing mac -> skip
+            {"mac": "de:ad:be:ef:00:01", "ip": "192.168.1.51", "description": "ok"},
+        ]
+        mock_eero_client.get_forwards.return_value = [
+            {"ip": "192.168.1.50", "protocol": "tcp"},  # missing gateway_port -> skip
+        ]
+
+        collector = RoutingCollector(db_session, mock_eero_client)
+        result = collector.run()
+
+        assert result["errors"] == 0
+        # Only the well-formed reservation is stored; the bad rows are skipped
+        assert db_session.query(IpReservation).count() == 1
+        assert db_session.query(PortForward).count() == 0
+
 
 class TestRoutingAPIEndpoints:
     """Test routing API endpoints logic."""

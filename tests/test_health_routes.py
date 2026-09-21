@@ -1675,6 +1675,37 @@ class TestSupportPackageEndpoint:
         finally:
             app.dependency_overrides.clear()
 
+    def test_support_package_string_url_network(self, mock_client, db_session):
+        """Regression for #137: url is a path string, not a dict.
+
+        Previously ``network.get('url', {}).get('network_id')`` raised
+        ``'str' object has no attribute 'get'`` and 500'd the endpoint.
+        """
+        from src.main import app
+        from src.api.health.models import get_eero_client
+        from src.utils.database import get_db
+
+        mock_client.get_networks.return_value = [
+            {"name": "test-network", "url": "/2.2/networks/123456",
+             "nickname_label": None, "created": None}
+        ]
+        mock_client.get_eeros.return_value = []
+        mock_client.get_devices.return_value = []
+        mock_client.get_profiles.return_value = []
+
+        app.dependency_overrides[get_eero_client] = lambda: mock_client
+        app.dependency_overrides[get_db] = lambda: db_session
+        try:
+            client = TestClient(app)
+            response = client.get("/api/support/package")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data["networks"]) == 1
+            assert data["networks"][0]["network_id"] == "123456"
+        finally:
+            app.dependency_overrides.clear()
+
     def test_support_package_eero_api_failure_handled(self, mock_client, db_session):
         """If sub-calls to the eero API fail, errors are recorded per-network."""
         from src.main import app
