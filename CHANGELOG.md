@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.8] — 2026-09-21
+
+### Fixed
+
+- **First network shows no reservations or port forwards**: on accounts whose routing payload fails the eero library's pydantic validation, the collector silently stored nothing. Routing now fetches via raw `APIClient` calls that bypass pydantic (the same approach `get_profiles` already used), so reservations and port forwards populate for every network. A genuine fetch failure now counts as an error instead of masquerading as an empty network. ([#137], [#138])
+- **Support package crash (`'str' object has no attribute 'get'`)**: the `/support/package` endpoint derived the network id by calling `.get()` on `network['url']`, which is a path string, not a dict — 500ing the whole endpoint. It now derives the id with `url.split('/')[-1]`. ([#137], [#138])
+
 ## [2.9.6] — 2026-08-04
 
 ### Fixed
@@ -235,6 +242,8 @@ Initial release. ([#56])
 [#113]: https://github.com/Yeraze/eeroVista/pull/113
 [#114]: https://github.com/Yeraze/eeroVista/pull/114
 [#117]: https://github.com/Yeraze/eeroVista/pull/117
+[#137]: https://github.com/Yeraze/eeroVista/issues/137
+[#138]: https://github.com/Yeraze/eeroVista/pull/138
 
 <!--
   Releases with missing PR references: v2.4.7, v2.4.8, v2.4.9, v2.4.10, v2.4.13
