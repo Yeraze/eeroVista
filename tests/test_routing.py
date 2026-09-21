@@ -415,6 +415,40 @@ class TestRoutingCollector:
         assert db_session.query(IpReservation).count() == 1
         assert db_session.query(PortForward).count() == 0
 
+    def test_forward_missing_client_port_is_skipped(self, db_session, mock_eero_client):
+        """client_port is NOT NULL; a forward missing it must be skipped, not crash."""
+        from src.collectors.routing_collector import RoutingCollector
+
+        mock_eero_client.get_network_client.return_value = Mock()
+        mock_eero_client.get_reservations.return_value = []
+        mock_eero_client.get_forwards.return_value = [
+            {"ip": "192.168.1.50", "gateway_port": 8080, "protocol": "tcp"},  # no client_port
+        ]
+
+        collector = RoutingCollector(db_session, mock_eero_client)
+        result = collector.run()
+
+        assert result["errors"] == 0
+        assert db_session.query(PortForward).count() == 0
+
+    def test_forward_missing_enabled_defaults_true(self, db_session, mock_eero_client):
+        """enabled is NOT NULL with default True; a missing value is stored as True."""
+        from src.collectors.routing_collector import RoutingCollector
+
+        mock_eero_client.get_network_client.return_value = Mock()
+        mock_eero_client.get_reservations.return_value = []
+        mock_eero_client.get_forwards.return_value = [
+            {"ip": "192.168.1.50", "gateway_port": 8080, "client_port": 80,
+             "protocol": "tcp"},  # no enabled key
+        ]
+
+        collector = RoutingCollector(db_session, mock_eero_client)
+        result = collector.run()
+
+        assert result["errors"] == 0
+        fwd = db_session.query(PortForward).one()
+        assert fwd.enabled is True
+
 
 class TestRoutingAPIEndpoints:
     """Test routing API endpoints logic."""

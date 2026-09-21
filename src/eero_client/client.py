@@ -315,6 +315,20 @@ class EeroClientWrapper:
         """
         return self._get_routing_list(network_name, "forwards", "forwards")
 
+    def _direct_api_get(self, network_client, path: str):
+        """Make a raw API GET on a network sub-resource, bypassing pydantic.
+
+        Shared by the several endpoints (profiles, routing) that must dodge the
+        eero library's strict pydantic marshalling; see get_profiles for the
+        original rationale.
+        """
+        network_id = network_client.network_info.url.split('/')[-1]
+        eero = self._get_client()
+
+        from eero.client.api_client import APIClient
+        api = APIClient(eero.session.cookie)
+        return api.get(f"networks/{network_id}/{path}")
+
     def _get_routing_list(
         self, network_name: Optional[str], endpoint: str, key: str
     ) -> Optional[list]:
@@ -328,17 +342,14 @@ class EeroClientWrapper:
                 logger.error(f"Network '{network_name}' not found")
                 return None
 
-            network_id = network_client.network_info.url.split('/')[-1]
-            eero = self._get_client()
-
-            from eero.client.api_client import APIClient
-            api = APIClient(eero.session.cookie)
-            data = api.get(f"networks/{network_id}/{endpoint}")
+            data = self._direct_api_get(network_client, endpoint)
 
             # The endpoint returns {"count": N, "<key>": [...]}; some callers
-            # may already receive the bare list.
+            # may already receive the bare list. `or []` guards a null value
+            # under the key (e.g. {"reservations": null}) so it behaves the
+            # same as a missing key rather than propagating None.
             if isinstance(data, dict):
-                items = data.get(key, [])
+                items = data.get(key) or []
             elif isinstance(data, list):
                 items = data
             else:

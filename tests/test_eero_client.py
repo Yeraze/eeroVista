@@ -518,6 +518,15 @@ class TestGetRoutingLists:
         with p1, p2, p3:
             assert authenticated_client.get_forwards() == []
 
+    def test_null_value_under_key_returns_empty_list(self, authenticated_client):
+        # {"count": 0, "reservations": null} must behave like a missing key,
+        # not propagate None into len()/the caller.
+        p1, p2, p3 = self._patch_api(
+            authenticated_client, {"count": 0, "reservations": None}
+        )
+        with p1, p2, p3:
+            assert authenticated_client.get_reservations() == []
+
     def test_returns_none_on_exception(self, authenticated_client):
         # A genuine fetch failure must return None (distinct from empty), so the
         # collector can treat it as an error rather than "network has none".

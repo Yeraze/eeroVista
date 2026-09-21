@@ -156,16 +156,25 @@ class RoutingCollector(BaseCollector):
             for fwd in forwards:
                 ip = fwd.get('ip')
                 gateway_port = fwd.get('gateway_port')
+                client_port = fwd.get('client_port')
                 protocol = fwd.get('protocol')
-                # ip_address, gateway_port and protocol are NOT NULL. Skip
-                # loudly on a missing/renamed key rather than emitting an
-                # opaque IntegrityError at insert time.
-                if not ip or gateway_port is None or not protocol:
+                # ip_address, gateway_port, client_port and protocol are all
+                # NOT NULL. Skip loudly on a missing/renamed key rather than
+                # emitting an opaque IntegrityError at insert time — which,
+                # because reservations and forwards share one commit below,
+                # would also roll back this network's good reservations.
+                if not ip or gateway_port is None or client_port is None or not protocol:
                     logger.warning(
-                        f"Skipping forward with missing ip/gateway_port/protocol "
-                        f"on network '{network_name}': {fwd}"
+                        f"Skipping forward with missing ip/gateway_port/client_port/"
+                        f"protocol on network '{network_name}': {fwd}"
                     )
                     continue
+                # enabled is NOT NULL with a DB default of True, but passing
+                # None explicitly bypasses that default. Absence doesn't make
+                # the rule unusable, so normalize a missing value to True.
+                enabled = fwd.get('enabled')
+                if enabled is None:
+                    enabled = True
                 # Check if exists (for statistics tracking)
                 exists = self.db.query(PortForward).filter(
                     PortForward.network_name == network_name,
@@ -179,10 +188,10 @@ class RoutingCollector(BaseCollector):
                     network_name=network_name,
                     ip_address=ip,
                     gateway_port=gateway_port,
-                    client_port=fwd.get('client_port'),
+                    client_port=client_port,
                     protocol=protocol,
                     description=fwd.get('description'),
-                    enabled=fwd.get('enabled'),
+                    enabled=enabled,
                     reservation_url=fwd.get('reservation'),
                     eero_url=fwd.get('url'),
                     last_seen=current_time,
@@ -191,9 +200,9 @@ class RoutingCollector(BaseCollector):
                 stmt = stmt.on_conflict_do_update(
                     index_elements=['network_name', 'ip_address', 'gateway_port', 'protocol'],
                     set_=dict(
-                        client_port=fwd.get('client_port'),
+                        client_port=client_port,
                         description=fwd.get('description'),
-                        enabled=fwd.get('enabled'),
+                        enabled=enabled,
                         reservation_url=fwd.get('reservation'),
                         eero_url=fwd.get('url'),
                         last_seen=current_time,
