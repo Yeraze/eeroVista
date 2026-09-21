@@ -79,18 +79,12 @@ class RoutingCollector(BaseCollector):
     def _collect_for_network(self, network_name: str) -> dict:
         """Collect routing information for a specific network."""
         try:
-            # Get network client
-            network_client = self.eero_client.get_network_client(network_name)
-
-            if not network_client:
-                logger.warning(f"Network client for '{network_name}' not found")
-                return {"items_collected": 0, "errors": 1}
-
-            # Get routing data
-            routing = network_client.routing
-            if not routing:
-                logger.warning(f"No routing data available for network '{network_name}'")
-                return {"items_collected": 0, "errors": 0}
+            # Fetch routing data via raw API calls that bypass pydantic
+            # marshalling. Using network_client.routing here caused the eero
+            # library's strict pydantic validation to fail for some accounts,
+            # silently yielding zero reservations/forwards (issue #137).
+            reservations = self.eero_client.get_reservations(network_name) or []
+            forwards = self.eero_client.get_forwards(network_name) or []
 
             # Track stats
             reservations_added = 0
@@ -100,29 +94,31 @@ class RoutingCollector(BaseCollector):
             current_time = datetime.now(timezone.utc)
 
             # Process IP reservations using upsert to avoid race conditions
-            for res in routing.reservations.data:
+            for res in reservations:
+                mac = res.get('mac')
+                ip = res.get('ip')
                 # Check if exists (for statistics tracking)
                 exists = self.db.query(IpReservation).filter(
                     IpReservation.network_name == network_name,
-                    IpReservation.mac_address == res.mac
+                    IpReservation.mac_address == mac
                 ).first() is not None
 
                 # Upsert reservation atomically
                 stmt = insert(IpReservation).values(
                     network_name=network_name,
-                    mac_address=res.mac,
-                    ip_address=res.ip,
-                    description=res.description,
-                    eero_url=res.url,
+                    mac_address=mac,
+                    ip_address=ip,
+                    description=res.get('description'),
+                    eero_url=res.get('url'),
                     last_seen=current_time,
                     created_at=current_time,
                 )
                 stmt = stmt.on_conflict_do_update(
                     index_elements=['network_name', 'mac_address'],
                     set_=dict(
-                        ip_address=res.ip,
-                        description=res.description,
-                        eero_url=res.url,
+                        ip_address=ip,
+                        description=res.get('description'),
+                        eero_url=res.get('url'),
                         last_seen=current_time,
                     )
                 )
@@ -136,37 +132,40 @@ class RoutingCollector(BaseCollector):
 
             # Process port forwards using upsert to avoid race conditions
             # Use a composite unique key of (network_name, ip_address, gateway_port, protocol)
-            for fwd in routing.forwards.data:
+            for fwd in forwards:
+                ip = fwd.get('ip')
+                gateway_port = fwd.get('gateway_port')
+                protocol = fwd.get('protocol')
                 # Check if exists (for statistics tracking)
                 exists = self.db.query(PortForward).filter(
                     PortForward.network_name == network_name,
-                    PortForward.ip_address == fwd.ip,
-                    PortForward.gateway_port == fwd.gateway_port,
-                    PortForward.protocol == fwd.protocol
+                    PortForward.ip_address == ip,
+                    PortForward.gateway_port == gateway_port,
+                    PortForward.protocol == protocol
                 ).first() is not None
 
                 # Upsert forward atomically
                 stmt = insert(PortForward).values(
                     network_name=network_name,
-                    ip_address=fwd.ip,
-                    gateway_port=fwd.gateway_port,
-                    client_port=fwd.client_port,
-                    protocol=fwd.protocol,
-                    description=fwd.description,
-                    enabled=fwd.enabled,
-                    reservation_url=fwd.reservation,
-                    eero_url=fwd.url,
+                    ip_address=ip,
+                    gateway_port=gateway_port,
+                    client_port=fwd.get('client_port'),
+                    protocol=protocol,
+                    description=fwd.get('description'),
+                    enabled=fwd.get('enabled'),
+                    reservation_url=fwd.get('reservation'),
+                    eero_url=fwd.get('url'),
                     last_seen=current_time,
                     created_at=current_time,
                 )
                 stmt = stmt.on_conflict_do_update(
                     index_elements=['network_name', 'ip_address', 'gateway_port', 'protocol'],
                     set_=dict(
-                        client_port=fwd.client_port,
-                        description=fwd.description,
-                        enabled=fwd.enabled,
-                        reservation_url=fwd.reservation,
-                        eero_url=fwd.url,
+                        client_port=fwd.get('client_port'),
+                        description=fwd.get('description'),
+                        enabled=fwd.get('enabled'),
+                        reservation_url=fwd.get('reservation'),
+                        eero_url=fwd.get('url'),
                         last_seen=current_time,
                     )
                 )

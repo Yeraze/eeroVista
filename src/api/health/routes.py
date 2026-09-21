@@ -1432,7 +1432,10 @@ async def generate_support_package(
             # Handle both dict and Pydantic model
             if isinstance(network, dict):
                 network_name = network.get('name', 'Unknown')
-                network_id = network.get('url', {}).get('network_id', 'Unknown') if network.get('url') else 'Unknown'
+                # network['url'] is a path string like '/2.2/networks/123456',
+                # not a dict; derive the id the same way the model does (#137).
+                url_str = network.get('url')
+                network_id = url_str.split('/')[-1] if isinstance(url_str, str) and url_str else 'Unknown'
                 # Convert to dict for JSON serialization
                 network_info = network
             else:

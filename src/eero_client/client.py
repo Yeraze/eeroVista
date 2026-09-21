@@ -295,6 +295,65 @@ class EeroClientWrapper:
             logger.error(f"Error getting profiles: {e}", exc_info=True)
             return None
 
+    def get_reservations(self, network_name: Optional[str] = None) -> Optional[list]:
+        """
+        Get IP reservations for a network.
+
+        We make a direct API call to bypass pydantic marshalling errors in the
+        library, which cause some networks to silently yield no routing data.
+        """
+        return self._get_routing_list(
+            network_name, "reservations", "reservations"
+        )
+
+    def get_forwards(self, network_name: Optional[str] = None) -> Optional[list]:
+        """
+        Get port forwards for a network.
+
+        We make a direct API call to bypass pydantic marshalling errors in the
+        library, which cause some networks to silently yield no routing data.
+        """
+        return self._get_routing_list(network_name, "forwards", "forwards")
+
+    def _get_routing_list(
+        self, network_name: Optional[str], endpoint: str, key: str
+    ) -> Optional[list]:
+        """Fetch a routing sub-resource as a raw list, bypassing pydantic."""
+        try:
+            if not self.is_authenticated():
+                return None
+
+            network_client = self.get_network_client(network_name)
+            if not network_client:
+                logger.error(f"Network '{network_name}' not found")
+                return None
+
+            network_id = network_client.network_info.url.split('/')[-1]
+            eero = self._get_client()
+
+            from eero.client.api_client import APIClient
+            api = APIClient(eero.session.cookie)
+            data = api.get(f"networks/{network_id}/{endpoint}")
+
+            # The endpoint returns {"count": N, "<key>": [...]}; some callers
+            # may already receive the bare list.
+            if isinstance(data, dict):
+                items = data.get(key, [])
+            elif isinstance(data, list):
+                items = data
+            else:
+                items = []
+
+            logger.info(
+                f"{endpoint} API returned {len(items)} items for "
+                f"network '{network_name}'"
+            )
+            return items
+
+        except Exception as e:
+            logger.error(f"Error getting {endpoint}: {e}", exc_info=True)
+            return None
+
     def _request_data_usage(
         self,
         path_suffix: str,
