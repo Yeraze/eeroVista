@@ -443,6 +443,100 @@ class TestGetProfiles:
             assert result is None
 
 
+class TestGetRoutingLists:
+    """Tests for get_reservations / get_forwards / _get_routing_list (#137)."""
+
+    def _patch_api(self, client, api_return):
+        """Patch out network client + APIClient, returning api_return from get()."""
+        mock_network_client = MagicMock()
+        mock_network_client.network_info.url = "/2.2/networks/123456"
+
+        mock_eero = MagicMock()
+        mock_eero.session.cookie = "test-cookie"
+
+        mock_api = MagicMock()
+        mock_api.get.return_value = api_return
+
+        return (
+            patch.object(client, "get_network_client", return_value=mock_network_client),
+            patch.object(client, "_get_client", return_value=mock_eero),
+            patch("eero.client.api_client.APIClient", return_value=mock_api),
+        )
+
+    def test_reservations_returns_none_when_not_authenticated(self, client):
+        assert client.get_reservations() is None
+
+    def test_forwards_returns_none_when_not_authenticated(self, client):
+        assert client.get_forwards() is None
+
+    def test_returns_none_when_network_client_is_none(self, authenticated_client):
+        with patch.object(authenticated_client, "get_network_client", return_value=None):
+            assert authenticated_client.get_reservations() is None
+            assert authenticated_client.get_forwards() is None
+
+    def test_reservations_unwraps_count_envelope(self, authenticated_client):
+        # Real endpoint shape: {"count": N, "reservations": [...]}
+        items = [{"mac": "aa:bb", "ip": "1.2.3.4"}]
+        p1, p2, p3 = self._patch_api(
+            authenticated_client, {"count": 1, "reservations": items}
+        )
+        with p1, p2, p3:
+            assert authenticated_client.get_reservations() == items
+
+    def test_forwards_unwraps_count_envelope(self, authenticated_client):
+        items = [{"ip": "1.2.3.4", "gateway_port": 8080, "protocol": "tcp"}]
+        p1, p2, p3 = self._patch_api(
+            authenticated_client, {"count": 1, "forwards": items}
+        )
+        with p1, p2, p3:
+            assert authenticated_client.get_forwards() == items
+
+    def test_empty_envelope_returns_empty_list(self, authenticated_client):
+        # This is the reporter's actual payload for the working networks.
+        p1, p2, p3 = self._patch_api(
+            authenticated_client, {"count": 0, "reservations": []}
+        )
+        with p1, p2, p3:
+            result = authenticated_client.get_reservations()
+            assert result == []
+
+    def test_bare_list_response_is_passed_through(self, authenticated_client):
+        # Defensive: some deployments may return the bare list.
+        items = [{"mac": "aa:bb", "ip": "1.2.3.4"}]
+        p1, p2, p3 = self._patch_api(authenticated_client, items)
+        with p1, p2, p3:
+            assert authenticated_client.get_reservations() == items
+
+    def test_unexpected_shape_returns_empty_list(self, authenticated_client):
+        # Neither dict-with-key nor list -> empty, not a crash.
+        p1, p2, p3 = self._patch_api(authenticated_client, "unexpected")
+        with p1, p2, p3:
+            assert authenticated_client.get_reservations() == []
+
+    def test_missing_key_in_envelope_returns_empty_list(self, authenticated_client):
+        p1, p2, p3 = self._patch_api(authenticated_client, {"count": 0})
+        with p1, p2, p3:
+            assert authenticated_client.get_forwards() == []
+
+    def test_null_value_under_key_returns_empty_list(self, authenticated_client):
+        # {"count": 0, "reservations": null} must behave like a missing key,
+        # not propagate None into len()/the caller.
+        p1, p2, p3 = self._patch_api(
+            authenticated_client, {"count": 0, "reservations": None}
+        )
+        with p1, p2, p3:
+            assert authenticated_client.get_reservations() == []
+
+    def test_returns_none_on_exception(self, authenticated_client):
+        # A genuine fetch failure must return None (distinct from empty), so the
+        # collector can treat it as an error rather than "network has none".
+        with patch.object(
+            authenticated_client, "get_network_client", side_effect=Exception("boom")
+        ):
+            assert authenticated_client.get_reservations() is None
+            assert authenticated_client.get_forwards() is None
+
+
 class TestRefreshSession:
     """Tests for refresh_session method."""
 

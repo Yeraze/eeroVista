@@ -280,19 +280,85 @@ class EeroClientWrapper:
                 logger.error(f"Network '{network_name}' not found")
                 return None
 
-            network_id = network_client.network_info.url.split('/')[-1]
-            eero = self._get_client()
-
-            # Make direct API call to bypass pydantic marshalling issues
-            from eero.client.api_client import APIClient
-            api = APIClient(eero.session.cookie)
-            profiles_data = api.get(f"networks/{network_id}/profiles")
+            profiles_data = self._direct_api_get(network_client, "profiles")
 
             logger.info(f"Profiles API returned {len(profiles_data) if isinstance(profiles_data, list) else 0} profiles")
             return profiles_data
 
         except Exception as e:
             logger.error(f"Error getting profiles: {e}", exc_info=True)
+            return None
+
+    def get_reservations(self, network_name: Optional[str] = None) -> Optional[list]:
+        """
+        Get IP reservations for a network.
+
+        We make a direct API call to bypass pydantic marshalling errors in the
+        library, which cause some networks to silently yield no routing data.
+        """
+        return self._get_routing_list(network_name, "reservations")
+
+    def get_forwards(self, network_name: Optional[str] = None) -> Optional[list]:
+        """
+        Get port forwards for a network.
+
+        We make a direct API call to bypass pydantic marshalling errors in the
+        library, which cause some networks to silently yield no routing data.
+        """
+        return self._get_routing_list(network_name, "forwards")
+
+    def _direct_api_get(self, network_client, path: str):
+        """Make a raw API GET on a network sub-resource, bypassing pydantic.
+
+        Shared by the several endpoints (profiles, routing) that must dodge the
+        eero library's strict pydantic marshalling; see get_profiles for the
+        original rationale.
+        """
+        network_id = network_client.network_info.url.split('/')[-1]
+        eero = self._get_client()
+
+        from eero.client.api_client import APIClient
+        api = APIClient(eero.session.cookie)
+        return api.get(f"networks/{network_id}/{path}")
+
+    def _get_routing_list(
+        self, network_name: Optional[str], endpoint: str
+    ) -> Optional[list]:
+        """Fetch a routing sub-resource as a raw list, bypassing pydantic.
+
+        The endpoint path and the response envelope key are the same
+        ("reservations", "forwards").
+        """
+        try:
+            if not self.is_authenticated():
+                return None
+
+            network_client = self.get_network_client(network_name)
+            if not network_client:
+                logger.error(f"Network '{network_name}' not found")
+                return None
+
+            data = self._direct_api_get(network_client, endpoint)
+
+            # The endpoint returns {"count": N, "<endpoint>": [...]}; some
+            # callers may already receive the bare list. `or []` guards a null
+            # value under the key (e.g. {"reservations": null}) so it behaves
+            # the same as a missing key rather than propagating None.
+            if isinstance(data, dict):
+                items = data.get(endpoint) or []
+            elif isinstance(data, list):
+                items = data
+            else:
+                items = []
+
+            logger.info(
+                f"{endpoint} API returned {len(items)} items for "
+                f"network '{network_name}'"
+            )
+            return items
+
+        except Exception as e:
+            logger.error(f"Error getting {endpoint}: {e}", exc_info=True)
             return None
 
     def _request_data_usage(
